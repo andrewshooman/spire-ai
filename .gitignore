@@ -1,0 +1,8 @@
+# external, pinned dependency (installed by install.ps1)
+sts-bench/
+# training data and per-machine settings
+evolve/
+settings.bat
+__pycache__/
+*.pyc
+*.tmp

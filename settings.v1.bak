@@ -1,0 +1,23 @@
+@rem ===== Spire AI settings =====
+@rem Edit, save, then close and reopen Spire start.
+
+@rem Model that plays. Faster: qwen3:8b   Stronger: qwen3:14b
+set MODEL=qwen3:14b
+
+@rem Think before each move? off = fast, on = slower but smarter
+set THINK=off
+
+@rem Model that rewrites the lessons after each run (can be bigger than MODEL)
+set REFLECT_MODEL=qwen3:14b
+
+@rem ironclad, silent, defect or watcher (lessons are character-specific)
+set CHARACTER=ironclad
+
+@rem Model calls allowed per move (lookups + retries)
+set MAX_ROUNDS=5
+
+@rem Open the game automatically: yes or no
+set AUTO_LAUNCH_GAME=yes
+
+@rem Ollama context window in tokens
+set CONTEXT=32768
