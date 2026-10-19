@@ -77,11 +77,11 @@ ARCHETYPES = {
 BOSS_RELIC_PRIOR = {
     "Coffee Dripper": 1.2, "Cursed Key": 1.2, "Ectoplasm": 1.0, "Fusion Hammer": 1.0,
     "Philosopher's Stone": 1.2, "Runic Dome": 0.6, "Sozu": 1.2, "Velvet Choker": 1.0,
-    "Busted Crown": 0.6, "Mark of Pain": 1.0, "Snecko Eye": 1.0, "Runic Pyramid": 1.0,
+    "Busted Crown": 0.6, "Mark of Pain": 1.0, "Snecko Eye": 0.8, "Runic Pyramid": 1.0,
     "Black Star": 0.8, "Sacred Bark": 0.6, "Pandora's Box": 0.4, "Astrolabe": 0.6,
     "Empty Cage": 0.8, "Tiny House": 0.2, "Calling Bell": 0.2, "Black Blood": 0.8,
     "Ring of the Serpent": 0.8, "Frozen Core": 0.8, "Holy Water": 0.6, "Runic Cube": 0.8,
-    "Wrist Blade": 0.4, "Hovering Kite": 0.4, "Slaver's Collar": 0.6, "Lizard Tail": 0.2,
+    "Wrist Blade": 0.4, "Hovering Kite": 0.4, "Slaver's Collar": 0.4, "Lizard Tail": 0.2,
 }
 
 
@@ -137,7 +137,10 @@ class Effects:
     __slots__ = ("damage", "hits", "aoe", "random_target", "block", "vuln", "weak", "aoe_debuff",
                  "draw", "energy", "strength", "temp_strength", "hp_loss", "exhaust", "power",
                  "x_cost", "strength_mult", "block_scaling", "double_block", "double_strength",
-                 "conditional_strength")
+                 "conditional_strength", "self_vuln", "self_weak", "self_frail", "enemy_str_down",
+                 "enemy_str_down_temp", "poison", "per_strike", "exhaust_hand", "block_per_exhaust",
+                 "damage_per_exhaust", "if_vuln", "per_turn_strength", "per_turn_block",
+                 "per_turn_energy", "per_turn_damage", "thorns", "dex", "known")
 
     def __init__(self):
         self.damage = 0; self.hits = 1; self.aoe = False; self.random_target = False
@@ -146,6 +149,12 @@ class Effects:
         self.hp_loss = 0; self.exhaust = False; self.power = False; self.x_cost = False
         self.strength_mult = 1; self.block_scaling = False; self.double_block = False
         self.double_strength = False; self.conditional_strength = False
+        self.self_vuln = 0; self.self_weak = 0; self.self_frail = 0
+        self.enemy_str_down = 0; self.enemy_str_down_temp = 0; self.poison = 0
+        self.per_strike = 0; self.exhaust_hand = ""; self.block_per_exhaust = 0
+        self.damage_per_exhaust = 0; self.if_vuln = False
+        self.per_turn_strength = 0; self.per_turn_block = 0; self.per_turn_energy = 0
+        self.per_turn_damage = 0; self.thorns = 0; self.dex = 0; self.known = False
 
 
 def _int(pattern: str, text: str, default: int = 0) -> int:
@@ -153,14 +162,58 @@ def _int(pattern: str, text: str, default: int = 0) -> int:
     return int(m.group(1)) if m else default
 
 
+# Sentences that describe a later trigger, not something that happens on play.
+_TRIGGER = re.compile(r"^(?:At the (?:start|end) of|Whenever|If this card is Exhausted|"
+                      r"When(?:ever)? you (?:draw|lose|gain|play))", re.IGNORECASE)
+
+
+def _split_triggers(text: str) -> tuple[str, str]:
+    """(on-play text, triggered text): powers and 'whenever' riders act later."""
+    now, later = [], []
+    for s in re.split(r"(?<=\.)\s+", text):
+        (later if _TRIGGER.search(s.strip()) else now).append(s)
+    return " ".join(now), " ".join(later)
+
+
 @lru_cache(maxsize=4096)
 def parse_text(text: str, card_type: str, cost: int) -> Effects:
     e = Effects()
-    t = text or ""
+    full = text or ""
+    e.known = bool(full)
     e.power = card_type == "POWER"
     e.x_cost = cost == -1
+    t, later = _split_triggers(full)
+    # triggered riders: valued as scaling, never as an immediate effect
+    each_turn = " ".join(s for s in re.split(r"(?<=\.)\s+", later)
+                         if re.search(r"(?:start|end) of your turn", s, re.I))
+    e.per_turn_strength = _int(r"gain (\d+) Strength", each_turn)
+    e.per_turn_block = _int(r"gain (\d+) Block", each_turn)
+    e.per_turn_energy = _int(r"gain (\d+) Energy", each_turn)
+    e.per_turn_damage = _int(r"deal (\d+) damage to ALL enemies", each_turn)
+    e.thorns = _int(r"deal (\d+) damage back", later)
+    m = re.search(r"Gain (\d+) (Vulnerable|Weak|Frail)", full)
+    if m:
+        setattr(e, {"Vulnerable": "self_vuln", "Weak": "self_weak", "Frail": "self_frail"}[m.group(2)],
+                int(m.group(1)))
     e.exhaust = bool(re.search(r"\bExhaust\.", t))
     e.damage = _int(r"Deal (\d+) damage", t)
+    e.if_vuln = bool(re.search(r"If the enemy (?:has|is) Vulnerable", t, re.I))
+    e.per_strike = _int(r"Deals (\d+) additional damage for ALL your cards containing", t)
+    if re.search(r"Exhaust your hand", t, re.I):
+        e.exhaust_hand = "all"
+        e.damage_per_exhaust = _int(r"Deal (\d+) damage for each card Exhausted", t)
+        e.damage = 0
+    elif re.search(r"Exhaust all non-Attack cards in your hand", t, re.I):
+        e.exhaust_hand = "nonattack"
+        e.block_per_exhaust = _int(r"Gain (\d+) Block for each card Exhausted", t)
+    m = re.search(r"(?:Enemy|ALL enemies) loses? (\d+) Strength( this turn)?", t, re.I)
+    if m:
+        if m.group(2):
+            e.enemy_str_down_temp = int(m.group(1))
+        else:
+            e.enemy_str_down = int(m.group(1))
+        e.aoe_debuff = e.aoe_debuff or "ALL enemies" in m.group(0)
+    e.poison = _int(r"Apply (\d+) Poison", t)
     if re.search(r"damage equal to your Block", t, re.I):
         e.block_scaling = True
     if re.search(r"damage (?:\w+ )*X times", t, re.I):
@@ -182,7 +235,7 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
     e.aoe_debuff = bool(re.search(r"(?:Vulnerable|Weak)[^.]*to ALL enemies", t))
     e.draw = _int(r"Draw (\d+) cards?", t)
     e.energy = _int(r"Gain (\d+) Energy", t)
-    if re.search(r"At the end of this turn, lose", t):
+    if re.search(r"At the end of this turn, lose", full):
         e.temp_strength = _int(r"Gain (\d+) Strength", t)
     elif re.search(r"If the enemy intends to attack, gain (\d+) Strength", t):
         e.conditional_strength = True
@@ -192,6 +245,9 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
     e.double_strength = bool(re.search(r"Double your Strength", t, re.I))
     e.strength_mult = _int(r"Strength affects this card (\d+) times", t, 1)
     e.hp_loss = _int(r"Lose (\d+) HP", t)
+    e.dex = _int(r"Gain (\d+) Dexterity", t)
+    if e.block_per_exhaust:
+        e.block = 0
     return e
 
 
@@ -211,7 +267,7 @@ def roles(card) -> set[str]:
         out.add("block")
     if e.draw:
         out.add("draw")
-    if e.power or e.strength or e.double_strength:
+    if e.power or e.strength or e.double_strength or e.per_turn_strength or e.poison:
         out.add("scaling")
     if e.vuln or e.weak:
         out.add("debuff")

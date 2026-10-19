@@ -35,8 +35,8 @@ COMBAT_DEFAULTS = {
     "strength": 4.0,      # per permanent Strength
     "power": 5.0,         # base value of a power card early in a fight
     "hp_cost": 1.5,       # per HP the card costs you
-    "energy_cost": 1.0,   # opportunity cost per energy spent
-    "end_threshold": 0.5, # end the turn when no play is worth more than this
+    "energy_cost": 1.0,   # unused since the whole-turn planner (kept for old model files)
+    "end_threshold": 0.5, # end the turn when the best turn plan beats ending by less than this
     "potion_hp": 0.35,    # use potions when HP falls below this fraction
 }
 
@@ -49,8 +49,12 @@ NODE_PRIORS = {
     ("T", 0): 0.5, ("T", 1): 0.5, ("T", 2): 0.5,
 }
 
+# act-level path priors from the playbook: act 1 elites pay off, act 3 elites end runs,
+# act 3 events are rich
+NODEACT_PRIORS = {("E", 1): 0.2, ("E", 3): -0.4, ("?", 3): 0.2, ("$", 3): 0.2}
+
 FEATURE_PRIORS = {
-    "need:aoe": 1.0, "need:block": 0.6, "need:damage": 0.8, "need:draw": 0.5,
+    "need:aoe": 1.0, "need:block": 0.6, "need:damage": 0.8, "need:draw": 0.5, "need:scaling": 0.8,
     "upgraded": 0.3, "dup": -0.4, "dilute": -0.5,
     "skip:a1": -0.8, "skip:a2": -0.2, "skip:a3": 0.2, "skip:a4": 0.3,
     "rest:h0": 2.0, "rest:h1": 0.3, "rest:h2": -1.0,
@@ -95,6 +99,9 @@ class Model:
         if kind == "node":  # node:<sym>:h<bucket>
             sym, _, hb = rest.partition(":h")
             return NODE_PRIORS.get((sym, int(hb or 1)), 0.0)
+        if kind == "nodeact":  # nodeact:<sym>:a<act>
+            sym, _, a = rest.partition(":a")
+            return NODEACT_PRIORS.get((sym, int(a or 1)), 0.0)
         if kind == "relic":
             return BOSS_RELIC_PRIOR.get(rest, 0.5)
         if kind == "shoprelic":

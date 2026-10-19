@@ -28,10 +28,32 @@ from sts_bench.agents.base import Decision
 from sts_bench.state.serialize import cursory_view
 
 import cards as C
+import planner
 from model import Model, hp_bucket
 
 TIP_ONLY = {"key", "click", "wait", "state"}
 EMPTY_POTION = "Potion Slot"
+
+POTION_KINDS = {
+    "defense": ("Block Potion", "Ghost In A Jar", "Ghost in a Jar", "Weak Potion", "Heart of Iron",
+                "Essence of Steel", "Liquid Bronze", "Dexterity Potion", "Speed Potion"),
+    "buff": ("Strength Potion", "Steroid Potion", "Flex Potion", "Cultist Potion", "Ancient Potion",
+             "Focus Potion", "Bottled Miracle", "Essence of Darkness", "Potion of Capacity", "Stance Potion"),
+    "damage": ("Fire Potion", "Explosive Potion", "Poison Potion", "Fear Potion", "Cunning Potion"),
+    "tempo": ("Energy Potion", "Swift Potion", "Gambler's Brew", "Snecko Oil", "Distilled Chaos",
+              "Duplication Potion", "Liquid Memories", "Attack Potion", "Skill Potion", "Power Potion",
+              "Colorless Potion", "Elixir", "Blessing of the Forge", "Ambrosia"),
+    "heal": ("Blood Potion", "Regen Potion"),
+    "juice": ("Fruit Juice",),
+    "brew": ("Entropic Brew",),
+    "escape": ("Smoke Bomb",),
+    "never": ("Fairy in a Bottle",),
+}
+_POTION_INDEX = {n.lower(): k for k, names in POTION_KINDS.items() for n in names}
+
+
+def potion_kind(name: str) -> str:
+    return _POTION_INDEX.get((name or "").lower(), "tempo")
 
 
 @dataclass
@@ -113,6 +135,7 @@ class PolicyAgent:
         self._shop_buys: dict[int, int] = {}
         self._last_shop: tuple | None = None
         self._last_line = ""
+        self._potions_used: dict[tuple, int] = {}
 
     # sts-bench calls this after every executed step
     def record(self, line: str) -> None:
@@ -129,6 +152,8 @@ class PolicyAgent:
         if g is None:
             return Decision(action=None, forced_reason="no game state")
         screen = g.screen_type.value
+        if g.combat_state is not None and screen == "NONE" and not cmds & {"play", "end"}:
+            return Decision(action=None, forced_reason="waiting")  # enemy turn or animation
         handler = {
             "EVENT": self._event, "MAP": self._map, "CARD_REWARD": self._card_reward,
             "COMBAT_REWARD": self._combat_reward, "CHEST": self._chest, "REST": self._rest,
@@ -169,126 +194,73 @@ class PolicyAgent:
     def _combat(self, message, decision):
         g, P = message.game_state, CONFIG.params
         c = g.combat_state
-        potion = self._potion(message)
+        if not any(_alive(m) for m in c.monsters):
+            return (EndTurn() if "end" in message.available_commands else None), ""
+        plan = planner.plan_turn(message, P, self._deck_names(g))
+        note = plan.describe(c.hand, c.monsters)
+        potion = self._potion(message, plan)
         if potion is not None:
-            return potion
-        player = c.player
-        energy, block = player.energy, player.block
-        alive = [(i, m) for i, m in enumerate(c.monsters) if _alive(m)]
-        if not alive:
-            return EndTurn() if "end" in message.available_commands else None
-        incoming = sum(_attack(m) for _, m in alive)
-        ctx = {
-            "strength": _power(player.powers, "Strength"),
-            "dex": _power(player.powers, "Dexterity"),
-            "weak": _power(player.powers, "Weakened") > 0,
-            "frail": _power(player.powers, "Frail") > 0,
-            "barricade": _power(player.powers, "Barricade") > 0,
-            "incoming": incoming, "block": block, "energy": energy, "alive": alive,
-            "elite": g.room_type in ("MonsterRoomElite", "MonsterRoomBoss"),
-            "turn": c.turn, "hp_frac": player.current_hp / max(1, player.max_hp),
-            "enemy_hp": sum(m.current_hp for _, m in alive),
-            "attacks_in_hand": sum(1 for h in c.hand if h.type.value == "ATTACK"),
-        }
-        best = (P["end_threshold"], None, "")
-        for i, card in enumerate(c.hand):
-            if not card.is_playable:
-                continue
-            cost = energy if card.cost == -1 else max(card.cost, 0)
-            e = C.effects(card)
-            targets = [t for t, _ in alive] if card.has_target else [None]
-            for t in targets:
-                v = self._card_value(card, e, t, cost, ctx, P) - P["energy_cost"] * cost
-                if v > best[0]:
-                    tname = f" -> {c.monsters[t].name}" if t is not None else ""
-                    best = (v, PlayCard(card_index=i, target_index=t), f"play {card.name}{tname} (value {v:.1f})")
-        if best[1] is None:
-            return EndTurn(), ""
-        return best[1], ""
+            return potion[0], potion[1] + " | " + note
+        if not plan.steps or plan.value - plan.base < P["end_threshold"]:
+            return EndTurn(), note + " -> end turn"
+        i, t = plan.steps[0]
+        return PlayCard(card_index=i, target_index=t), note
 
-    def _card_value(self, card, e, target, cost, ctx, P) -> float:
-        v = 0.0
-        alive = ctx["alive"]
-        hits = ctx["energy"] if e.hits == 0 else e.hits
-        if e.damage or e.block_scaling:
-            per_hit = ctx["block"] if e.block_scaling else e.damage + ctx["strength"] * e.strength_mult
-            if ctx["weak"]:
-                per_hit *= 0.75
-            if e.aoe:
-                victims = [m for _, m in alive]
-                share = 1.0
-            elif e.random_target:
-                victims = [m for _, m in alive]
-                share = 1.0 / len(victims)
-            else:
-                victims = [m for i, m in alive if i == target] if target is not None else []
-                share = 1.0
-            for m in victims:
-                mult = 1.5 if _power(m.powers, "Vulnerable") > 0 else 1.0
-                total = per_hit * hits * mult * share
-                through = max(0.0, total - m.block)
-                v += P["damage"] * min(through, m.current_hp)
-                if through >= m.current_hp:
-                    v += P["kill"] + _attack(m)
-        gain = 0.0
-        if e.block:
-            gain = (e.block + ctx["dex"]) * (0.75 if ctx["frail"] else 1.0)
-        if e.double_block:
-            gain += ctx["block"]
-        if gain:
-            need = max(0.0, ctx["incoming"] - ctx["block"])
-            useful = min(gain, need)
-            surplus = P["surplus_block"] * (6 if ctx["barricade"] else 1)
-            v += P["block"] * useful + surplus * max(0.0, gain - useful)
-        if e.vuln or e.weak:
-            debuffed = [m for _, m in alive] if (e.aoe_debuff or e.aoe) else \
-                [m for i, m in alive if i == target]
-            for m in debuffed:
-                if e.vuln:
-                    follow = 1.5 if ctx["attacks_in_hand"] > 1 else 1.0
-                    v += P["vuln"] * e.vuln * follow * (0.5 if _power(m.powers, "Vulnerable") else 1.0)
-                if e.weak:
-                    v += P["weak"] * e.weak * _attack(m) / 3.0
-        if e.draw:
-            v += P["draw"] * e.draw * (1.0 if ctx["energy"] - cost > 0 else 0.4)
-        if e.energy:
-            v += P["energy"] * e.energy
-        fight = 1.0 + min(2.0, ctx["enemy_hp"] / 40.0)
-        if e.strength and (not e.conditional_strength or ctx["incoming"] > 0):
-            v += P["strength"] * e.strength * fight
-        if e.temp_strength:
-            v += P["strength"] * 0.4 * e.temp_strength * max(0, ctx["attacks_in_hand"] - 1)
-        if e.double_strength:
-            v += P["strength"] * ctx["strength"] * fight
-        if e.power:
-            v += P["power"] * (1.5 if ctx["elite"] else 1.0) * (1.0 if ctx["turn"] <= 3 else 0.5) * fight / 2
-        if e.hp_loss:
-            v -= P["hp_cost"] * e.hp_loss * (2.0 if ctx["hp_frac"] < 0.3 else 1.0)
-        if card.type.value in ("STATUS", "CURSE"):
-            v += 0.6  # playing a removable junk card clears the hand
-        return v
-
-    def _potion(self, message):
+    def _potion(self, message, plan):
+        """Potions per the playbook: never die holding one, spend them in boss fights,
+        one opener in elites, defensive ones when low; Fruit Juice right away."""
         g, P = message.game_state, CONFIG.params
         c = g.combat_state
-        usable = [(i, p) for i, p in enumerate(g.potions) if p.id != EMPTY_POTION and p.can_use]
+        usable = [(i, p) for i, p in enumerate(g.potions)
+                  if p.id != EMPTY_POTION and p.can_use and potion_kind(p.name) != "never"]
         if not usable:
             return None
-        elite = g.room_type in ("MonsterRoomElite", "MonsterRoomBoss")
-        hp_frac = c.player.current_hp / max(1, c.player.max_hp)
-        incoming = sum(_attack(m) for m in c.monsters)
-        if not ((elite and c.turn == 1) or (hp_frac < P["potion_hp"] and incoming > c.player.block)):
+        hp = c.player.current_hp
+        hp_frac = hp / max(1, c.player.max_hp)
+        taken = plan.summary.get("taken", 0)
+        boss = g.room_type == "MonsterRoomBoss"
+        elite = g.room_type == "MonsterRoomElite"
+        empty = sum(1 for p in g.potions if p.id == EMPTY_POTION)
+        key = (g.floor, c.turn)
+        used_now = self._potions_used.get(key, 0)
+
+        def pick(kinds):
+            for kind in kinds:
+                for slot, p in usable:
+                    if potion_kind(p.name) == kind and not (kind == "escape" and boss):
+                        return slot, p
             return None
-        slot, potion = usable[0]
+
+        choice, why = None, ""
+        if pick(["juice"]):
+            choice, why = pick(["juice"]), "Fruit Juice is permanent max HP"
+        elif empty >= 2 and pick(["brew"]):
+            choice, why = pick(["brew"]), "Entropic Brew refills empty slots"
+        elif taken >= hp:
+            choice, why = pick(["defense", "heal", "damage", "buff", "tempo", "escape"]), "lethal incoming"
+        elif boss and c.turn <= 2:
+            choice, why = pick(["buff", "tempo", "damage"]), "boss fight: potions are free power"
+        elif boss and hp_frac < 0.5:
+            choice, why = pick(["heal", "defense", "buff", "damage", "tempo"]), "boss fight, HP low"
+        elif elite and c.turn == 1 and used_now == 0 and (len(usable) >= 2 or hp_frac < 0.6):
+            choice, why = pick(["buff", "damage", "tempo"]), "elite opener"
+        elif hp_frac < P["potion_hp"] and taken > 0:
+            choice, why = pick(["defense", "heal"]), "low HP"
+        if choice is None:
+            return None
+        slot, potion = choice
         target = None
         if potion.requires_target:
-            alive = [(m.current_hp, i) for i, m in enumerate(c.monsters) if _alive(m)]
-            if not alive:
+            live = [(i, m) for i, m in enumerate(c.monsters) if _alive(m)]
+            if not live:
                 return None
-            target = min(alive)[1]
-        CONFIG.tracker.potions.append({"floor": g.floor, "potion": potion.name,
-                                       "why": "elite/boss opener" if elite and c.turn == 1 else "low HP"})
-        return UsePotion(slot_index=slot, target_index=target), f"use {potion.name}"
+            if potion_kind(potion.name) == "defense":   # Weak: the biggest attacker
+                target = max(live, key=lambda x: _attack(x[1]))[0]
+            else:
+                target = min(live, key=lambda x: x[1].current_hp)[0]
+        self._potions_used[key] = used_now + 1
+        CONFIG.tracker.potions.append({"floor": g.floor, "potion": potion.name, "why": why})
+        return UsePotion(slot_index=slot, target_index=target), f"use {potion.name} ({why})"
 
     # ------------------------------------------------------------------ cards
 
@@ -318,6 +290,8 @@ class PolicyAgent:
             f["need:damage"] = 1.0
         if "draw" in roles and deck_roles.get("draw", 0) < 2:
             f["need:draw"] = 1.0
+        if "scaling" in roles and deck_roles.get("scaling", 0) < 2 and g.floor >= 6:
+            f["need:scaling"] = 1.0
         if card.upgrades:
             f["upgraded"] = 1.0
         dup = sum(1 for d in g.deck if C.base_name(d.name) == name)
@@ -356,6 +330,9 @@ class PolicyAgent:
     def _card_reward(self, message, decision):
         g, model, tr = message.game_state, CONFIG.model, CONFIG.tracker
         offered = g.screen.cards
+        if g.combat_state is not None and offered:
+            k = max(range(len(offered)), key=lambda j: self._card_worth(offered[j], g))
+            return Choose(choice_index=k), f"combat card choice: {offered[k].name}"
         commit = self._update_plan(g)
         options = [self._card_features(card, g, commit) for card in offered]
         can_skip = validate(ReturnBack(), message).ok
@@ -425,12 +402,13 @@ class PolicyAgent:
             return memo[(x, y)]
 
         options, bonus, labels = [], [], []
+        rule = self._map_rules(g)
         for n in nodes:
             sym = n.symbol or "?"
             options.append({f"node:{sym}:h{hb}": 1.0, f"nodeact:{sym}:a{act}": 1.0})
             full = by_pos.get((n.x, n.y))
             future = max((route(ch.x, ch.y) for ch in full.children), default=0.0) if full else 0.0
-            bonus.append(0.85 * future + (0.6 if sym == "$" and g.gold >= 150 else 0.0))
+            bonus.append(0.85 * future + (0.6 if sym == "$" and g.gold >= 150 else 0.0) + rule.get(sym, 0.0))
             labels.append(sym)
         idx, probs = model.choose(options, CONFIG.temperature, CONFIG.rng, bonus)
         tr.events.append({"kind": "path", "options": options, "chosen": idx, "probs": probs,
@@ -441,6 +419,21 @@ class PolicyAgent:
         note = "path: " + ", ".join(f"{names.get(l, l)} {p:.0%}" for l, p in zip(labels, probs)) + \
                f" -> {names.get(labels[idx], labels[idx])}"
         return Choose(choice_index=idx), note
+
+    def _map_rules(self, g) -> dict[str, float]:
+        """Playbook rules on top of the learned path weights."""
+        out: dict[str, float] = {}
+        hp_frac = g.current_hp / max(1, g.max_hp)
+        lament = next((r.counter for r in g.relics if r.name == "Neow's Lament"), 0)
+        if lament and lament > 0:
+            out["E"], out["M"] = 2.5, 0.5   # enemies have 1 HP: take the free elite relic
+            return out
+        damage = sum(1 for d in g.deck if "damage" in C.roles(d) or "aoe" in C.roles(d))
+        if g.act == 1:
+            out["E"] = 0.3 if damage >= 2 and hp_frac >= 0.6 else -0.6
+        elif g.act >= 3 and hp_frac < 0.7:
+            out["E"] = -1.0                  # act 3 elites end shaky runs
+        return out
 
     def _chest(self, message, decision):
         g = message.game_state
@@ -455,9 +448,14 @@ class PolicyAgent:
         hb = hp_bucket(g.current_hp, g.max_hp)
         options, labels, bonus = [], [], []
         static = {"dig": 1.5, "lift": 0.8 if hb > 0 else -1.0, "toke": 0.3}
+        hp_frac = g.current_hp / max(1, g.max_hp)
+        pre_boss = g.floor in (15, 32, 49)
+        need = 0.55 if g.act_boss == "Hexaghost" else 0.65
+        rule = {"rest": 4.0 if pre_boss and hp_frac < need else 0.0,
+                "smith": 1.0 if pre_boss and hp_frac >= 0.8 else 0.0}
         for i, opt in enumerate(g.choice_list):
             if opt in ("rest", "smith"):
-                options.append({f"{opt}:h{hb}": 1.0}); bonus.append(0.0)
+                options.append({f"{opt}:h{hb}": 1.0}); bonus.append(rule[opt])
             elif opt in static:
                 options.append({f"restx:{opt}": 1.0}); bonus.append(static[opt])
             else:
@@ -505,11 +503,12 @@ class PolicyAgent:
                 options.append({f"shoprelic:{relic.name}": 1.0, "shop:price": (relic.price or 0) / 100})
                 bonus.append(0.0); labels.append((relic.name, choices.index(n)))
         if any(p.id == EMPTY_POTION for p in g.potions):
+            late = 1.0 if g.act >= 3 or g.floor in (14, 15, 31, 32, 48, 49) else 0.0
             for potion in s.potions:
                 n = potion.name.lower()
                 if n in choices:
                     options.append({"shop:potion": 1.0, "shop:price": (potion.price or 0) / 100})
-                    bonus.append(0.0); labels.append((potion.name, choices.index(n)))
+                    bonus.append(late); labels.append((potion.name, choices.index(n)))
         options.append({"shop:leave": 1.0}); bonus.append(0.0); labels.append(("(leave)", None))
         if self._last_shop and self._last_shop[:2] == (g.floor, g.gold):
             # the last purchase did not go through (gold unchanged): never retry it
@@ -533,10 +532,12 @@ class PolicyAgent:
 
     # ------------------------------------------------------------------ selections
 
-    def _card_worth(self, card, g) -> float:
+    def _card_worth(self, card, g, upgrade: bool = False) -> float:
         if card.type.value in ("CURSE", "STATUS"):
             return -5.0
         v = CONFIG.model.w(f"card:{C.base_name(card.name)}")
+        if upgrade and C.base_name(card.name) == "Bash" and g.act == 1:
+            v += 1.5
         plan = CONFIG.tracker.plan
         if plan.get("lean") and C.base_name(card.name) in C.archetypes(g.character).get(plan["lean"], {}):
             v += 0.4
@@ -555,7 +556,7 @@ class PolicyAgent:
             i, card = min(pool, key=lambda x: self._card_worth(x[1], g))
             why = "remove" if s.for_purge else "transform"
         elif s.for_upgrade:
-            i, card = max(pool, key=lambda x: self._card_worth(x[1], g) - (1.0 if x[1].upgrades else 0))
+            i, card = max(pool, key=lambda x: self._card_worth(x[1], g, True) - (1.0 if x[1].upgrades else 0))
             why = "upgrade"
         elif s.any_number:
             junk = [(i, c) for i, c in pool if self._card_worth(c, g) < -0.5]
@@ -579,7 +580,7 @@ class PolicyAgent:
             return Proceed(), "confirm"
         action = (g.current_action or "").lower()
         if "upgrade" in action or "armaments" in action:
-            i, card = max(pool, key=lambda x: self._card_worth(x[1], g) - (2.0 if x[1].upgrades else 0))
+            i, card = max(pool, key=lambda x: self._card_worth(x[1], g, True) - (2.0 if x[1].upgrades else 0))
             return Choose(choice_index=i), f"upgrade {card.name}"
         if "retain" in action:
             i, card = max(pool, key=lambda x: self._card_worth(x[1], g))
@@ -594,23 +595,31 @@ class PolicyAgent:
     def _boss_reward(self, message, decision):
         g, model, tr = message.game_state, CONFIG.model, CONFIG.tracker
         relics = g.screen.relics
-        if CONFIG.llm_events:
-            pick = self._ask_option(message, [r.name for r in relics], "Choose a boss relic.")
-            if pick is not None:
-                tr.boss_relics.append({"floor": g.floor, "relic": relics[pick].name, "by": "llm"})
-                return Choose(choice_index=pick), f"boss relic (LLM): {relics[pick].name}"
         options = [{f"relic:{r.name}": 1.0} for r in relics]
+        rules = [boss_relic_rule(r.name, g) for r in relics]
+        bonus = [b for b, _ in rules]
         can_skip = validate(ReturnBack(), message).ok
         if can_skip:
             options.append({"relic:skip": 1.0})
-        idx, probs = model.choose(options, CONFIG.temperature, CONFIG.rng)
+            bonus.append(0.0)
+        idx, probs = model.choose(options, CONFIG.temperature, CONFIG.rng, bonus)
+        by = "policy"
+        if CONFIG.llm_events:
+            ranked = sorted(range(len(relics)), key=lambda k: -probs[k])
+            labels = [f"{relics[k].name} (policy {probs[k]:.0%}{'; ' + rules[k][1] if rules[k][1] else ''})"
+                      for k in range(len(relics))]
+            pick = self._ask_option(message, labels, "Choose a boss relic. Policy ranking: " +
+                                    ", ".join(relics[k].name for k in ranked), topic="boss_relic")
+            if pick is not None:
+                idx, by = pick, "llm"
+        # learn from the outcome whoever chose: the LLM's picks train the relic weights too
         tr.events.append({"kind": "boss_relic", "options": options, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
         if can_skip and idx == len(relics):
-            tr.boss_relics.append({"floor": g.floor, "relic": "(skip)", "by": "policy"})
+            tr.boss_relics.append({"floor": g.floor, "relic": "(skip)", "by": by})
             return ReturnBack(), "boss relic: skip"
-        tr.boss_relics.append({"floor": g.floor, "relic": relics[idx].name, "by": "policy"})
-        return Choose(choice_index=idx), f"boss relic: {relics[idx].name}"
+        tr.boss_relics.append({"floor": g.floor, "relic": relics[idx].name, "by": by})
+        return Choose(choice_index=idx), f"boss relic ({by}): {relics[idx].name}"
 
     def _event(self, message, decision):
         g, tr = message.game_state, CONFIG.tracker
@@ -620,22 +629,44 @@ class PolicyAgent:
             return self._advance(message), ""
         if len(live) == 1:
             return Choose(choice_index=live[0].choice_index), f"event: {live[0].label}"
-        pick, by = None, "heuristic"
+        neow = s.event_name == "Neow" or g.floor == 0
+        scores = [self._event_score(f"{o.label} {o.text}", g, neow) for o in live]
+        pick, by = live[max(range(len(live)), key=lambda k: scores[k])], "heuristic"
         if CONFIG.llm_events:
-            k = self._ask_option(message, [f"{o.label} {o.text}".strip() for o in live],
-                                 f"Event: {s.event_name}.")
+            labels = [f"{o.label} {o.text}".strip() + f" (heuristic {sc:+.1f})" for o, sc in zip(live, scores)]
+            k = self._ask_option(message, labels, f"Event: {s.event_name}. {(s.body_text or '')[:300]}",
+                                 topic="neow" if neow else "event")
             if k is not None:
                 pick, by = live[k], "llm"
-        if pick is None:
-            pick = max(live, key=lambda o: self._event_score(o.text + " " + o.label, g))
         tr.game_events.append({"floor": g.floor, "event": s.event_name, "choice": pick.label, "by": by})
         return Choose(choice_index=pick.choice_index), f"event {s.event_name} ({by}): {pick.label}"
 
-    @staticmethod
-    def _event_score(text: str, g) -> float:
+    # playbook ranking of Neow's blessings
+    NEOW_SCORES = ((r"three combats have 1 hp", 3.0), (r"random rare relic", 2.6),
+                   (r"random common relic", 2.2), (r"choose a rare card", 2.0),
+                   (r"remove (?:2|two) cards", 2.0), (r"remove a card", 1.5),
+                   (r"random rare card", 1.2), (r"max hp \+", 1.0), (r"gain \d+ gold", 1.3),
+                   (r"choose a card to obtain", 0.9), (r"transform", 0.7),
+                   (r"colorless card", 0.7), (r"upgrade a card", 0.8))
+
+    @classmethod
+    def _event_score(cls, text: str, g, neow: bool = False) -> float:
         t = text.lower()
         hp_frac = g.current_hp / max(1, g.max_hp)
         s = 0.0
+        if neow:
+            for pat, v in cls.NEOW_SCORES:
+                if re.search(pat, t):
+                    s += v
+            if "boss relic" in t:
+                s += 0.2 if C.character_key(g.character) == "THE_SILENT" else 0.8
+            if "curse" in t:
+                s -= 1.5
+            if re.search(r"lose \d+ max hp", t):
+                s -= 0.6
+            if "take" in t and "damage" in t:
+                s -= 0.4
+            return s
         if "relic" in t and ("obtain" in t or "gain" in t or "receive" in t):
             s += 2.0
         if "rare card" in t:
@@ -663,12 +694,14 @@ class PolicyAgent:
             s += 0.1
         return s
 
-    def _ask_option(self, message, labels: list[str], header: str) -> int | None:
+    def _ask_option(self, message, labels: list[str], header: str, topic: str = "event") -> int | None:
         g, tr = message.game_state, CONFIG.tracker
         plan = tr.plan or {}
+        book = playbook_for(CONFIG.strategy, topic, g.character)
         system = (f"You make the big-picture choices in a Slay the Spire run as the {g.character}. "
-                  "Use the playbook and the run plan. Reply with only the number of your choice.\n\n"
-                  f"PLAYBOOK:\n{CONFIG.strategy[:3500]}\n\n"
+                  "Use the playbook, the run plan and the scores shown with each option. "
+                  "Reply with only the number of your choice.\n\n"
+                  f"PLAYBOOK:\n{book}\n\n"
                   f"RUN PLAN: archetype {plan.get('archetype', 'undecided')}; "
                   f"wanted {', '.join(plan.get('wanted', [])) or '-'}\n/no_think")
         listing = "\n".join(f"{i}: {label}" for i, label in enumerate(labels))
@@ -683,3 +716,76 @@ class PolicyAgent:
             return None
         k = int(m.group(0))
         return k if 0 <= k < len(labels) else None
+
+
+# ---------------------------------------------------------------- playbook helpers
+
+TOPIC_SECTIONS = {
+    "neow": ("Core principles", "Neow"),
+    "event": ("Core principles", "Events", "Map, rest sites and shops"),
+    "boss_relic": ("Core principles", "Boss relics"),
+}
+
+
+def playbook_sections(text: str) -> dict[str, str]:
+    out, cur, buf = {}, "_head", []
+    for line in (text or "").splitlines():
+        if line.startswith("## "):
+            out[cur] = "\n".join(buf).strip()
+            cur, buf = line[3:].strip(), []
+        else:
+            buf.append(line)
+    out[cur] = "\n".join(buf).strip()
+    return out
+
+
+def playbook_for(text: str, topic: str, character: str | None = None, limit: int = 6000) -> str:
+    """Only the sections a decision needs, plus the class and the coach's lessons,
+    so the prompt stays short and the learned lessons are never cut off."""
+    names = TOPIC_SECTIONS.get(topic)
+    if names is None:
+        return (text or "")[:limit]
+    secs = playbook_sections(text)
+    char = {"THE_SILENT": "Silent"}.get(C.character_key(character), (character or "").title())
+    keep = [n for n in names if n in secs] + ([char] if char in secs else [])
+    body = "\n\n".join(f"## {n}\n{secs[n]}" for n in keep)
+    learned = secs.get("Learned from runs", "")
+    room = max(0, limit - len(learned) - 40)
+    return body[:room] + (f"\n\n## Learned from runs\n{learned}" if learned else "")
+
+
+def boss_relic_rule(name: str, g) -> tuple[float, str]:
+    """Playbook judgment of a boss relic for THIS deck: (bonus, reason)."""
+    deck = list(g.deck)
+    costs = [d.cost for d in deck if d.cost >= 0]
+    avg_cost = sum(costs) / max(1, len(costs))
+    basics = sum(1 for d in deck if C.base_name(d.name) in C.BASIC)
+    relics = {r.name for r in g.relics}
+    healing = bool(relics & {"Burning Blood", "Black Blood", "Meat on the Bone", "Bloody Idol"}) or \
+        any(C.base_name(d.name) in ("Reaper", "Feed", "Self Repair") for d in deck)
+    unupgraded = sum(1 for d in deck if not d.upgrades and C.base_name(d.name) not in C.BASIC)
+    weak_tools = sum(1 for d in deck if C.effects(d).weak or C.effects(d).enemy_str_down
+                     or C.effects(d).enemy_str_down_temp)
+    if name == "Snecko Eye":
+        return (0.8, "many 2+ cost cards") if avg_cost >= 1.4 else (-0.6, "deck is cheap")
+    if name == "Velvet Choker":
+        return (0.3, "expensive deck") if avg_cost >= 1.3 else (-0.5, "deck plays many cheap cards")
+    if name == "Astrolabe":
+        return (0.6, f"{basics} starter cards to transform") if basics >= 6 else (-0.2, "few starters left")
+    if name == "Calling Bell":
+        return (1.2, "Omamori eats the curses") if "Omamori" in relics else (0.0, "")
+    if name == "Coffee Dripper":
+        return (0.5, "has a healing source") if healing else (-0.5, "no healing besides resting")
+    if name == "Fusion Hammer":
+        return (-0.5, f"{unupgraded} key cards unupgraded") if unupgraded >= 4 else (0.3, "deck mostly upgraded")
+    if name == "Philosopher's Stone":
+        return (0.4, "has Weak/Strength-down to answer it") if weak_tools else (0.0, "")
+    if name == "Black Blood":
+        return (0.6, "upgrades Burning Blood") if "Burning Blood" in relics else (0.0, "")
+    if name == "Tiny House":
+        return (-0.4, "weakest boss relic")
+    if name == "Slaver's Collar":
+        return (-0.3, "only extra energy in elite/boss fights")
+    if name == "Runic Dome":
+        return (-0.6, "hides intents the combat planner needs")
+    return (0.0, "")

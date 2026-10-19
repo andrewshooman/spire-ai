@@ -43,6 +43,8 @@ class FakeSpire(threading.Thread):
         self.cur = fx("out_of_game-1.json")
         self.commands: list[str] = []
         self.runs = 0
+        self.stall_left = 0      # lines to swallow: simulates the game hanging mid-animation
+        self.stalled = False
 
     def send(self, state: dict) -> None:
         self.cur = state
@@ -153,6 +155,9 @@ class FakeSpire(threading.Thread):
                     return
                 line = raw.decode().strip()
                 self.commands.append(line)
+                if self.stall_left > 0:
+                    self.stall_left -= 1
+                    continue
                 self.send(self.respond(line))
         except OSError:
             return
@@ -199,6 +204,10 @@ class FakeSpire(threading.Thread):
                 return self.combat()
             if line.startswith("potion"):
                 return self.combat()
+            if line == "end" and self.runs == 3 and not self.stalled:
+                self.stalled = True
+                self.stall_left = 4   # end + nudge, fallback + nudge: all unanswered
+                return self.cur
             if line == "end":
                 self.turn += 1
                 self.hp -= 8
@@ -295,6 +304,7 @@ def main() -> None:
         base_url=f"http://127.0.0.1:{llm.server_address[1]}/v1", llm_events=True, coach_every=3,
         coach_think=False, lr=0.08, cycle=5, bench_seeds=["BENCHA1", "BENCHB2"], revert_margin=1.0,
         max_runs=10, port=0, workdir=str(work / "evolve" / "ironclad"),
+        stall_wait=30, relaunch_game=False, max_aborts=3, step_timeout=2.0,
         strategy_baseline=str(ROOT / "agent" / "strategy_baseline.md"))
     with HarnessServer(port=0) as server:
         game = FakeSpire(server.port, random.Random(7))
@@ -315,6 +325,9 @@ def main() -> None:
     print("dashboard bytes", len((ws / "dashboard.html").read_text()))
     commands = set(c.split()[0] for c in game.commands)
     print("wire verbs used:", sorted(commands))
+    aborted = sorted((ws / "runs" / "aborted").glob("*.json"))
+    print("aborted runs:", [json.loads(a.read_text())["aborted"][:60] for a in aborted])
+    assert game.stalled and len(aborted) == 1, "the stalled run must be set aside, not learned from"
     assert rc == 0 and len(runs) == 10 and model["meta"]["runs_trained"] == 6
     assert (ws / "champion_model.json").exists() and (ws / "dashboard.html").exists()
     print("E2E OK")

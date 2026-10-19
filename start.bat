@@ -8,6 +8,7 @@ set PY=%~dp0sts-bench\.venv\Scripts\python.exe
 set FLAGS=--character %CHARACTER% --model %MODEL% --coach-every %COACH_EVERY%
 if /i "%LLM_EVENTS%"=="off" set FLAGS=%FLAGS% --no-llm-events
 if /i "%COACH_THINK%"=="off" set FLAGS=%FLAGS% --no-coach-think
+if /i "%AUTO_LAUNCH_GAME%"=="yes" set FLAGS=%FLAGS% --relaunch-game
 set NEED_LLM=yes
 if /i "%LLM_EVENTS%"=="off" if "%COACH_EVERY%"=="0" set NEED_LLM=no
 if /i "%NEED_LLM%"=="no" goto run

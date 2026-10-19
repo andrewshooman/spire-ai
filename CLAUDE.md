@@ -14,9 +14,14 @@ Desktop was moved back from OneDrive to C:\Users\sushi\Desktop; OneDrive was rem
 Python always needs PYTHONUTF8=1 (sts-bench reads files with the default encoding -> cp1252 crashes on Windows).
 
 ## Layout (C:\sts-evolve is a git repo -> github.com/andrewshooman/spire-ai)
-agent\policy.py     PolicyAgent: all moves. Combat values cards from parsed text vs intents; out-of-combat choices are
+agent\planner.py    Whole-turn combat search: tries card orders within energy, simulates damage/block/debuffs and enemy
+                    mechanics (Barricade, Thorns/Sharp Hide, Malleable, Enrage, Curiosity, Time Warp, Artifact,
+                    Intangible, Beat of Death, Lagavulin asleep) + kill priorities; ~1-10 ms per decision.
+agent\policy.py     PolicyAgent: all moves. Combat = planner first step + playbook potion rules; out-of-combat choices are
                     softmax over learned features (cards/skip, path, rest/smith, shop, boss relic); records events;
-                    run plan (archetype, core, wanted). LLM only in _event/_boss_reward (falls back to heuristics).
+                    run plan (archetype, core, wanted). Playbook rules as softmax bonuses (pre-boss rest, Neow's
+                    Lament elites, act-3 elite caution, boss-relic context rules, Neow ranking). LLM only in
+                    _event/_boss_reward, given only the relevant playbook sections (playbook_for) + policy scores.
 agent\model.py      Linear softmax policy + REINFORCE (reward = floor/50 + 1 if win, advantage vs running baseline),
                     ES for combat params, priors, coach nudges, save/load model.json.
 agent\cards.py      Priors (Ironclad tiers, archetypes for all 4 classes, boss relic priors), printed-text effect parser.
@@ -27,7 +32,8 @@ agent\evolve.py     Main loop. Cycles (default 10): explore runs learn; 2 bench 
                     (tutorial "FTUE" tip screens: key Confirm / wait 300). Registers SCAFFOLDS["policy"].
 agent\dashboard.py  Static dashboard.html (inline SVG, auto-refresh 30 s), rendered after every run.
 agent\evolve_tools.py  watch/stats/weights/notes/dashboard/report/campaign/baseline/reset (the .bat launchers).
-agent\strategy_baseline.md  Playbook copied to evolve\<char>\strategy.md (coach extends it).
+agent\strategy_baseline.md  Playbook by topic (Neow, Combat, Map, Events, Boss relics, Act 1-4, classes). Synced into
+                    evolve\<char>\strategy.md on start, keeping the coach's "Learned from runs" bullets.
 start.bat (+ settings.bat from settings.example.bat), launch-game.ps1 (javaw ModTheSpire.jar --skip-launcher from the
 game folder; reuses the last mod list), install.ps1, *.bat tools, tests\test_e2e.py (fake game + fake LLM, full loop).
 sts-bench\  (gitignored) github.com/alavico/sts-bench pinned at 735b90625f63449a275c285c39d02e36a2942bdb; venv at
