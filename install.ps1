@@ -142,6 +142,8 @@ Step "Self-test (fake game, no Slay the Spire needed)"
 $ErrorActionPreference = "Continue"   # the tests log to stderr; only exit codes matter here
 cmd /c "`"$py`" tests\test_planner.py 2>nul" | Select-Object -Last 1
 if ($LASTEXITCODE) { Fail "planner test failed: run  $py tests\test_planner.py  to see why" }
+cmd /c "`"$py`" tests\test_sim.py 2>nul" | Select-Object -Last 1
+if ($LASTEXITCODE) { Fail "simulator test failed: run  $py tests\test_sim.py  to see why" }
 cmd /c "`"$py`" tests\test_e2e.py 2>nul" | Select-Object -Last 1
 if ($LASTEXITCODE) { Fail "self-test failed: run  $py tests\test_e2e.py  to see why" }
 

@@ -86,4 +86,15 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
    OLLAMA_KEEP_ALIVE=-1, flash attention and q8_0 KV cache.
 8. Learning v3: per-act REINFORCE baselines (events tagged with act), antithetic ES pairs (+eps then -eps on the
    same seed, ws.state["es_pair"]).
+9. Shop: 'shop:card' bar + extra-card penalty, removal rule bonus, cards.SHOP_RELIC_PRIOR; LLM shop list with priorities.
+10. Exploration: temperature floor 0.35 (0.985^runs); explore runs sample CONFIG.risk (-0.5..1.5 extra elite pull),
+    saved as "risk" in run files; the coach sees depth by risk.
+11. gamedata.py: relic/potion text from the player's desktop-1.0.jar, cached in evolve\_cache (never committed);
+    used in boss-relic and shop prompts (shop cards show cost + text). Smith: cards.UPGRADE_PRIORITY + one LLM call
+    with current -> upgraded text.
+12. analyze.bat (agent\analyze.py): runs/hr, act reach, killers, depth by risk, shops, relics, LLM use, aborted runs.
+13. Simulator: Act 3 hallway (3 Shapes, Orb Walker, Transient); results in the History tab "Offline simulator".
+Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
+analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
+user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.
 Commit and push after each working change.
