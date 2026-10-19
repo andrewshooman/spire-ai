@@ -268,7 +268,8 @@ def summarize(path: Path, tracker: policy.RunTracker) -> dict:
         "boss_relics": tracker.boss_relics, "plan": tracker.plan,
         "plan_history": tracker.plan_history, "counts": tracker.counts,
         "llm_calls": tracker.llm_calls, "llm_s": round(tracker.llm_ms / 1000, 1),
-        "llm_cached": tracker.llm_cached, "llm_log": tracker.llm_log[-30:], "trajectory": str(path.resolve()),
+        "llm_cached": tracker.llm_cached, "llm_log": tracker.llm_log[-30:], "fight_log": tracker.fight_log,
+        "trajectory": str(path.resolve()),
     }
 
 

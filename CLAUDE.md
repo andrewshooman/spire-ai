@@ -30,6 +30,13 @@ agent\evolve.py     Main loop. Cycles (default 10): explore runs learn; 2 bench 
                     runs (NOTES / NUDGES json / LEARNED -> strategy.md "Learned from runs"). Writes runs\run_NNNN.json,
                     progress.csv, state.json, dashboard. Patches: Path.symlink_to (Windows), session.choose_command
                     (tutorial "FTUE" tip screens: key Confirm / wait 300). Registers SCAFFOLDS["policy"].
+agent\sim.py        Offline Ironclad combat simulator: game-format states -> real planner; scripted A0 monsters
+                    (Jaw Worm, Cultist, Nob, Lagavulin, 3 Sentries, Hexaghost, Guardian, Slime Boss (+splits),
+                    Spheric Guardian, Snake Plant, Shelled Parasite, Book of Stabbing); ~4000 fights/min.
+agent\sim_train.py  sim.bat: bench / train (antithetic ES) / compare / calibrate / apply. Writes ONLY
+                    evolve\<char>\sim\ (stats kept apart from live runs); `apply` copies sim_params.json into
+                    model.json (bot must be stopped, backup kept). Live runs record fight_log (deck/HP/enemies at
+                    each fight start) so `calibrate` compares sim vs real outcomes.
 agent\live.py       LiveView: policy writes evolve\<char>\live.json (~1/s, on screen change): HUD data, map + route, combat
                     (hand, enemies, intents), last 40 decisions with "why". serve() = localhost http thread.
 agent\dashboard.py  Renders index.html (= dashboard.html) from template agent\page.html: Spire-themed app, tabs Live run

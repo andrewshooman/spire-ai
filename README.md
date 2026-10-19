@@ -39,6 +39,9 @@ says the dependency pin changed.
 - `start.bat` - Ollama on GPU + bot + game. Settings in `settings.bat`.
 - `dashboard.bat` - dashboard (`evolve\<character>\dashboard.html`).
 - `watch`, `stats`, `weights`, `notes`, `report [N]`, `campaign`, `baseline`, `reset` - tools.
+- `sim.bat [bench|train|compare|calibrate|apply]` - offline combat simulator (thousands of fights per
+  minute with the real combat planner). Its stats stay in `evolve\<character>\sim\`; `apply` (bot stopped)
+  copies the simulator-tuned combat parameters into the live model.
 - `agent\` - code: `policy.py` (moves), `planner.py` (combat search), `model.py` (learning),
   `cards.py` (knowledge/parser), `evolve.py` (loop), `dashboard.py`, `strategy_baseline.md` (playbook).
 - Tests: `sts-bench\.venv\Scripts\python.exe tests\test_planner.py` and `tests\test_e2e.py`.

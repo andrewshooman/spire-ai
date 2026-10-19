@@ -80,6 +80,7 @@ class RunTracker:
     llm_ms: int = 0
     llm_cached: int = 0
     llm_log: list = field(default_factory=list)
+    fight_log: list = field(default_factory=list)   # deck + HP at each fight's start (simulator calibration)
 
     def count(self, kind: str) -> None:
         self.counts[kind] = self.counts.get(kind, 0) + 1
@@ -232,6 +233,12 @@ class PolicyAgent:
         c = g.combat_state
         if not any(_alive(m) for m in c.monsters):
             return (EndTurn() if "end" in message.available_commands else None), ""
+        tr = CONFIG.tracker
+        if c.turn <= 1 and (not tr.fight_log or tr.fight_log[-1]["floor"] != g.floor):
+            tr.fight_log.append({"floor": g.floor, "room": g.room_type, "hp": c.player.current_hp,
+                                 "max_hp": c.player.max_hp, "deck": self._deck_names(g),
+                                 "enemies": [m.name for m in c.monsters],
+                                 "relics": [r.name for r in g.relics]})
         plan = planner.plan_turn(message, P, self._deck_names(g))
         note = plan.describe(c.hand, c.monsters)
         potion = self._potion(message, plan)
