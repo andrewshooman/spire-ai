@@ -115,6 +115,23 @@ SHOP_RELIC_PRIOR = {
 }
 
 
+# How much an upgrade adds (Ironclad), on top of the card's learned worth: big jumps first
+# (cost drops, exhaust removed, +50% effect), marginal +3 damage last.
+UPGRADE_PRIORITY = {
+    "Bash": 1.0, "Limit Break": 2.0, "Barricade": 1.5, "Corruption": 1.5, "Demon Form": 1.2, "Body Slam": 1.5,
+    "Entrench": 1.2, "Armaments": 1.4, "Shockwave": 1.0, "Uppercut": 1.0, "Offering": 1.0, "Battle Trance": 0.8,
+    "Dark Embrace": 1.2, "Seeing Red": 1.0, "Exhume": 1.0, "Havoc": 0.8, "Searing Blow": 1.5,
+    "Feel No Pain": 0.9, "Inflame": 0.8, "Spot Weakness": 0.8, "Disarm": 0.8, "True Grit": 0.9,
+    "Shrug It Off": 0.7, "Flame Barrier": 0.7, "Impervious": 0.6, "Carnage": 0.6, "Whirlwind": 0.7,
+    "Heavy Blade": 0.8, "Pommel Strike": 0.6, "Twin Strike": 0.5, "Burning Pact": 0.7, "Rupture": 0.8,
+    "Juggernaut": 0.6, "Metallicize": 0.6, "Ghostly Armor": 0.5, "Power Through": 0.5, "Sentinel": 0.6,
+    "Infernal Blade": 0.8, "Double Tap": 0.8, "Blood for Blood": 0.6, "Fiend Fire": 0.5, "Hemokinesis": 0.4,
+    "Thunderclap": 0.4, "Cleave": 0.4, "Immolate": 0.5, "Reaper": 0.5, "Feed": 0.5, "Rampage": 0.6,
+    "Sword Boomerang": 0.5, "Pummel": 0.5, "Flex": 0.4, "Combust": 0.3, "Clothesline": 0.4,
+    "Strike": -0.8, "Defend": -0.6,
+}
+
+
 def character_key(character: str | None) -> str:
     c = (character or "").upper().replace(" ", "_")
     return {"SILENT": "THE_SILENT"}.get(c, c)

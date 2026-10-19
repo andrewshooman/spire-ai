@@ -30,7 +30,7 @@ from sts_bench.actions.validate import validate
 from sts_bench.agents.base import Decision
 from sts_bench.runner.session import describe_action
 from sts_bench.state.serialize import cursory_view
-from sts_bench.tools.card_db import card_text
+from sts_bench.tools.card_db import card_text, upgraded_card_text
 
 import cards as C
 import gamedata
@@ -696,6 +696,36 @@ class PolicyAgent:
             v += 0.4
         return v
 
+    def _upgrade_score(self, card, g) -> float:
+        v = self._card_worth(card, g, True) + C.UPGRADE_PRIORITY.get(C.base_name(card.name), 0.0)
+        return v - (3.0 if card.upgrades and C.base_name(card.name) != "Searing Blow" else 0.0)
+
+    def _upgrade(self, message, pool):
+        """Smith: playbook upgrade priorities, then one fast LLM call that sees each card's
+        current and upgraded text (the upgrade's actual gain decides it)."""
+        g = message.game_state
+        ranked = sorted(pool, key=lambda x: -self._upgrade_score(x[1], g))
+        seen, options = set(), []
+        for i, c in ranked:
+            if c.name not in seen and (not c.upgrades or C.base_name(c.name) == "Searing Blow"):
+                seen.add(c.name)
+                options.append((i, c))
+        options = options[:8] or ranked[:1]
+        i, card = options[0]
+        by = "policy"
+        if CONFIG.llm_events and len(options) > 1:
+            labels = []
+            for _, c in options:
+                now, up = (card_text(c) or "").strip(), (upgraded_card_text(c) or "").strip()
+                labels.append(f"{c.name}: {now} -> upgraded: {up} [score {self._upgrade_score(c, g):+.1f}]")
+            k = self._ask_option(message, labels,
+                                 f"Rest site: upgrade one card (act {g.act}, boss {g.act_boss}, deck {len(g.deck)} cards). "
+                                 "Pick the upgrade that adds the most to the coming fights.",
+                                 topic="card", act=g.act)
+            if k is not None:
+                (i, card), by = options[k], self._llm_source
+        return Choose(choice_index=i), f"upgrade ({by}) {card.name}"
+
     def _grid(self, message, decision):
         g = message.game_state
         s = g.screen
@@ -711,8 +741,7 @@ class PolicyAgent:
             i, card = min(pool, key=lambda x: self._card_worth(x[1], g))
             why = "remove" if s.for_purge else "transform"
         elif s.for_upgrade:
-            i, card = max(pool, key=lambda x: self._card_worth(x[1], g, True) - (1.0 if x[1].upgrades else 0))
-            why = "upgrade"
+            return self._upgrade(message, pool)
         elif s.any_number:
             junk = [(i, c) for i, c in pool if self._card_worth(c, g) < -0.5]
             if not junk:

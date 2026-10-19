@@ -186,6 +186,25 @@ def main() -> None:
         picks[note.rsplit("-> ", 1)[-1]] += 1
     check("shop prefers removing a Strike over cards", picks.most_common(1)[0][0] == "buy remove a card", str(picks))
 
+    # smith: a big upgrade (Limit Break loses Exhaust) beats Strike; one LLM call with upgrade text
+    grid = json.loads((FIX / "grid-1.json").read_text())
+    gs = grid["game_state"]
+    gs["class"], gs["act"] = "IRONCLAD", 2
+    gs["screen_state"].update({"for_upgrade": True, "for_purge": False, "for_transform": False,
+                               "num_cards": 1, "any_number": False, "confirm_up": False, "selected_cards": [],
+                               "cards": [card(n, i) for i, n in enumerate(["Strike", "Defend", "Bash", "Pommel Strike"])]})
+    gs["screen_state"]["cards"][3].update({"name": "Limit Break", "id": "Limit Break", "type": "SKILL", "has_target": False})
+    gs["deck"] = gs["screen_state"]["cards"]
+    up = parse_message(grid)
+    policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P), llm_events=False)
+    action, note = policy.PolicyAgent()._grid(up, None)
+    check("smith upgrades Limit Break first (act 2)", "Limit Break" in note, note)
+    seen = {}
+    policy.ask_llm = lambda *a, **k: (seen.setdefault("user", a[3]), "1")[1]
+    policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P), llm_events=True)
+    action, note = policy.PolicyAgent()._grid(up, None)
+    check("LLM sees upgraded text and decides", "upgraded:" in seen.get("user", "") and "(llm)" in note, note)
+
     # per-act credit: an act-2 choice in a run that died early in act 2 is judged against act-2 runs
     m = Model(Path(tempfile.mkdtemp()) / "m.json")
     ev = lambda a, key: {"options": [{key: 1.0}, {"other": 1.0}], "chosen": 0, "probs": [0.5, 0.5], "temp": 1.0, "act": a}
