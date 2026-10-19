@@ -130,6 +130,11 @@ def _hp(rng, lo, hi):
 
 def spawn(name: str, rng: random.Random) -> list[Monster]:
     """Monsters of one encounter, A0 stats."""
+    if name == "3 Shapes":  # act 3: three of Spiker / Repulsor / Exploder
+        out = []
+        for kind in [rng.choice(["Spiker", "Repulsor", "Exploder"]) for _ in range(3)]:
+            out += spawn(kind, rng)
+        return out
     if name == "3 Sentries":
         out = []
         for k in range(3):
@@ -145,6 +150,8 @@ def spawn(name: str, rng: random.Random) -> list[Monster]:
         "Snake Plant": (75, 79, {"Malleable": 3}), "Shelled Parasite": (68, 72, {"Plated Armor": 14}),
         "Book of Stabbing": (160, 164, {"Painful Stabs": 1}),
         "Acid Slime (L)": (65, 69, {"Split": 1}), "Spike Slime (L)": (64, 70, {"Split": 1}),
+        "Spiker": (42, 56, {"Thorns": 3}), "Repulsor": (29, 35, {}), "Exploder": (30, 30, {"Explosive": 3}),
+        "Orb Walker": (90, 96, {"Generic Strength Up": 3}), "Transient": (999, 999, {"Fading": 5, "Shifting": 1}),
     }
     lo, hi, powers = table[name]
     h = _hp(rng, lo, hi)
@@ -160,10 +167,11 @@ def spawn(name: str, rng: random.Random) -> list[Monster]:
 
 
 ENCOUNTERS = ["Jaw Worm", "Cultist", "Gremlin Nob", "Lagavulin", "3 Sentries", "Hexaghost", "The Guardian",
-              "Slime Boss", "Spheric Guardian", "Snake Plant", "Shelled Parasite", "Book of Stabbing"]
+              "Slime Boss", "Spheric Guardian", "Snake Plant", "Shelled Parasite", "Book of Stabbing",
+              "3 Shapes", "Orb Walker", "Transient"]
 ACT = {"Jaw Worm": 1, "Cultist": 1, "Gremlin Nob": 1, "Lagavulin": 1, "3 Sentries": 1, "Hexaghost": 1,
        "The Guardian": 1, "Slime Boss": 1, "Spheric Guardian": 2, "Snake Plant": 2, "Shelled Parasite": 2,
-       "Book of Stabbing": 2}
+       "Book of Stabbing": 2, "3 Shapes": 3, "Orb Walker": 3, "Transient": 3}
 KIND = {"Gremlin Nob": "elite", "Lagavulin": "elite", "3 Sentries": "elite", "Book of Stabbing": "elite",
         "Hexaghost": "boss", "The Guardian": "boss", "Slime Boss": "boss"}
 
@@ -283,6 +291,22 @@ def choose_move(m: Monster, f: "Fight") -> None:
         else:
             m.state["stabs"] = m.state.get("stabs", 1) + 1
             set_move(m, "multi", "ATTACK", 6, m.state["stabs"])
+    elif n == "Spiker":
+        if r < 0.5 and last[-1:] != ["spike"]:
+            set_move(m, "spike", "BUFF")
+        else:
+            set_move(m, "cut", "ATTACK", 7)
+    elif n == "Repulsor":
+        set_move(m, "bash", "ATTACK", 11) if r < 0.25 and last[-1:] != ["bash"] else set_move(m, "repulse", "DEBUFF")
+    elif n == "Exploder":
+        set_move(m, "explode", "ATTACK", 30) if m.p("Explosive") <= 1 else set_move(m, "slam", "ATTACK", 9)
+    elif n == "Orb Walker":
+        if r < 0.4 and last[-2:] != ["claw", "claw"]:
+            set_move(m, "claw", "ATTACK", 15)
+        else:
+            set_move(m, "laser", "ATTACK_DEBUFF", 10)
+    elif n == "Transient":
+        set_move(m, "attack", "ATTACK", 30 + 10 * t)
     else:
         set_move(m, "attack", "ATTACK", 8)
 
@@ -393,6 +417,9 @@ class Fight:
         m.block -= blocked
         through = dmg - blocked
         m.hp -= through
+        if through > 0 and m.p("Shifting"):
+            m.powers["Strength"] = m.p("Strength") - through
+            m.state["str_back"] = m.state.get("str_back", 0) + through
         if through > 0 and m.p("Curl Up"):
             m.block += m.powers.pop("Curl Up")
         if through > 0 and m.p("Plated Armor"):
@@ -716,6 +743,15 @@ class Fight:
         for m in self.monsters:
             if m.gone or m.hp <= 0:
                 continue
+            if m.p("Generic Strength Up"):
+                m.powers["Strength"] = m.p("Strength") + m.p("Generic Strength Up")
+            if m.p("Explosive"):
+                m.powers["Explosive"] -= 1
+            if m.p("Fading"):
+                m.powers["Fading"] -= 1
+                if m.powers["Fading"] <= 0:
+                    m.hp, m.gone = 0, True
+                    continue
             if m.p("Ritual") and m.state.get("ritual_ready"):
                 m.powers["Strength"] = m.p("Strength") + m.p("Ritual")
             m.state["ritual_ready"] = True
@@ -838,6 +874,16 @@ class Fight:
             self.powers["Frail"] = self.p("Frail") + 2
         elif mv == "suck":
             m.hp = min(m.max_hp, m.hp + 10)
+        elif mv == "spike":
+            m.powers["Thorns"] = m.p("Thorns") + 2
+        elif mv == "repulse":
+            self.add_card("Dazed", "draw")
+            self.add_card("Dazed", "draw")
+        elif mv == "explode":
+            m.hp, m.gone = 0, True
+        elif mv == "laser":
+            self.add_card("Burn", "discard")
+            self.add_card("Burn", "draw")
 
     # -------------------------------------------------- the loop
     def run(self, params: dict, deck_for_planner: list[str] | None = None, max_nodes: int = 1200) -> dict:

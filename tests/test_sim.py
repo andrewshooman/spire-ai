@@ -69,6 +69,22 @@ def main() -> None:
     f.play(0, None, msg.game_state.combat_state.hand[0])
     check("Skills enrage Gremlin Nob", nob.p("Strength") == 2)
 
+    f = sim.Fight(sim.STARTER, "Transient", seed=6)
+    tr = f.monsters[0]
+    sim.choose_move(tr, f)
+    f.damage_monster(tr, 12)
+    check("Shifting: damage cuts Transient's Strength this round", tr.p("Strength") == -12)
+    for _ in range(5):
+        f.block = 999
+        f.monsters_act()
+    check("Transient fades after 5 rounds", tr.gone)
+    f = sim.Fight(sim.STARTER, "Orb Walker", seed=8)
+    ow = f.monsters[0]
+    sim.choose_move(ow, f)
+    f.block = 999
+    f.monsters_act()
+    check("Orb Walker gains 3 Strength a round", ow.p("Strength") == 3)
+
     t = time.time()
     n = 60
     res = [sim.Fight(sim.STARTER + ["Pommel Strike", "Shrug It Off"], enc, hp=70, seed=s).run(P, max_nodes=800)

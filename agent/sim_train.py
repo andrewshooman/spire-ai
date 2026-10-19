@@ -45,7 +45,9 @@ KILLER = {"Gremlin Nob": "Gremlin Nob", "Lagavulin": "Lagavulin", "Sentry": "3 S
           "Hexaghost": "Hexaghost", "The Guardian": "The Guardian", "Slime Boss": "Slime Boss",
           "Acid Slime (L)": "Slime Boss", "Spike Slime (L)": "Slime Boss", "Acid Slime (M)": "Slime Boss",
           "Spheric Guardian": "Spheric Guardian", "Snake Plant": "Snake Plant",
-          "Shelled Parasite": "Shelled Parasite", "Book of Stabbing": "Book of Stabbing"}
+          "Shelled Parasite": "Shelled Parasite", "Book of Stabbing": "Book of Stabbing",
+          "Spiker": "3 Shapes", "Repulsor": "3 Shapes", "Exploder": "3 Shapes", "Orb Walker": "Orb Walker",
+          "Transient": "Transient"}
 CHECKS = ["Gremlin Nob", "Lagavulin", "3 Sentries", "Hexaghost", "The Guardian", "Slime Boss"]
 
 
@@ -215,7 +217,10 @@ ENC_BY_ENEMIES = {("Sentry",): "3 Sentries", ("Gremlin Nob",): "Gremlin Nob", ("
                   ("Hexaghost",): "Hexaghost", ("The Guardian",): "The Guardian", ("Slime Boss",): "Slime Boss",
                   ("Spheric Guardian",): "Spheric Guardian", ("Snake Plant",): "Snake Plant",
                   ("Shelled Parasite",): "Shelled Parasite", ("Book of Stabbing",): "Book of Stabbing",
-                  ("Jaw Worm",): "Jaw Worm", ("Cultist",): "Cultist"}
+                  ("Jaw Worm",): "Jaw Worm", ("Cultist",): "Cultist", ("Orb Walker",): "Orb Walker",
+                  ("Transient",): "Transient", ("Spiker",): "3 Shapes", ("Repulsor",): "3 Shapes",
+                  ("Exploder",): "3 Shapes", ("Repulsor", "Spiker"): "3 Shapes", ("Exploder", "Spiker"): "3 Shapes",
+                  ("Exploder", "Repulsor"): "3 Shapes", ("Exploder", "Repulsor", "Spiker"): "3 Shapes"}
 
 
 def real_fights(ws: Path) -> list[dict]:
