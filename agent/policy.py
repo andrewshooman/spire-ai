@@ -33,6 +33,7 @@ from sts_bench.state.serialize import cursory_view
 from sts_bench.tools.card_db import card_text
 
 import cards as C
+import gamedata
 import planner
 from model import Model, hp_bucket
 
@@ -641,7 +642,18 @@ class PolicyAgent:
         deck = ", ".join(sorted(d.name for d in g.deck))
         plan = tr.plan or {}
         book = playbook_for(CONFIG.strategy, "shop", g.character)
-        listing = "\n".join(f"{n}: {lab} - {price} gold (policy {probs[k]:.0%})"
+        shop_cards = {c.name: c for c in g.screen.cards}
+
+        def described(lab: str) -> str:
+            d = gamedata.relic(lab) or gamedata.potion(lab)
+            if lab in shop_cards:
+                c = shop_cards[lab]
+                d = f"{c.type.value.lower()}, cost {c.cost}: {(card_text(c) or '').strip()}"
+            if lab == "remove a card":
+                d = "remove one card from the deck for good"
+            return f"{lab}: {d}" if d else lab
+
+        listing = "\n".join(f"{n}: {described(lab)} - {price} gold (policy {probs[k]:.0%})"
                             for n, (k, lab, price) in enumerate(items))
         system = (f"You decide purchases in a Slay the Spire shop as the {g.character}. Use the playbook and "
                   "the run plan. Priorities: (1) remove a curse, or a Strike while the deck still has several; "
@@ -655,7 +667,7 @@ class PolicyAgent:
                   f"wanted {', '.join(plan.get('wanted', [])) or '-'}")
         user = (f"Act {g.act}, floor {g.floor}, boss {g.act_boss}. HP {g.current_hp}/{g.max_hp}. "
                 f"Gold {g.gold}. Potions: {', '.join(p.name for p in g.potions)}.\n"
-                f"Relics: {', '.join(r.name for r in g.relics)}.\nDeck ({len(g.deck)}): {deck}\n\n"
+                f"Relics: {'; '.join(gamedata.with_relic(r.name) for r in g.relics)}.\nDeck ({len(g.deck)}): {deck}\n\n"
                 f"Shop:\n{listing}\n\nWhat do you buy?")
         answer, ms = self._call_llm(system, user, max_tokens=60)
         if answer is None:
@@ -749,7 +761,7 @@ class PolicyAgent:
         by = "policy"
         if CONFIG.llm_events:
             ranked = sorted(range(len(relics)), key=lambda k: -probs[k])
-            labels = [f"{relics[k].name} (policy {probs[k]:.0%}{'; ' + rules[k][1] if rules[k][1] else ''})"
+            labels = [f"{gamedata.with_relic(relics[k].name)} [policy {probs[k]:.0%}{'; ' + rules[k][1] if rules[k][1] else ''}]"
                       for k in range(len(relics))]
             pick = self._ask_option(message, labels, "Choose a boss relic. Policy ranking: " +
                                     ", ".join(relics[k].name for k in ranked), topic="boss_relic")
