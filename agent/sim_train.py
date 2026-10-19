@@ -314,6 +314,11 @@ def main() -> None:
     args = p.parse_args()
     {"bench": cmd_bench, "train": cmd_train, "compare": cmd_compare, "apply": cmd_apply,
      "calibrate": cmd_calibrate}[args.cmd](args)
+    try:  # show the results on the page's History tab (Offline simulator section)
+        import dashboard
+        dashboard.render(workspace(args.character))
+    except Exception:
+        pass
 
 
 if __name__ == "__main__":

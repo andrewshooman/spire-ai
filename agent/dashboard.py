@@ -339,8 +339,45 @@ def render(root: Path) -> Path:
  <div class=card><h2>Playbook lessons learned</h2><pre>{E(learned) or '(none yet)'}</pre>
   <h2 style="margin-top:14px">Changes since champion</h2>{_diff_html(champ_strategy, strategy)}</div>
 </div>
+{_sim_section(root)}
 """
     return write_pages(root, history, model.get("character", ""))
+
+
+def _sim_section(root: Path) -> str:
+    """Offline simulator results (sim.bat), kept apart from the live-run charts above."""
+    sim = root / "sim"
+    if not sim.exists():
+        return ""
+    parts = []
+    bench = sim / "last_bench.json"
+    if bench.exists():
+        b = json.loads(bench.read_text(encoding="utf-8"))
+        items = [(f"{k} ({v['n']})", v["win"] * 100) for k, v in b.get("by", {}).items()]
+        parts.append(f"<div class=card><h2>Simulator: win rate by enemy (last bench, {b['fights']} fights)</h2>"
+                     f"{_bars(items, fmt='{:.0f}%')}<p class=muted>Overall win {b['win']:.0%}, "
+                     f"HP lost {b['hp_lost']} per fight, fitness {b['fit']}</p></div>")
+    train = sim / "train.csv"
+    if train.exists():
+        with train.open(newline="", encoding="utf-8") as fh:
+            rows = [r for r in csv.DictReader(fh) if r.get("holdout_fit")]
+        if len(rows) > 1:
+            pts = [(int(r["iter"]), float(r["holdout_fit"]) * 100, 150) for r in rows]
+            parts.append(f"<div class=card><h2>Simulator training: holdout fitness</h2>{_sparkline(pts)}"
+                         f"<p class=muted>{len(rows)} checkpoints, latest {float(rows[-1]['holdout_fit']):.3f}, "
+                         f"win {float(rows[-1]['holdout_win']):.0%}</p></div>")
+    cal = sim / "calibration.json"
+    if cal.exists():
+        c = json.loads(cal.read_text(encoding="utf-8"))
+        trs = "".join(f"<tr><td>{E(k)}</td><td>{v['n']}</td><td>{v['real_win']:.0%}</td><td>{v['sim_win']:.0%}</td>"
+                      f"<td>{v['real_hp']:.1f}</td><td>{v['sim_hp']:.1f}</td></tr>" for k, v in sorted(c.items()))
+        parts.append("<div class=card><h2>Simulator calibration: real vs simulated</h2><div class=scroll><table>"
+                     "<tr><th>Enemy</th><th>Fights</th><th>Real win</th><th>Sim win</th><th>Real HP lost</th>"
+                     f"<th>Sim HP lost</th></tr>{trs}</table></div></div>")
+    if not parts:
+        return ""
+    return ("<h2 style='margin-top:26px'>Offline simulator (separate from live runs; sim.bat)</h2>"
+            "<div class=grid2>" + "".join(parts) + "</div>")
 
 
 def write_pages(root: Path, history: str, character: str) -> Path:
