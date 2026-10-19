@@ -311,6 +311,7 @@ def main() -> None:
         coach_think=False, lr=0.08, cycle=5, bench_seeds=["BENCHA1", "BENCHB2"], revert_margin=1.0,
         max_runs=10, port=0, workdir=str(work / "evolve" / "ironclad"),
         stall_wait=30, relaunch_game=False, max_aborts=3, step_timeout=2.0, live_port=free_port(),
+        coach_background=True, llm_shop=True, llm_gap=1.0, llm_cache=True,
         strategy_baseline=str(ROOT / "agent" / "strategy_baseline.md"))
     with HarnessServer(port=0) as server:
         game = FakeSpire(server.port, random.Random(7))
@@ -338,6 +339,9 @@ def main() -> None:
     print("live.json:", snap["screen"], "floor", snap["floor"], "| decisions", len(snap["decisions"]),
           "| keys", sorted(snap)[:8])
     assert snap["decisions"] and "deck" in snap and "map" in snap
+    topics = sorted({c["topic"] for c in snap["llm"]})
+    print("llm topics in live feed:", topics)
+    assert "shop" in topics, "the shop should ask the LLM for a shopping list"
     page = (ws / "index.html").read_text()
     assert "Live run" in page and "Floor reached per run" in page and "__HISTORY__" not in page
     assert rc == 0 and len(runs) == 10 and model["meta"]["runs_trained"] == 6

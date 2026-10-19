@@ -9,8 +9,9 @@ in runs that died early. Combat uses a handful of continuous parameters tuned
 by evolution strategies: each explore run plays a slightly perturbed copy, and
 the perturbations that took less damage per fight pull the parameters along.
 
-The reward is how far the run got: floor reached / 50, plus 1.0 for beating
-the act 3 boss.
+The reward is how far the run got, convex in depth (floors past the Act 1 and
+Act 2 bosses count extra), plus 0.06 per elite killed and 1.0 for beating the
+act 3 boss -- so risky plays that power a run up are worth an early death now and then.
 """
 
 from __future__ import annotations
@@ -42,7 +43,7 @@ COMBAT_DEFAULTS = {
 
 NODE_PRIORS = {
     ("M", 0): 0.0, ("M", 1): 0.2, ("M", 2): 0.4,
-    ("E", 0): -1.5, ("E", 1): -0.3, ("E", 2): 0.4,
+    ("E", 0): -1.5, ("E", 1): 0.1, ("E", 2): 0.6,
     ("R", 0): 1.2, ("R", 1): 0.5, ("R", 2): -0.1,
     ("$", 0): 0.1, ("$", 1): 0.2, ("$", 2): 0.2,
     ("?", 0): 0.4, ("?", 1): 0.3, ("?", 2): 0.3,
@@ -140,9 +141,16 @@ class Model:
 
     # -------------------------------------------------------------- learning
 
+    REWARD_VERSION = 2
+
     @staticmethod
-    def outcome(floor: int, victory: bool) -> float:
-        return min(floor, 55) / 50.0 + (1.0 if victory else 0.0)
+    def outcome(floor: int, victory: bool, elites: int = 0) -> float:
+        """Convex in depth so the learner takes risks that power a run up: dying on floor 8
+        instead of 16 costs little, while every floor past the Act 1 and Act 2 bosses is worth
+        much more; each elite killed (relics, rare cards) adds about three early floors."""
+        f = min(floor, 55)
+        depth = f / 50.0 + 0.6 * max(0, f - 17) / 34.0 + 0.8 * max(0, f - 34) / 17.0
+        return depth + 0.06 * min(elites, 6) + (1.0 if victory else 0.0)
 
     def learn(self, events: list[dict], reward: float, lr: float = 0.08) -> dict:
         """REINFORCE: push every recorded choice toward (or away from) what it

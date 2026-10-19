@@ -33,10 +33,23 @@ class LiveView:
         self.path = Path(path) if path else None
         self.info = dict(info or {})
         self.decisions: collections.deque = collections.deque(maxlen=40)
+        self.llm: collections.deque = collections.deque(maxlen=40)   # LLM calls, newest first, across runs
         self.route: list[list[int]] = []     # chosen map nodes this act: [x, y]
         self.route_act = 0
+        self.hp: list[list[int]] = []        # [floor, hp, max_hp] this run
+        self.started = time.time()
         self._last_write = 0.0
         self._last_screen = ""
+
+    def new_run(self, info: dict) -> None:
+        self.info = dict(info)
+        self.route, self.route_act, self.hp = [], 0, []
+        self.decisions.clear()
+        self.started = time.time()
+
+    def llm_call(self, entry: dict) -> None:
+        self.llm.appendleft(dict(entry, run=self.info.get("run")))
+        self._last_write = 0.0  # show it on the next update
 
     # ------------------------------------------------------------- recording
     def chose_node(self, act: int, x: int, y: int) -> None:
@@ -49,6 +62,11 @@ class LiveView:
             return
         g = message.game_state
         screen = g.screen_type.value if g.combat_state is None or g.screen_type.value != "NONE" else "COMBAT"
+        hp = g.combat_state.player.current_hp if g.combat_state is not None else g.current_hp
+        if self.hp and self.hp[-1][0] == g.floor:
+            self.hp[-1] = [g.floor, hp, g.max_hp]
+        else:
+            self.hp.append([g.floor, hp, g.max_hp])
         if action_text:
             self.decisions.append({"t": time.strftime("%H:%M:%S"), "floor": g.floor, "screen": screen,
                                    "action": action_text, "why": why})
@@ -75,6 +93,16 @@ class LiveView:
             "potions": [p.name for p in g.potions],
             "plan": tracker.plan if tracker else {},
             "llm_calls": tracker.llm_calls if tracker else 0,
+            "llm": list(self.llm),
+            "hp_track": self.hp,
+            "stats": {"elapsed": round(time.time() - self.started), "decisions": sum((tracker.counts or {}).values())
+                      if tracker else 0, "llm_calls": tracker.llm_calls if tracker else 0,
+                      "llm_s": round((tracker.llm_ms if tracker else 0) / 1000, 1),
+                      "llm_cached": tracker.llm_cached if tracker else 0,
+                      "potions_used": len(tracker.potions) if tracker else 0,
+                      "picks": len(tracker.picks) if tracker else 0,
+                      "skips": sum(1 for p in (tracker.picks if tracker else []) if p.get("chosen") == "(skip)"),
+                      "bought": [x["bought"] for x in (tracker.shops if tracker else []) if x["bought"] != "(leave)"]},
             "decisions": list(self.decisions)[::-1],
             "map": {"nodes": [[n.x, n.y, n.symbol, [[ch.x, ch.y] for ch in n.children]] for n in g.map],
                     "route": self.route if self.route_act == g.act else []},

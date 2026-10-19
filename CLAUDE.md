@@ -63,6 +63,12 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
    unless OPEN_LIVE_VIEW=no).
 3. DONE Spire-themed page (agent\page.html): HUD, vertical act map with route, enemy panels, card tiles with cost
    orbs and the planned next card highlighted, decision log; History tab restyled.
-4. After real testing: fix edge cases from logs (unhandled screens, loops, forced moves); add tier priors for
-   Silent/Defect/Watcher; consider experiments (LLM events on/off, coach on/off, learning rate).
+4. Edge cases fixed: cp1252 bytes from the game (N'loth), grid confirm, Match and Keep! (memory play, no LLM).
+   Focus is Ironclad only for now; other classes later.
+5. LLM: events ask only when the top options are within --llm-gap, answers cached in evolve\<char>\llm_cache.json,
+   event/boss-relic choices are learned (features ev:<event>:<label>, relic:<name>); shop = one LLM shopping list
+   per visit (--llm-shop); coach runs in the background (--coach-background) and in-game LLM calls fall back to the
+   policy while it holds the GPU (policy.LLM_BUSY).
+6. Reward v2 (model.outcome): convex in depth + 0.06/elite so risky power-ups pay; map rules push act 1-2 elites;
+   bench selection compares the same reward and reverts only after two bad cycles in a row.
 Commit and push after each working change.

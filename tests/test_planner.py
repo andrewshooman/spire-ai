@@ -167,6 +167,14 @@ def main() -> None:
     check("Neow: 1-HP blessing > common relic > upgrade",
           sc["Enemies in your next three combats have 1 HP"] > sc["Obtain a random common Relic"] > sc["Upgrade a Card"],
           str(sc))
+    # Match and Keep!: finish a known pair instead of flipping the same two cards forever
+    from types import SimpleNamespace as NS
+    agent = policy.PolicyAgent()
+    g = NS(floor=30)
+    opts = lambda labels: [NS(choice_index=i, label=l, text=l, disabled=False) for i, l in enumerate(labels)]
+    agent._match_and_keep(g, opts(["Bash", "card1", "Strike", "card3", "Bash", "card5"]))   # first flip
+    a, note = agent._match_and_keep(g, opts(["Bash", "card1", "Strike", "card3", "Bash", "card5"]))
+    check("Match and Keep pairs known cards", a.choice_index in (0, 4), note)
     print("PLANNER OK")
 
 

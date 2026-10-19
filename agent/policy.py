@@ -19,6 +19,8 @@ from __future__ import annotations
 import json
 import random
 import re
+import threading
+import time
 import urllib.request
 from dataclasses import dataclass, field
 
@@ -73,6 +75,9 @@ class RunTracker:
     plan_history: list = field(default_factory=list)
     counts: dict = field(default_factory=dict)
     llm_calls: int = 0
+    llm_ms: int = 0
+    llm_cached: int = 0
+    llm_log: list = field(default_factory=list)
 
     def count(self, kind: str) -> None:
         self.counts[kind] = self.counts.get(kind, 0) + 1
@@ -91,9 +96,13 @@ class Config:
     llm_base_url: str = "http://localhost:11434/v1"
     strategy: str = ""
     live: object = None          # live.LiveView, or None when nobody is watching
+    llm_shop: bool = True        # one LLM shopping list per shop visit
+    llm_cache: dict | None = None  # event answers reused across runs (evolve.py persists it)
+    llm_gap: float = 1.0         # ask the LLM about an event only when the top options are this close
 
 
 CONFIG = Config()
+LLM_BUSY = threading.Event()   # set while the coach holds the GPU: in-game questions skip the LLM
 
 
 def ask_llm(base_url: str, model: str, system: str, user: str, timeout: float = 120.0) -> str:
@@ -138,6 +147,8 @@ class PolicyAgent:
         self._last_shop: tuple | None = None
         self._last_line = ""
         self._potions_used: dict[tuple, int] = {}
+        self._shop_list: dict[int, list[str]] = {}
+        self._mk: dict = {}           # Match and Keep! memory: floor, index -> card name, picks
 
     # sts-bench calls this after every executed step
     def record(self, line: str) -> None:
@@ -441,9 +452,12 @@ class PolicyAgent:
             out["E"], out["M"] = 2.5, 0.5   # enemies have 1 HP: take the free elite relic
             return out
         damage = sum(1 for d in g.deck if "damage" in C.roles(d) or "aoe" in C.roles(d))
+        # elites are where a run powers up (relics, rare cards): take them in acts 1-2 unless HP is low
         if g.act == 1:
-            out["E"] = 0.3 if damage >= 2 and hp_frac >= 0.6 else -0.6
-        elif g.act >= 3 and hp_frac < 0.7:
+            out["E"] = 1.0 if hp_frac >= 0.5 and damage >= 1 else (0.3 if hp_frac >= 0.5 else -0.6)
+        elif g.act == 2:
+            out["E"] = 0.6 if hp_frac >= 0.6 else -0.3
+        elif hp_frac < 0.7:
             out["E"] = -1.0                  # act 3 elites end shaky runs
         return out
 
@@ -498,49 +512,105 @@ class PolicyAgent:
             return ReturnBack(), "shop: done"
         commit = self._update_plan(g)
         choices = g.choice_list
-        options, bonus, labels = [], [], []
+        options, bonus, labels, prices = [], [], [], []
+
+        def add(f, label, choice, price, b=0.0):
+            if price > g.gold:
+                return  # never try what we cannot afford
+            options.append(f); bonus.append(b); labels.append((label, choice)); prices.append(price)
+
         junk = [d for d in g.deck if d.type.value == "CURSE" or C.base_name(d.name) in C.BASIC]
         if "purge" in choices and s.purge_available and junk:
-            options.append({"shop:purge": 1.0, "shop:price": s.purge_cost / 100}); bonus.append(0.0)
-            labels.append(("purge", choices.index("purge")))
+            add({"shop:purge": 1.0, "shop:price": s.purge_cost / 100}, "remove a card", choices.index("purge"),
+                s.purge_cost)
         for card in s.cards:
             n = card.name.lower()
             if n in choices:
                 f = self._card_features(card, g, commit)
                 f["shop:price"] = (card.price or 0) / 100
-                options.append(f); bonus.append(0.0); labels.append((card.name, choices.index(n)))
+                add(f, card.name, choices.index(n), card.price or 0)
         for relic in s.relics:
             n = relic.name.lower()
             if n in choices:
-                options.append({f"shoprelic:{relic.name}": 1.0, "shop:price": (relic.price or 0) / 100})
-                bonus.append(0.0); labels.append((relic.name, choices.index(n)))
+                add({f"shoprelic:{relic.name}": 1.0, "shop:price": (relic.price or 0) / 100}, relic.name,
+                    choices.index(n), relic.price or 0)
         if any(p.id == EMPTY_POTION for p in g.potions):
             late = 1.0 if g.act >= 3 or g.floor in (14, 15, 31, 32, 48, 49) else 0.0
             for potion in s.potions:
                 n = potion.name.lower()
                 if n in choices:
-                    options.append({"shop:potion": 1.0, "shop:price": (potion.price or 0) / 100})
-                    bonus.append(late); labels.append((potion.name, choices.index(n)))
-        options.append({"shop:leave": 1.0}); bonus.append(0.0); labels.append(("(leave)", None))
+                    add({"shop:potion": 1.0, "shop:price": (potion.price or 0) / 100}, potion.name,
+                        choices.index(n), potion.price or 0, late)
+        options.append({"shop:leave": 1.0}); bonus.append(0.0); labels.append(("(leave)", None)); prices.append(0)
         if self._last_shop and self._last_shop[:2] == (g.floor, g.gold):
             # the last purchase did not go through (gold unchanged): never retry it
             failed = self._last_shop[2]
             for k, (label, _) in enumerate(labels):
                 if label == failed:
-                    del options[k], bonus[k], labels[k]
+                    del options[k], bonus[k], labels[k], prices[k]
                     break
         idx, probs = model.choose(options, CONFIG.temperature, CONFIG.rng, bonus)
+        by = "policy"
+        if CONFIG.llm_events and CONFIG.llm_shop:
+            if g.floor not in self._shop_list:
+                self._shop_list[g.floor] = self._ask_shop(message, labels, prices, probs)
+            wish = self._shop_list[g.floor]
+            if wish is not None:
+                by = "llm list"
+                idx = len(labels) - 1  # leave unless the next wanted item is still here
+                while wish:
+                    item = wish[0]
+                    hit = next((k for k, (lab, _) in enumerate(labels) if lab == item), None)
+                    wish.pop(0)
+                    if hit is not None:
+                        idx = hit
+                        break
         tr.events.append({"kind": "shop", "options": options, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
         name, choice = labels[idx]
-        tr.shops.append({"floor": g.floor, "bought": name, "gold": g.gold})
-        note = "shop: " + ", ".join(f"{l} {p:.0%}" for (l, _), p in
-                                    sorted(zip(labels, probs), key=lambda x: -x[1])[:5])
+        tr.shops.append({"floor": g.floor, "bought": name, "gold": g.gold, "by": by})
+        note = f"shop ({by}): " + ", ".join(f"{l} {p:.0%}" for (l, _), p in
+                                           sorted(zip(labels, probs), key=lambda x: -x[1])[:5])
         if choice is None:
             return ReturnBack(), note + " -> leave"
         self._shop_buys[g.floor] = buys + 1
         self._last_shop = (g.floor, g.gold, name)
         return Choose(choice_index=choice), note + f" -> buy {name}"
+
+    def _ask_shop(self, message, labels, prices, probs) -> list[str] | None:
+        """One LLM call per visit: an ordered shopping list within the gold. None = LLM unavailable."""
+        g, tr = message.game_state, CONFIG.tracker
+        items = [(k, lab, prices[k]) for k, (lab, choice) in enumerate(labels) if choice is not None]
+        if not items:
+            return []
+        deck = ", ".join(sorted(d.name for d in g.deck))
+        plan = tr.plan or {}
+        book = playbook_for(CONFIG.strategy, "shop", g.character)
+        listing = "\n".join(f"{n}: {lab} - {price} gold (policy {probs[k]:.0%})"
+                            for n, (k, lab, price) in enumerate(items))
+        system = (f"You decide purchases in a Slay the Spire shop as the {g.character}. Use the playbook and "
+                  "the run plan; buy only what clearly improves the deck for the coming fights, keep gold "
+                  "for a later shop otherwise. Reply with the numbers to buy in order of priority, comma "
+                  "separated, total within the gold, or 'none'.\n\n"
+                  f"PLAYBOOK:\n{book}\n\nRUN PLAN: archetype {plan.get('archetype', 'undecided')}; "
+                  f"wanted {', '.join(plan.get('wanted', [])) or '-'}\n/no_think")
+        user = (f"Act {g.act}, floor {g.floor}, boss {g.act_boss}. HP {g.current_hp}/{g.max_hp}. "
+                f"Gold {g.gold}. Potions: {', '.join(p.name for p in g.potions)}.\n"
+                f"Relics: {', '.join(r.name for r in g.relics)}.\nDeck ({len(g.deck)}): {deck}\n\n"
+                f"Shop:\n{listing}\n\nWhat do you buy?")
+        answer, ms = self._call_llm(system, user)
+        if answer is None:
+            self._log_llm(g, "shop", f"Shop with {g.gold} gold", [l for _, l, _ in items], "(LLM unavailable)", None, ms)
+            return None
+        wish, spent = [], 0
+        for tok in re.findall(r"\d+", answer):
+            n = int(tok)
+            if 0 <= n < len(items) and items[n][1] not in wish and spent + items[n][2] <= g.gold:
+                wish.append(items[n][1])
+                spent += items[n][2]
+        self._log_llm(g, "shop", f"Shop with {g.gold} gold", [f"{l} ({p}g)" for _, l, p in items],
+                      answer[:120], ", ".join(wish) or "(nothing)", ms)
+        return wish
 
     # ------------------------------------------------------------------ selections
 
@@ -559,6 +629,8 @@ class PolicyAgent:
         g = message.game_state
         s = g.screen
         chosen = {c.uuid for c in s.selected_cards}
+        if "choose" not in message.available_commands:
+            return Proceed(), "confirm selection"
         if s.confirm_up and (len(chosen) >= s.num_cards or s.any_number):
             return Proceed(), "confirm selection"
         pool = [(i, c) for i, c in enumerate(s.cards) if c.uuid not in chosen]
@@ -634,24 +706,70 @@ class PolicyAgent:
         return Choose(choice_index=idx), f"boss relic ({by}): {relics[idx].name}"
 
     def _event(self, message, decision):
-        g, tr = message.game_state, CONFIG.tracker
+        g, tr, model = message.game_state, CONFIG.tracker, CONFIG.model
         s = g.screen
         live = [o for o in s.options if not o.disabled and o.choice_index is not None]
         if not live:
             return self._advance(message), ""
         if len(live) == 1:
             return Choose(choice_index=live[0].choice_index), f"event: {live[0].label}"
+        if s.event_name == "Match and Keep!":
+            return self._match_and_keep(g, live)
         neow = s.event_name == "Neow" or g.floor == 0
-        scores = [self._event_score(f"{o.label} {o.text}", g, neow) for o in live]
-        pick, by = live[max(range(len(live)), key=lambda k: scores[k])], "heuristic"
-        if CONFIG.llm_events:
-            labels = [f"{o.label} {o.text}".strip() + f" (heuristic {sc:+.1f})" for o, sc in zip(live, scores)]
+        heur = [self._event_score(f"{o.label} {o.text}", g, neow) for o in live]
+        # learned value of each option on top of the playbook heuristic
+        feats = [{f"ev:{s.event_name}:{o.label}": 1.0} for o in live]
+        idx, probs = model.choose(feats, CONFIG.temperature, CONFIG.rng, heur)
+        values = [model.score(f) + h for f, h in zip(feats, heur)]
+        best2 = sorted(values, reverse=True)[:2]
+        close = neow or len(best2) < 2 or best2[0] - best2[1] < CONFIG.llm_gap
+        by = "policy"
+        if CONFIG.llm_events and close:
+            labels = [f"{o.label} {o.text}".strip() + f" (score {v:+.1f})" for o, v in zip(live, values)]
+            key = "|".join(["event", s.event_name, *sorted(o.label for o in live),
+                            f"h{hp_bucket(g.current_hp, g.max_hp)}", f"a{g.act}"])
             k = self._ask_option(message, labels, f"Event: {s.event_name}. {(s.body_text or '')[:300]}",
-                                 topic="neow" if neow else "event")
+                                 topic="neow" if neow else "event", cache_key=None if neow else key,
+                                 cache_labels=[o.label for o in live])
             if k is not None:
-                pick, by = live[k], "llm"
+                idx, by = k, self._llm_source
+        tr.events.append({"kind": "event", "options": feats, "chosen": idx, "probs": probs,
+                          "temp": CONFIG.temperature})
+        pick = live[idx]
         tr.game_events.append({"floor": g.floor, "event": s.event_name, "choice": pick.label, "by": by})
         return Choose(choice_index=pick.choice_index), f"event {s.event_name} ({by}): {pick.label}"
+
+    def _match_and_keep(self, g, live):
+        """Memory game: remember every face-up card, finish known pairs, otherwise flip unknowns.
+        (The LLM used to take 20-30 s per flip here and loop on the same two cards.)"""
+        mk = self._mk if self._mk.get("floor") == g.floor else {"floor": g.floor, "seen": {}, "picks": 0, "first": None}
+        self._mk = mk
+        for o in live:
+            if not re.fullmatch(r"card\d+", o.label):
+                mk["seen"][o.choice_index] = o.label
+        avail = {o.choice_index for o in live}
+        unknown = [o.choice_index for o in live if o.choice_index not in mk["seen"]]
+        first = mk["first"] if mk["picks"] % 2 == 1 else None
+        pick = None
+        if first is not None:
+            name = mk["seen"].get(first)
+            partner = [i for i, n in mk["seen"].items() if n == name and i != first and i in avail]
+            pick = partner[0] if partner else next((i for i in unknown if i != first), None)
+        else:
+            names: dict[str, list[int]] = {}
+            for i, n in mk["seen"].items():
+                if i in avail:
+                    names.setdefault(n, []).append(i)
+            pairs = [v for v in names.values() if len(v) >= 2]
+            if pairs:
+                pick = pairs[0][0]
+            elif unknown:
+                pick = unknown[0]
+        if pick is None or pick not in avail:
+            pick = next(iter(sorted(avail - ({first} if first is not None else set()))), live[0].choice_index)
+        mk["picks"] += 1
+        mk["first"] = pick
+        return Choose(choice_index=pick), f"match and keep: flip {mk['seen'].get(pick, 'unknown card')}"
 
     # playbook ranking of Neow's blessings
     NEOW_SCORES = ((r"three combats have 1 hp", 3.0), (r"random rare relic", 2.6),
@@ -706,8 +824,18 @@ class PolicyAgent:
             s += 0.1
         return s
 
-    def _ask_option(self, message, labels: list[str], header: str, topic: str = "event") -> int | None:
+    _llm_source = "llm"
+
+    def _ask_option(self, message, labels: list[str], header: str, topic: str = "event",
+                    cache_key: str | None = None, cache_labels: list[str] | None = None) -> int | None:
         g, tr = message.game_state, CONFIG.tracker
+        if cache_key and CONFIG.llm_cache is not None and cache_labels:
+            hit = CONFIG.llm_cache.get(cache_key)
+            if hit in cache_labels:
+                tr.llm_cached += 1
+                self._llm_source = "llm cache"
+                self._log_llm(g, topic, header, labels, f"(cached) {hit}", hit, 0)
+                return cache_labels.index(hit)
         plan = tr.plan or {}
         book = playbook_for(CONFIG.strategy, topic, g.character)
         system = (f"You make the big-picture choices in a Slay the Spire run as the {g.character}. "
@@ -718,16 +846,41 @@ class PolicyAgent:
                   f"wanted {', '.join(plan.get('wanted', [])) or '-'}\n/no_think")
         listing = "\n".join(f"{i}: {label}" for i, label in enumerate(labels))
         user = f"{cursory_view(message)}\n\n{header}\nOptions:\n{listing}\n\nAnswer with the option number only."
-        try:
-            tr.llm_calls += 1
-            answer = ask_llm(CONFIG.llm_base_url, CONFIG.llm_model, system, user, timeout=90)
-        except Exception:
+        answer, ms = self._call_llm(system, user)
+        if answer is None:
+            self._log_llm(g, topic, header, labels, "(LLM unavailable)", None, ms)
             return None
         m = re.search(r"\d+", answer)
-        if not m:
+        k = int(m.group(0)) if m else None
+        if k is None or not 0 <= k < len(labels):
+            self._log_llm(g, topic, header, labels, answer[:120], None, ms)
             return None
-        k = int(m.group(0))
-        return k if 0 <= k < len(labels) else None
+        self._llm_source = "llm"
+        self._log_llm(g, topic, header, labels, answer[:120], labels[k], ms)
+        if cache_key and CONFIG.llm_cache is not None and cache_labels:
+            CONFIG.llm_cache[cache_key] = cache_labels[k]
+        return k
+
+    def _call_llm(self, system: str, user: str, timeout: float = 90) -> tuple[str | None, int]:
+        tr = CONFIG.tracker
+        if LLM_BUSY.is_set():
+            return None, 0
+        started = time.monotonic()
+        try:
+            tr.llm_calls += 1
+            answer = ask_llm(CONFIG.llm_base_url, CONFIG.llm_model, system, user, timeout=timeout)
+        except Exception:
+            answer = None
+        ms = int((time.monotonic() - started) * 1000)
+        tr.llm_ms += ms
+        return answer, ms
+
+    def _log_llm(self, g, topic: str, header: str, options: list[str], answer: str, choice, ms: int) -> None:
+        entry = {"t": time.strftime("%H:%M:%S"), "floor": g.floor, "topic": topic, "q": header[:200],
+                 "options": [o[:90] for o in options][:12], "answer": answer, "choice": choice, "ms": ms}
+        CONFIG.tracker.llm_log.append(entry)
+        if CONFIG.live is not None:
+            CONFIG.live.llm_call(entry)
 
 
 # ---------------------------------------------------------------- playbook helpers
@@ -736,6 +889,7 @@ TOPIC_SECTIONS = {
     "neow": ("Core principles", "Neow"),
     "event": ("Core principles", "Events", "Map, rest sites and shops"),
     "boss_relic": ("Core principles", "Boss relics"),
+    "shop": ("Core principles", "Map, rest sites and shops"),
 }
 
 

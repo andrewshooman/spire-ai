@@ -29,6 +29,7 @@ import re
 import shutil
 import subprocess
 import sys
+import threading
 import time
 import urllib.request
 from pathlib import Path
@@ -39,6 +40,7 @@ sys.path.insert(0, str(HERE))
 
 from sts_bench.agents import SCAFFOLDS  # noqa: E402
 from sts_bench.env import CommunicationModEnv, HarnessServer  # noqa: E402
+from sts_bench.env.connection import ConnectionClosed, GameConnection  # noqa: E402
 from sts_bench.replay import group  # noqa: E402
 from sts_bench.runner import session as _session  # noqa: E402
 from sts_bench.runner.async_runner import JobSpec, LogRouter, QueueConfig, _run_job  # noqa: E402
@@ -87,6 +89,39 @@ def _dismiss_or_wait(state, character, ascension, seed):
 
 
 _session.choose_command = _dismiss_or_wait
+
+
+def _recv_line_tolerant(self, timeout: float | None = None) -> str:
+    """GameConnection.recv_line, but a line that is not valid UTF-8 (the game sometimes
+    sends Windows-1252, e.g. the apostrophe in N'loth) is decoded as cp1252 instead of
+    crashing the run."""
+    deadline = None if timeout is None else time.monotonic() + timeout
+    while b"\n" not in self._buf:
+        if deadline is None:
+            self._sock.settimeout(None)
+        else:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise TimeoutError(f"no line from {self._peer} within {timeout}s")
+            self._sock.settimeout(remaining)
+        try:
+            chunk = self._sock.recv(65536)
+        except TimeoutError:
+            raise TimeoutError(f"no line from {self._peer} within {timeout}s") from None
+        except OSError as exc:
+            raise ConnectionClosed(f"read from {self._peer} failed: {exc}") from exc
+        if not chunk:
+            raise ConnectionClosed(f"{self._peer} closed the connection")
+        self._buf += chunk
+    raw, _, rest = bytes(self._buf).partition(b"\n")
+    self._buf = bytearray(rest)
+    try:
+        return raw.decode("utf-8").rstrip("\r")
+    except UnicodeDecodeError:
+        return raw.decode("cp1252", errors="replace").rstrip("\r")
+
+
+GameConnection.recv_line = _recv_line_tolerant
 
 SCAFFOLDS["policy"] = (policy.PolicyAgent, "sts-evolve learned policy v2 ({character})")
 CSV_FIELDS = ["run", "time", "kind", "seed", "victory", "floor", "score", "decisions",
@@ -234,7 +269,8 @@ def summarize(path: Path, tracker: policy.RunTracker) -> dict:
         "shops": tracker.shops, "events": tracker.game_events, "potions": tracker.potions,
         "boss_relics": tracker.boss_relics, "plan": tracker.plan,
         "plan_history": tracker.plan_history, "counts": tracker.counts,
-        "llm_calls": tracker.llm_calls, "trajectory": str(path.resolve()),
+        "llm_calls": tracker.llm_calls, "llm_s": round(tracker.llm_ms / 1000, 1),
+        "llm_cached": tracker.llm_cached, "llm_log": tracker.llm_log[-30:], "trajectory": str(path.resolve()),
     }
 
 
@@ -251,10 +287,35 @@ def fight_fitness(summary: dict, reward: float) -> float:
 
 # ---------------------------------------------------------------- coach
 
-def coach(ws: Workspace, args) -> None:
+class CoachJob:
+    """The coach thinks for minutes; run it beside the games and apply its answer between runs.
+    While it runs, in-game LLM questions fall back to the policy so nothing waits on the GPU."""
+
+    def __init__(self, ws: Workspace, args, prompt: tuple[str, str]):
+        self.run = ws.state["run"]
+        self.answer: str | None = None
+        self.error: str | None = None
+        self.thread = threading.Thread(target=self._go, args=(args, prompt), daemon=True, name="coach")
+        policy.LLM_BUSY.set()
+        self.thread.start()
+
+    def _go(self, args, prompt) -> None:
+        try:
+            self.answer = ask_llm(args.base_url, args.reflect_model, prompt[0], prompt[1], think=args.coach_think)
+        except Exception as exc:
+            self.error = f"{type(exc).__name__}: {exc}"
+        finally:
+            policy.LLM_BUSY.clear()
+
+    def done(self) -> bool:
+        return not self.thread.is_alive()
+
+
+def coach(ws: Workspace, args, background: bool = False):
+    """Build the coach prompt; ask now (blocking) or return a CoachJob running in the background."""
     runs = [r for r in ws.runs() if not r.get("aborted")][-max(args.coach_every * 2, 10):]
     if not runs:
-        return
+        return None
     model = ws.model
     lines = [f"run {r['run']} ({r['kind']}): floor {r['floor']}{' WIN' if r['victory'] else ''}, "
              f"archetype {r.get('plan', {}).get('archetype', '?')}, killed by {r.get('killer') or '-'}, "
@@ -283,12 +344,19 @@ def coach(ws: Workspace, args) -> None:
             "(values between -0.5 and 0.5; use base card names without '+'; params are fractional changes; "
             "leave out anything without evidence)\n"
             "LEARNED:\n- 0 to 3 one-line strategy lessons for the playbook.")
+    say("coach: analyzing recent runs" + (" in the background..." if background else "..."))
+    if background:
+        return CoachJob(ws, args, (system, user))
     try:
-        say("coach: analyzing recent runs...")
         answer = ask_llm(args.base_url, args.reflect_model, system, user, think=args.coach_think)
     except Exception as exc:
         say(f"coach unavailable ({type(exc).__name__}: {exc}); skipping")
-        return
+        return None
+    apply_coach(ws, answer, ws.state["run"])
+    return None
+
+
+def apply_coach(ws: Workspace, answer: str, run_no: int) -> None:
     notes = _section(answer, "NOTES", ("NUDGES", "LEARNED"))
     learned = _section(answer, "LEARNED", ())
     applied = []
@@ -300,7 +368,7 @@ def coach(ws: Workspace, args) -> None:
             applied = ws.model.nudge(cards, n.get("archetype"), n.get("node"), n.get("params"))
         except (json.JSONDecodeError, AttributeError, TypeError, ValueError):
             pass
-    stamp = f"## After run {ws.state['run']} ({dt.datetime.now():%Y-%m-%d %H:%M})"
+    stamp = f"## After run {run_no} ({dt.datetime.now():%Y-%m-%d %H:%M})"
     with (ws.root / "coach.md").open("a", encoding="utf-8") as fh:
         fh.write(f"{stamp}\n{notes.strip() or '(no notes)'}\n\n"
                  f"Nudges applied: {', '.join(applied) or 'none'}\n\n")
@@ -313,7 +381,7 @@ def coach(ws: Workspace, args) -> None:
         known = {norm(l) for l in existing}
         fresh = [b.lstrip("-* ").strip() for b in bullets]
         fresh = [b for b in fresh if norm(b) not in known]
-        merged = (existing + [f"- {b} (run {ws.state['run']})" for b in fresh])[-25:]
+        merged = (existing + [f"- {b} (run {run_no})" for b in fresh])[-25:]
         ws.strategy_path.write_text(head + LEARNED + "\n" + "\n".join(merged) + "\n",
                                     encoding="utf-8")
     say(f"coach: {len(applied)} nudges applied, playbook updated")
@@ -361,18 +429,31 @@ def plan_run(index: int, args) -> tuple[str, str]:
 
 
 def select(ws: Workspace, args) -> str:
+    """Bench runs are judged on the same shaped reward the learner uses (deep runs count most),
+    and a model is only rolled back after two bad cycles in a row (two seeds are noisy)."""
     floors = ws.state["cycle_bench"]
-    ws.state["cycle_bench"] = []
+    rewards = ws.state.get("cycle_bench_reward") or [Model.outcome(f, False) for f in floors]
+    ws.state["cycle_bench"], ws.state["cycle_bench_reward"] = [], []
     ws.state["cycle"] += 1
     score = round(mean(floors), 2) if floors else 0.0
+    value = round(mean(rewards), 3) if rewards else 0.0
     champ = ws.state["champion"]
     shutil.copyfile(ws.model_path, ws.root / "history" / f"model_c{ws.state['cycle']:03d}.json")
-    if champ is None or score >= champ["bench_mean"]:
-        ws.state["champion"] = {"cycle": ws.state["cycle"], "bench_mean": score, "run": ws.state["run"]}
+    if champ is not None and "bench_reward" not in champ:
+        champ["bench_reward"] = Model.outcome(champ["bench_mean"], False)
+    if champ is None or value >= champ["bench_reward"]:
+        ws.state["below"] = 0
+        ws.state["champion"] = {"cycle": ws.state["cycle"], "bench_mean": score, "bench_reward": value,
+                                "run": ws.state["run"]}
         ws.snapshot_champion()
         say(f"selection: bench avg {score} -> NEW CHAMPION")
         return f"champion={score}"
     if score < champ["bench_mean"] - args.revert_margin:
+        ws.state["below"] = ws.state.get("below", 0) + 1
+        if ws.state["below"] < 2:
+            say(f"selection: bench avg {score} below champion {champ['bench_mean']} (first time); keeping for now")
+            return f"kept (bench avg {score}, below once)"
+        ws.state["below"] = 0
         ws.revert_to_champion()
         say(f"selection: bench avg {score} < champion {champ['bench_mean']} - margin -> reverted")
         return f"reverted (bench avg {score})"
@@ -414,12 +495,34 @@ def wait_until_ready(env: CommunicationModEnv, seconds: float) -> dict | None:
     return None
 
 
+def load_cache(ws: Workspace) -> dict:
+    p = ws.root / "llm_cache.json"
+    try:
+        return json.loads(p.read_text(encoding="utf-8")) if p.exists() else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_cache(ws: Workspace, cache: dict) -> None:
+    try:
+        (ws.root / "llm_cache.json").write_text(json.dumps(cache, indent=0, sort_keys=True), encoding="utf-8")
+    except OSError:
+        pass
+
+
 def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = None) -> int:
     ws = Workspace(Path(args.workdir), args.character.upper(), Path(args.strategy_baseline))
     provider = PROVIDERS["chat"].from_env(model=args.model, base_url=args.base_url)
     own = server is None
     server = server or HarnessServer(port=args.port)
     aborted_streak = 0
+    coach_job = None
+    llm_cache = load_cache(ws)
+    if ws.model.meta.get("reward_version") != Model.REWARD_VERSION:
+        # the reward scale changed: restart the running baselines instead of comparing apples to oranges
+        ws.model.meta.update({"reward_version": Model.REWARD_VERSION, "baseline": None, "var": 0.04,
+                              "es_baseline": None, "es_var": 0.01})
+        say(f"reward v{Model.REWARD_VERSION}: deep runs and elites now count more; baselines reset")
     live_port = getattr(args, "live_port", 0)
     httpd = live.serve(ws.root, live_port) if live_port else None
     if live_port:
@@ -462,11 +565,16 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                 model=ws.model, tracker=policy.RunTracker(), temperature=temp,
                 params=ws.model.es_params(eps), rng=rng, learn=explore,
                 llm_events=args.llm_events, llm_model=args.model, llm_base_url=args.base_url,
-                strategy=ws.strategy, live=viewer)
+                strategy=ws.strategy, live=viewer, llm_shop=args.llm_shop, llm_gap=args.llm_gap,
+                llm_cache=llm_cache if args.llm_cache else None)
             if viewer is not None:
-                viewer.info = {"run": index + 1, "kind": kind, "seed": seed, "temperature": round(temp, 2),
-                               "runs_trained": ws.model.meta["runs_trained"]}
-                viewer.route, viewer.route_act = [], 0
+                done = ws.runs()[-10:]
+                viewer.new_run({"run": index + 1, "kind": kind, "seed": seed, "temperature": round(temp, 2),
+                                "runs_trained": ws.model.meta["runs_trained"],
+                                "recent": [[r["run"], r["floor"], r.get("killer") or ("WIN" if r.get("victory") else "-"),
+                                            r.get("kind", ""), round(r.get("duration_s", 0) / 60, 1)] for r in done],
+                                "best": max((r["floor"] for r in ws.runs()), default=0),
+                                "champion": (ws.state.get("champion") or {}).get("bench_mean")})
             say(f"=== run {index + 1} [{kind}] seed {seed} | temperature {temp:.2f} ===")
             job = JobSpec(agent="policy", seed=seed, character=args.character, ascension=args.ascension,
                           provider=provider, api="chat")
@@ -517,7 +625,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                 continue
             aborted_streak = 0
             s = summarize(result.trajectory, policy.CONFIG.tracker)
-            reward = Model.outcome(s["floor"], s["victory"])
+            reward = Model.outcome(s["floor"], s["victory"], s.get("elites_killed", 0))
             learned = {}
             if explore and s["decisions"] >= 5:
                 learned = ws.model.learn(policy.CONFIG.tracker.events, reward, lr=args.lr)
@@ -536,6 +644,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                 + (f" | advantage {learned['advantage']:+.2f}" if learned else ""))
             if kind == "bench":
                 ws.state["cycle_bench"].append(s["floor"])
+                ws.state.setdefault("cycle_bench_reward", []).append(reward)
             ws.state["run"] = index + 1
             note = select(ws, args) if (index + 1) % args.cycle == 0 else ""
             ws.append_row({"run": index + 1, "time": s["started"], "kind": kind, "seed": seed,
@@ -543,9 +652,20 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                            "decisions": s["decisions"], "forced": s["forced"],
                            "archetype": s["plan"].get("archetype", ""), "duration_s": duration, "note": note})
             ws.save()
-            if args.coach_every > 0 and ws.state["explore_since_coach"] >= args.coach_every:
+            save_cache(ws, llm_cache)
+            if coach_job is not None and coach_job.done():
+                if coach_job.answer:
+                    apply_coach(ws, coach_job.answer, coach_job.run)
+                else:
+                    say(f"coach unavailable ({coach_job.error}); skipping")
+                coach_job = None
+                ws.save()
+            if args.coach_every > 0 and ws.state["explore_since_coach"] >= args.coach_every and coach_job is None:
                 ws.state["explore_since_coach"] = 0
-                coach(ws, args)
+                if args.coach_background:
+                    coach_job = coach(ws, args, background=True)
+                else:
+                    coach(ws, args)
                 ws.save()
             try:
                 dashboard.render(ws.root)
@@ -570,6 +690,14 @@ def main() -> None:
                    help="let the LLM pick event options and boss relics")
     p.add_argument("--coach-every", type=int, default=5, help="explore runs between coach reviews (0 = off)")
     p.add_argument("--coach-think", action=argparse.BooleanOptionalAction, default=True)
+    p.add_argument("--coach-background", action=argparse.BooleanOptionalAction, default=True,
+                   help="coach thinks while the next runs play (in-game LLM calls use the policy meanwhile)")
+    p.add_argument("--llm-shop", action=argparse.BooleanOptionalAction, default=True,
+                   help="one LLM shopping list per shop visit")
+    p.add_argument("--llm-gap", type=float, default=1.0,
+                   help="ask the LLM about an event only when its top options score within this gap")
+    p.add_argument("--llm-cache", action=argparse.BooleanOptionalAction, default=True,
+                   help="reuse the LLM's event answers across runs (evolve/<char>/llm_cache.json)")
     p.add_argument("--lr", type=float, default=0.08, help="learning rate for the choice weights")
     p.add_argument("--cycle", type=int, default=10, help="runs per cycle, bench runs included")
     p.add_argument("--bench-seeds", default="BENCHA1,BENCHB2")

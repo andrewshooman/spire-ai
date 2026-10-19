@@ -77,6 +77,30 @@ color:#2a1405;background:radial-gradient(circle at 35% 35%,#ffe08a,#d0701a);bord
 .plan{margin-top:10px;font-size:13px;color:#f1d99a;background:#2a2216;border-left:3px solid var(--gold);padding:6px 10px;border-radius:4px}
 .piles{font-size:13px;color:var(--muted)}
 /* log */
+.live2{display:grid;grid-template-columns:340px minmax(0,1fr) 340px;gap:12px;align-items:start}
+@media (max-width:1150px){.live2{grid-template-columns:minmax(0,1fr)}}
+.kv{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+.kv div{background:#1a1612;border:1px solid var(--line);border-radius:8px;padding:6px 9px}
+.kv span{display:block;font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.08em}
+.kv b{font-size:18px;color:var(--gold)}
+.hpsvg{width:100%;height:auto;display:block} .hpsvg .hp{fill:none;stroke:var(--red);stroke-width:2.5}
+.hpsvg .area{fill:rgba(210,71,58,.15)} .hpsvg .max{fill:none;stroke:var(--muted);stroke-dasharray:4 3}
+.hpsvg .actl{stroke:var(--gold2);stroke-dasharray:3 4} .hpsvg text{fill:var(--muted);font-size:10px}
+.rrow{display:grid;grid-template-columns:44px minmax(0,1fr) 34px;gap:8px;align-items:center;font-size:13px;padding:2px 0}
+.rbar{height:9px;border-radius:5px;background:#3a3125;overflow:hidden} .rbar i{display:block;height:100%;background:var(--gold2)}
+.rbar i.bench{background:var(--gold)} .rk{grid-column:2/4;font-size:11px;color:var(--muted);margin-top:-2px}
+.llmfeed{max-height:780px;overflow:auto}
+.call{border:1px solid var(--line);border-left:3px solid var(--gold2);border-radius:6px;padding:8px 10px;margin-bottom:8px;background:#1a1612}
+.call.fail{border-left-color:var(--red)} .call.cache{border-left-color:var(--blue)}
+.call .h{font-size:12px;color:var(--muted)} .call .q{margin:3px 0;font-size:13px}
+.call .c{font-size:15px;color:var(--gold);font-weight:600}
+.call ul{margin:4px 0 4px 18px;padding:0;font-size:12px;color:var(--muted)} .call li.pick{color:var(--ink)}
+.topic{display:inline-block;padding:0 7px;border-radius:9px;font-size:11px;text-transform:uppercase;letter-spacing:.06em;
+background:#3b2f1d;color:#f1d99a;margin-right:4px}
+.topic.shop{background:#1f3a2a;color:#b5e3a0} .topic.boss_relic{background:#3a1a14;color:#ffb3a6}
+.topic.neow{background:#2c1d3a;color:#d6b8f2}
+details>summary{cursor:pointer;color:var(--gold);font-size:13px;text-transform:uppercase;letter-spacing:.1em}
+details[open]>summary{margin-bottom:8px}
 .log{max-height:640px;overflow:auto;font-size:13px}
 .log div{padding:5px 0;border-bottom:1px solid var(--line)}
 .log .a{color:var(--ink);font-weight:600} .log .w{color:var(--muted);font-size:12px;word-break:break-word}
@@ -112,15 +136,24 @@ pre{white-space:pre-wrap;font:13px/1.5 ui-monospace,Consolas,monospace;margin:0}
 
 <section id=tab-live>
  <div class=hud id=hud><span class=status id=livestatus>Waiting for the bot...</span></div>
- <div class=live>
-  <div class="card map"><h2 id=maptitle>Act map</h2><div id=map><p class=muted>No map yet.</p></div></div>
+ <div class=live2>
   <div>
-   <div class=card><h2 id=screentitle>Now</h2><div id=now><p class=muted>Nothing yet.</p></div></div>
-   <div class=card><h2>Run plan</h2><div id=plan class=muted>-</div></div>
-   <div class=card><h2 id=decktitle>Deck</h2><div id=deck class=deck></div></div>
+   <div class=card><h2>This run</h2><div id=hpchart></div><div id=stats class=kv></div></div>
+   <div class=card><h2>Recent runs</h2><div id=recent class=muted>-</div></div>
   </div>
-  <div class=card><h2>Decisions and why</h2><div id=log class=log><p class=muted>No decisions yet.</p></div></div>
+  <div class=card><h2 id=llmtitle>LLM calls</h2><div id=llm class=llmfeed><p class=muted>No LLM calls yet.</p></div></div>
+  <div>
+   <div class=card><h2 id=decktitle>Deck</h2><div id=deck class=deck></div></div>
+   <div class=card><h2>Run plan</h2><div id=plan class=muted>-</div></div>
+  </div>
  </div>
+ <details class=card id=turn><summary>Turn by turn: act map, combat and every decision (moves faster than you can read)</summary>
+  <div class=live>
+   <div class="card map"><h2 id=maptitle>Act map</h2><div id=map><p class=muted>No map yet.</p></div></div>
+   <div class=card><h2 id=screentitle>Now</h2><div id=now><p class=muted>Nothing yet.</p></div></div>
+   <div class=card><h2>Decisions and why</h2><div id=log class=log><p class=muted>No decisions yet.</p></div></div>
+  </div>
+ </details>
 </section>
 
 <section id=tab-history class=hide>__HISTORY__</section>
@@ -140,6 +173,8 @@ function showTab(t){
 }
 document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
 try { const t = localStorage.getItem("spire-tab"); if (t) showTab(t); } catch (e) {}
+try { $("#turn").open = localStorage.getItem("spire-turn") === "1"; } catch (e) {}
+$("#turn").addEventListener("toggle", () => { try { localStorage.setItem("spire-turn", $("#turn").open ? "1" : "0"); } catch (e) {} });
 
 const heart = '<svg viewBox="0 0 24 24"><path fill="#d2473a" stroke="#4a0f0a" d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.6 4.5c2.1 0 3.6 1.2 5.4 3.1 1.8-1.9 3.3-3.1 5.4-3.1 3.6 0 5.7 3.8 4.2 7.2C19.5 16.4 12 21 12 21z"/></svg>';
 const coin = '<svg viewBox="0 0 24 24"><circle cx=12 cy=12 r=9 fill="#e2b653" stroke="#6a4a10" stroke-width=2 /><text x=12 y=16 text-anchor=middle font-size=11 fill="#6a4a10">G</text></svg>';
@@ -232,13 +267,70 @@ function now(d){
   }
 }
 
+function hpChart(track, act){
+  if (!track || !track.length) { $("#hpchart").innerHTML = "<p class=muted>HP appears after the first floor.</p>"; return; }
+  const W = 320, H = 130, L = 26, B = 18, T = 8;
+  const top = Math.max(...track.map(t => t[2]), 1);
+  const lastF = track[track.length - 1][0];
+  const xmax = Math.max(17 * Math.max(1, act || 1), lastF + 1);
+  const X = f => L + (W - L - 6) * f / xmax, Y = v => H - B - (H - B - T) * v / top;
+  const pts = track.map(t => `${X(t[0]).toFixed(1)},${Y(t[1]).toFixed(1)}`).join(" ");
+  const maxp = track.map(t => `${X(t[0]).toFixed(1)},${Y(t[2]).toFixed(1)}`).join(" ");
+  const area = `${X(track[0][0])},${Y(0)} ${pts} ${X(lastF)},${Y(0)}`;
+  let acts = "";
+  for (const f of [17, 34, 51]) if (f < xmax) acts += `<line class=actl x1=${X(f)} x2=${X(f)} y1=${T} y2=${H - B} /><text x=${X(f) + 2} y=${T + 8}>boss</text>`;
+  const last = track[track.length - 1];
+  $("#hpchart").innerHTML = `<svg class=hpsvg viewBox="0 0 ${W} ${H}" role=img aria-label="HP by floor">
+    ${acts}<polygon class=area points="${area}" /><polyline class=max points="${maxp}" /><polyline class=hp points="${pts}" />
+    <text x=2 y=${Y(top) + 4}>${top}</text><text x=2 y=${H - B}>0</text>
+    <text x=${L} y=${H - 4}>floor 0</text><text x=${W - 6} y=${H - 4} text-anchor=end>floor ${lastF}</text>
+    <circle cx=${X(last[0])} cy=${Y(last[1])} r=3.5 fill="#ff8c7a" /></svg>`;
+}
+
+function stats(d){
+  const s = d.stats || {};
+  const mm = x => `${Math.floor((x || 0) / 60)}:${String((x || 0) % 60).padStart(2, "0")}`;
+  const items = [["Run time", mm(s.elapsed)], ["Decisions", s.decisions ?? 0],
+    ["LLM calls", `${s.llm_calls ?? 0}${s.llm_cached ? " +" + s.llm_cached + " cached" : ""}`], ["LLM time", `${s.llm_s ?? 0} s`],
+    ["Potions used", s.potions_used ?? 0], ["Card picks", `${(s.picks ?? 0) - (s.skips ?? 0)} / ${s.picks ?? 0}`],
+    ["Best floor ever", d.best ?? "-"], ["Champion bench", d.champion ?? "-"]];
+  $("#stats").innerHTML = items.map(([k, v]) => `<div><span>${k}</span><b>${esc(v)}</b></div>`).join("") +
+    ((s.bought || []).length ? `<div style="grid-column:1/3"><span>Bought this run</span>${esc(s.bought.join(", "))}</div>` : "");
+}
+
+function recent(d){
+  const rs = (d.recent || []).slice().reverse();
+  if (!rs.length) { $("#recent").innerHTML = "No finished runs yet."; return; }
+  $("#recent").innerHTML = rs.map(r => `<div class=rrow><span>#${r[0]}</span>` +
+    `<span class=rbar title="floor ${r[1]}"><i class="${r[3] === "bench" ? "bench" : ""}" style="width:${Math.min(100, 100 * r[1] / 51)}%"></i></span>` +
+    `<b style="color:var(--ink)">${r[1]}</b><span class=rk>${esc(r[2])} &middot; ${esc(r[3])} &middot; ${r[4]} min</span></div>`).join("");
+}
+
+function llmFeed(d){
+  const calls = d.llm || [];
+  $("#llmtitle").textContent = `LLM calls (${d.stats ? d.stats.llm_calls : 0} this run, latest first)`;
+  if (!calls.length) { $("#llm").innerHTML = "<p class=muted>No LLM calls yet. Neow, events, shops and boss relics ask the LLM; " +
+    "clear-cut choices and cached answers do not.</p>"; return; }
+  $("#llm").innerHTML = calls.map(c => {
+    const cls = c.choice == null ? "fail" : (String(c.answer).startsWith("(cached)") ? "cache" : "");
+    const picked = String(c.choice ?? "").split(", ").filter(Boolean);
+    const opts = (c.options || []).map(o => `<li class="${picked.some(p => o.startsWith(p) || p.startsWith(o)) ? "pick" : ""}">${esc(o)}</li>`).join("");
+    return `<div class="call ${cls}"><div class=h><span class="topic ${esc(c.topic)}">${esc(c.topic.replace("_", " "))}</span>` +
+      `${esc(c.t)} &middot; run ${c.run ?? "?"} &middot; floor ${c.floor} &middot; ${c.ms ? (c.ms / 1000).toFixed(1) + " s" : "instant"}</div>` +
+      `<div class=q>${esc(c.q)}</div><ul>${opts}</ul>` +
+      `<div class=c>&rarr; ${esc(c.choice ?? "fell back to the policy")}</div>` +
+      (c.answer && !String(c.answer).startsWith("(cached)") ? `<div class=h>answer: ${esc(c.answer)}</div>` : "") + `</div>`;
+  }).join("");
+}
+
 function render(d){
   $("#livestatus") && ($("#livestatus").textContent = "");
-  hud(d); drawMap(d); now(d);
+  hud(d); hpChart(d.hp_track, d.act); stats(d); recent(d); llmFeed(d);
+  if ($("#turn").open) { drawMap(d); now(d); }
   const p = d.plan || {};
   $("#plan").innerHTML = `<b style="color:var(--gold)">${esc(p.archetype || "Undecided")}</b>` +
     ` <span class=muted>commitment ${p.commitment ?? 0}</span><br>Core: ${esc((p.core || []).join(", ") || "-")}` +
-    `<br>Wanted: ${esc((p.wanted || []).join(", ") || "-")}<br><span class=muted>LLM calls this run: ${d.llm_calls ?? 0}</span>`;
+    `<br>Wanted: ${esc((p.wanted || []).join(", ") || "-")}`;
   const counts = {};
   for (const c of d.deck || []) { const k = c.name + "|" + c.type; counts[k] = (counts[k] || 0) + 1; }
   $("#decktitle").textContent = `Deck (${(d.deck || []).length})`;
