@@ -61,6 +61,7 @@ FEATURE_PRIORS = {
     "rest:h0": 2.0, "rest:h1": 0.3, "rest:h2": -1.0,
     "smith:h0": 0.0, "smith:h1": 0.5, "smith:h2": 0.6,
     "shop:purge": 1.5, "shop:leave": 0.0, "shop:potion": -0.2, "shop:price": -0.6,
+    "shop:card": -1.0, "shop:relic": 0.3,
     "relic:skip": -0.5,
 }
 

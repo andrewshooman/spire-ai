@@ -555,20 +555,30 @@ class PolicyAgent:
             options.append(f); bonus.append(b); labels.append((label, choice)); prices.append(price)
 
         junk = [d for d in g.deck if d.type.value == "CURSE" or C.base_name(d.name) in C.BASIC]
+        curses = sum(1 for d in g.deck if d.type.value == "CURSE")
+        strikes = sum(1 for d in g.deck if C.base_name(d.name) == "Strike")
+        cards_bought = sum(1 for x in tr.shops if x["floor"] == g.floor and x["bought"] not in
+                           ("(leave)", "remove a card", "purge") and x["bought"] in {c.name for c in s.cards})
         if "purge" in choices and s.purge_available and junk:
+            # playbook: removing a curse or a Strike is almost always the best buy
+            rule = 2.5 if curses else (1.2 if strikes >= 3 else 0.4)
             add({"shop:purge": 1.0, "shop:price": s.purge_cost / 100}, "remove a card", choices.index("purge"),
-                s.purge_cost)
+                s.purge_cost, rule)
         for card in s.cards:
             n = card.name.lower()
             if n in choices:
+                # cards stack up many features; "shop:card" is a learnable bar every bought card must clear,
+                # and a second card in the same visit needs a clearly better reason
                 f = self._card_features(card, g, commit)
+                f["shop:card"] = 1.0
                 f["shop:price"] = (card.price or 0) / 100
-                add(f, card.name, choices.index(n), card.price or 0)
+                add(f, card.name, choices.index(n), card.price or 0, -1.5 * cards_bought)
         for relic in s.relics:
             n = relic.name.lower()
             if n in choices:
-                add({f"shoprelic:{relic.name}": 1.0, "shop:price": (relic.price or 0) / 100}, relic.name,
-                    choices.index(n), relic.price or 0)
+                quality = C.SHOP_RELIC_PRIOR.get(relic.name, 0.8) - 0.8
+                add({f"shoprelic:{relic.name}": 1.0, "shop:relic": 1.0, "shop:price": (relic.price or 0) / 100},
+                    relic.name, choices.index(n), relic.price or 0, quality)
         if any(p.id == EMPTY_POTION for p in g.potions):
             late = 1.0 if g.act >= 3 or g.floor in (14, 15, 31, 32, 48, 49) else 0.0
             for potion in s.potions:
@@ -624,9 +634,13 @@ class PolicyAgent:
         listing = "\n".join(f"{n}: {lab} - {price} gold (policy {probs[k]:.0%})"
                             for n, (k, lab, price) in enumerate(items))
         system = (f"You decide purchases in a Slay the Spire shop as the {g.character}. Use the playbook and "
-                  "the run plan; buy only what clearly improves the deck for the coming fights, keep gold "
-                  "for a later shop otherwise. Reply with the numbers to buy in order of priority, comma "
-                  "separated, total within the gold, or 'none'.\n\n"
+                  "the run plan. Priorities: (1) remove a curse, or a Strike while the deck still has several; "
+                  "(2) a relic that helps this deck (relics last the whole run and never clog the draw); "
+                  "(3) at most one card, and only if it is clearly better than the deck's average card and "
+                  "fills a need (damage, area damage, block, scaling); (4) potions before a boss. "
+                  "Spending everything on cards makes the deck worse. Keeping gold for a later shop is fine. "
+                  "Reply with the numbers to buy in order of priority, comma separated, total within the "
+                  "gold, or 'none'.\n\n"
                   f"PLAYBOOK:\n{book}\n\nRUN PLAN: archetype {plan.get('archetype', 'undecided')}; "
                   f"wanted {', '.join(plan.get('wanted', [])) or '-'}")
         user = (f"Act {g.act}, floor {g.floor}, boss {g.act_boss}. HP {g.current_hp}/{g.max_hp}. "

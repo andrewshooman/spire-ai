@@ -85,6 +85,36 @@ BOSS_RELIC_PRIOR = {
 }
 
 
+# Shop / chest relics from an Ironclad point of view (0.8 = neutral). Used as a rule bonus on top of the
+# learned shoprelic:<name> weight, so the bot can tell Vajra from Medical Kit before it has data.
+SHOP_RELIC_PRIOR = {
+    # strong
+    "Dead Branch": 1.8, "Paper Phrog": 1.5, "Vajra": 1.5, "Shuriken": 1.4, "Kunai": 1.2, "Pen Nib": 1.3,
+    "Ornamental Fan": 1.2, "Bag of Preparation": 1.3, "Lantern": 1.3, "Anchor": 1.3, "Horn Cleat": 1.2,
+    "Orichalcum": 1.2, "Happy Flower": 1.3, "Ice Cream": 1.2, "Mummified Hand": 1.1, "Tungsten Rod": 1.3,
+    "Torii": 1.2, "Membership Card": 1.3, "Mango": 1.2, "Pear": 1.0, "Strawberry": 0.9, "Girya": 1.1,
+    "Self-Forming Clay": 1.2, "Champion Belt": 1.1, "Charon's Ashes": 1.1, "Meat on the Bone": 1.1,
+    "Bronze Scales": 1.0, "Letter Opener": 1.1, "Gremlin Horn": 1.0, "Bottled Flame": 1.0,
+    "Bottled Lightning": 1.0, "Bottled Tornado": 0.9, "Fossilized Helix": 1.1, "Calipers": 1.0,
+    "Pocketwatch": 1.0, "Sundial": 1.0, "Art of War": 1.0, "Blood Vial": 0.9, "Bag of Marbles": 1.1,
+    "Red Skull": 1.0, "Thread and Needle": 1.2, "Incense Burner": 1.2, "Du-Vu Doll": 0.9,
+    "Magic Flower": 1.0, "Ink Bottle": 0.9, "Nunchaku": 1.0, "The Boot": 0.9, "Lizard Tail": 1.0,
+    "Ginger": 0.8, "Turnip": 0.8, "Mercury Hourglass": 1.1, "Stone Calendar": 1.0,
+    "Smiling Mask": 0.9, "Hand Drill": 0.8, "War Paint": 0.9, "Whetstone": 1.0, "Old Coin": 0.6,
+    "Orrery": 0.9, "Cauldron": 0.7, "Dollys Mirror": 0.9, "Dolly's Mirror": 0.9, "Toolbox": 0.6,
+    "The Courier": 0.8, "Clockwork Souvenir": 0.8, "Unceasing Top": 0.7, "Juzu Bracelet": 0.7,
+    "Omamori": 0.8, "Regal Pillow": 0.7, "Sling of Courage": 0.9, "Gambling Chip": 0.7,
+    "Dream Catcher": 0.6, "Chemical X": 0.6, "Frozen Eye": 0.5, "Lee's Waffle": 1.0, "Matryoshka": 0.9,
+    "Shovel": 0.4, "Wing Boots": 0.6, "Singing Bowl": 0.5, "Question Card": 0.7, "Pantograph": 0.9,
+    "Peace Pipe": 0.8, "Tiny Chest": 0.6, "Eternal Feather": 0.6, "Maw Bank": 0.6, "Ceramic Fish": 0.4,
+    "Golden Idol": 0.6, "Darkstone Periapt": 0.6,
+    # weak for Ironclad or situational
+    "Medical Kit": 0.3, "Prismatic Shard": 0.3, "Potion Belt": 0.5, "Toy Ornithopter": 0.6,
+    "Strange Spoon": 0.7, "Frozen Egg": 0.6, "Molten Egg": 0.8, "Toxic Egg": 0.5, "White Beast Statue": 0.4,
+    "Sozu": 0.8, "Brimstone": 1.1, "Mark of Pain": 0.9,
+}
+
+
 def character_key(character: str | None) -> str:
     c = (character or "").upper().replace(" ", "_")
     return {"SILENT": "THE_SILENT"}.get(c, c)

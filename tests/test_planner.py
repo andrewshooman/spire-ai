@@ -5,6 +5,7 @@ Run from C:\\sts-evolve:  sts-bench\\.venv\\Scripts\\python.exe tests\\test_plan
 
 from __future__ import annotations
 
+import collections
 import copy
 import json
 import sys
@@ -175,6 +176,16 @@ def main() -> None:
     agent._match_and_keep(g, opts(["Bash", "card1", "Strike", "card3", "Bash", "card5"]))   # first flip
     a, note = agent._match_and_keep(g, opts(["Bash", "card1", "Strike", "card3", "Bash", "card5"]))
     check("Match and Keep pairs known cards", a.choice_index in (0, 4), note)
+    # shop: with a starter deck, removing a Strike beats buying another card (policy only, near-greedy)
+    shop = parse_message(json.loads((FIX / "shop_screen-1.json").read_text()))
+    picks = collections.Counter()
+    for _ in range(30):
+        policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P),
+                                      llm_events=False, temperature=0.3)
+        action, note = policy.PolicyAgent()._shop(shop, None)
+        picks[note.rsplit("-> ", 1)[-1]] += 1
+    check("shop prefers removing a Strike over cards", picks.most_common(1)[0][0] == "buy remove a card", str(picks))
+
     # per-act credit: an act-2 choice in a run that died early in act 2 is judged against act-2 runs
     m = Model(Path(tempfile.mkdtemp()) / "m.json")
     ev = lambda a, key: {"options": [{key: 1.0}, {"other": 1.0}], "chosen": 0, "probs": [0.5, 0.5], "temp": 1.0, "act": a}
