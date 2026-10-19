@@ -54,7 +54,7 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
 
 ## Open tasks
 1. install.ps1: support a repo cloned directly into C:\sts-evolve (skip the copy when source == destination). Add README
-   "Setup on a new PC" (clone -> install.ps1 -> Spire start) and "Updating" (git pull).
+   shortcuts, self-tests) + README "Setup on a new PC" and "Updating".
 2. Live view: PolicyAgent writes live.json (~1/s): floor, act, HP, gold, deck, relics, potions, plan, screen, combat
    (hand with costs, enemies HP/block/intent, energy), last 40 decisions with their "why" notes. evolve.py serves
    the workspace at http://127.0.0.1:8765 (thread); the live page polls every 2 s; dashboard.bat/start.bat open it.
