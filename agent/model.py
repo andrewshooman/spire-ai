@@ -119,7 +119,9 @@ class Model:
         return sum(self.w(k) * v for k, v in features.items())
 
     def temperature(self) -> float:
-        return max(0.15, 1.0 * (0.97 ** self.meta["runs_trained"]))
+        """Exploration for explore runs: decays slowly and never below 0.35, so runs keep
+        trying different paths, picks and shops instead of converging on one safe line."""
+        return max(0.35, 1.0 * (0.985 ** self.meta["runs_trained"]))
 
     @staticmethod
     def softmax(scores: list[float], temperature: float) -> list[float]:

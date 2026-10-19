@@ -575,6 +575,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                 llm_base_url=args.base_url,
                 strategy=ws.strategy, live=viewer, llm_shop=args.llm_shop, llm_gap=args.llm_gap,
                 llm_cards=args.llm_cards, llm_share=args.llm_share,
+                risk=rng.choice([-0.5, 0.0, 0.5, 1.0, 1.5]) if explore else 0.0,
                 llm_cache=llm_cache if args.llm_cache else None)
             if viewer is not None:
                 done = ws.runs()[-10:]
@@ -651,7 +652,8 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                       "started": dt.datetime.fromtimestamp(started).isoformat(timespec="seconds"),
                       "duration_s": duration, "temperature": round(temp, 3), "reward": round(reward, 3),
                       "advantage": round(learned.get("advantage", 0.0), 3),
-                      "params": {k: round(v, 3) for k, v in policy.CONFIG.params.items()}})
+                      "params": {k: round(v, 3) for k, v in policy.CONFIG.params.items()},
+                      "risk": policy.CONFIG.risk})
             (ws.root / "runs" / f"run_{index + 1:04d}.json").write_text(json.dumps(s, indent=1),
                                                                         encoding="utf-8")
             say(f"run {index + 1} done: {'VICTORY' if s['victory'] else 'died on floor ' + str(s['floor'])}"

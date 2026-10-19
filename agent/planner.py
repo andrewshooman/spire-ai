@@ -34,7 +34,8 @@ MAX_NODES = 3000
 
 PRIORITY = {"Red Slaver": 1.5, "Donu": 1.6, "Dagger": 1.5, "Mystic": 1.4, "Gremlin Wizard": 1.3,
             "Orb": 1.25, "Bronze Orb": 1.25, "Sentry": 1.1, "Torch Head": 0.6, "Darkling": 0.8,
-            "Repulsor": 0.9, "Spiker": 0.7, "Gremlin Leader": 1.1, "Cultist": 1.0}
+            "Repulsor": 0.9, "Spiker": 0.7, "Gremlin Leader": 1.1, "Cultist": 1.0,
+            "Orb Walker": 1.3, "Exploder": 1.3, "Transient": 0.3}
 
 
 def pw(powers, *names) -> int:
@@ -62,7 +63,7 @@ class Mon:
     __slots__ = ("i", "name", "hp", "hp0", "max_hp", "block", "block0", "vuln", "weak", "weak0",
                  "new_vuln", "new_weak", "atk", "hits", "down", "down_perm", "poison", "artifact",
                  "barricade", "thorns", "sharp", "malleable", "curl", "intangible", "cap", "prio",
-                 "asleep", "nob", "dead")
+                 "asleep", "nob", "dead", "shifting")
 
     def copy(self) -> "Mon":
         n = Mon.__new__(Mon)
@@ -179,6 +180,7 @@ def build(message, deck_names: list[str]) -> tuple[Sim, Ctx]:
             x.prio = 1.35
         x.asleep = m.name == "Lagavulin" and m.intent.value == "SLEEP"
         x.nob = pw(m.powers, "Anger", "Enrage")
+        x.shifting = pw(m.powers, "Shifting") != 0 or any(p.id == "Shifting" for p in m.powers)
         x.dead = False
         sim.mons.append(x)
     hand = list(c.hand)
@@ -360,6 +362,8 @@ def incoming(sim: Sim) -> tuple[float, int]:
         if m.dead or not m.atk:
             continue
         per = max(0.0, m.atk - m.down * (0.75 if m.weak else 1.0))
+        if m.shifting:  # Transient: every point of damage dealt this turn is Strength it loses
+            per = max(0.0, per - (m.hp0 - m.hp))
         if m.weak0 == 0 and m.new_weak:
             per *= 0.75
         total += int(per) * m.hits

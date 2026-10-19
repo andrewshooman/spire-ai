@@ -104,6 +104,7 @@ class Config:
     llm_gap: float = 99.0        # ask the LLM about an event only when the top options are this close
     llm_cards: bool = True       # the LLM advises card rewards too
     llm_share: float = 0.7       # explore runs: share of card picks that follow the LLM
+    risk: float = 0.0            # explore runs sample a risk appetite: extra pull toward elites in acts 1-2
 
 
 CONFIG = Config()
@@ -497,8 +498,10 @@ class PolicyAgent:
         # elites are where a run powers up (relics, rare cards): take them in acts 1-2 unless HP is low
         if g.act == 1:
             out["E"] = 1.0 if hp_frac >= 0.5 and damage >= 1 else (0.3 if hp_frac >= 0.5 else -0.6)
+            out["E"] += CONFIG.risk if hp_frac >= 0.4 else 0.0
         elif g.act == 2:
             out["E"] = 0.6 if hp_frac >= 0.6 else -0.3
+            out["E"] += CONFIG.risk if hp_frac >= 0.5 else 0.0
         elif hp_frac < 0.7:
             out["E"] = -1.0                  # act 3 elites end shaky runs
         return out
