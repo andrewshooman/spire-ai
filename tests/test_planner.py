@@ -175,6 +175,19 @@ def main() -> None:
     agent._match_and_keep(g, opts(["Bash", "card1", "Strike", "card3", "Bash", "card5"]))   # first flip
     a, note = agent._match_and_keep(g, opts(["Bash", "card1", "Strike", "card3", "Bash", "card5"]))
     check("Match and Keep pairs known cards", a.choice_index in (0, 4), note)
+    # per-act credit: an act-2 choice in a run that died early in act 2 is judged against act-2 runs
+    m = Model(Path(tempfile.mkdtemp()) / "m.json")
+    ev = lambda a, key: {"options": [{key: 1.0}, {"other": 1.0}], "chosen": 0, "probs": [0.5, 0.5], "temp": 1.0, "act": a}
+    for _ in range(20):
+        m.learn([ev(1, "a1"), ev(2, "a2good")], Model.outcome(40, False))   # deep runs
+        m.learn([ev(1, "a1"), ev(2, "a2bad")], Model.outcome(19, False))    # died early in act 2
+    check("per-act credit separates act-2 choices", m.w("a2good") > m.w("a2bad"),
+          f"good {m.w('a2good'):+.2f} bad {m.w('a2bad'):+.2f}")
+    # antithetic ES moves toward the better mirror
+    m = Model(Path(tempfile.mkdtemp()) / "m.json")
+    before = m.params["block"]
+    m.es_update_pair({"block": 0.1}, f_plus=0.8, f_minus=0.5)
+    check("antithetic ES follows the better half", m.params["block"] > before)
     print("PLANNER OK")
 
 

@@ -1,7 +1,18 @@
-param([int]$DelaySeconds = 0)
+param([int]$DelaySeconds = 0, [double]$Speed = 0)
 # Opens modded Slay the Spire directly through ModTheSpire with the last-used
-# mod list: no Steam launch dialog, no mod picker.
+# mod list: no Steam launch dialog, no mod picker. -Speed (or GAME_SPEED from
+# settings.bat) sets Super Fast Mode's animation multiplier before the game starts
+# (the mod only reads it at launch).
 Start-Sleep -Seconds $DelaySeconds
+if ($Speed -le 0 -and $env:GAME_SPEED) { $Speed = [double]$env:GAME_SPEED }
+if ($Speed -gt 0) {
+    $sfm = "$env:LOCALAPPDATA\ModTheSpire\SuperFastMode\SuperFastModeConfig.properties"
+    New-Item -ItemType Directory -Force (Split-Path $sfm) | Out-Null
+    $keep = @()
+    if (Test-Path $sfm) { $keep = @(Get-Content $sfm | Where-Object { $_ -notmatch '^(deltaMultiplier|isDeltaMultiplied|isInstantLerp)=' }) }
+    $keep += "isDeltaMultiplied=true", "deltaMultiplier=$Speed", "isInstantLerp=true"
+    Set-Content -Path $sfm -Value $keep -Encoding ASCII
+}
 function Fail($msg) { Write-Host $msg -ForegroundColor Red; Read-Host "Press Enter to close"; exit 1 }
 $steam = (Get-ItemProperty "HKCU:\Software\Valve\Steam" -ErrorAction SilentlyContinue).SteamPath
 if (-not $steam) { Fail "Steam not found." }

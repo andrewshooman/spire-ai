@@ -136,9 +136,7 @@ def say(msg: str) -> None:
 
 
 def ask_llm(base_url: str, model: str, system: str, user: str, think: bool, timeout: float = 900) -> str:
-    if not think:
-        system += "\n/no_think"
-    return policy.ask_llm(base_url, model, system, user, timeout=timeout)
+    return policy.ask_llm(base_url, model, system, user, timeout=timeout, think=think)
 
 
 # ---------------------------------------------------------------- workspace
@@ -521,8 +519,9 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
     if ws.model.meta.get("reward_version") != Model.REWARD_VERSION:
         # the reward scale changed: restart the running baselines instead of comparing apples to oranges
         ws.model.meta.update({"reward_version": Model.REWARD_VERSION, "baseline": None, "var": 0.04,
-                              "es_baseline": None, "es_var": 0.01})
-        say(f"reward v{Model.REWARD_VERSION}: deep runs and elites now count more; baselines reset")
+                              "es_baseline": None, "es_var": 0.01, "act_baseline": {}})
+        ws.state["es_pair"] = None
+        say(f"reward v{Model.REWARD_VERSION}: convex depth + elites, per-act credit; baselines reset")
     live_port = getattr(args, "live_port", 0)
     httpd = live.serve(ws.root, live_port) if live_port else None
     if live_port:
@@ -559,13 +558,22 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
             kind, seed = plan_run(index, args)
             explore = kind == "explore"
             rng = random.Random()
-            eps = ws.model.es_sample(rng) if explore else None
+            eps, es_sign = None, 0
+            if explore:
+                pair = ws.state.get("es_pair")
+                if pair and pair.get("f_plus") is not None:
+                    # antithetic half: same seed, mirrored combat perturbation
+                    eps, es_sign, seed = {k: -v for k, v in pair["eps"].items()}, -1, pair["seed"]
+                else:
+                    eps, es_sign = ws.model.es_sample(rng), 1
             temp = ws.model.temperature() if explore else 0.05
             policy.CONFIG = policy.Config(
                 model=ws.model, tracker=policy.RunTracker(), temperature=temp,
                 params=ws.model.es_params(eps), rng=rng, learn=explore,
-                llm_events=args.llm_events, llm_model=args.model, llm_base_url=args.base_url,
+                llm_events=args.llm_events, llm_model=args.event_model or args.model,
+                llm_base_url=args.base_url,
                 strategy=ws.strategy, live=viewer, llm_shop=args.llm_shop, llm_gap=args.llm_gap,
+                llm_cards=args.llm_cards, llm_share=args.llm_share,
                 llm_cache=llm_cache if args.llm_cache else None)
             if viewer is not None:
                 done = ws.runs()[-10:]
@@ -629,8 +637,14 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
             learned = {}
             if explore and s["decisions"] >= 5:
                 learned = ws.model.learn(policy.CONFIG.tracker.events, reward, lr=args.lr)
-                es_adv = ws.model.es_update(eps, fight_fitness(s, reward))
-                learned["es_advantage"] = es_adv
+                fit = fight_fitness(s, reward)
+                if es_sign > 0:
+                    ws.state["es_pair"] = {"eps": eps, "seed": seed, "f_plus": fit}
+                    learned["es_advantage"] = 0.0
+                else:
+                    pair = ws.state.get("es_pair") or {}
+                    learned["es_advantage"] = ws.model.es_update_pair(pair.get("eps", {}), pair.get("f_plus", fit), fit)
+                    ws.state["es_pair"] = None
                 ws.state["explore_since_coach"] += 1
             s.update({"run": index + 1, "kind": kind, "seed": seed, "character": args.character.upper(),
                       "started": dt.datetime.fromtimestamp(started).isoformat(timespec="seconds"),
@@ -685,6 +699,8 @@ def main() -> None:
     p.add_argument("--ascension", type=int, default=0)
     p.add_argument("--model", default="qwen3:14b", help="LLM for events, boss relics and coaching")
     p.add_argument("--reflect-model", default=None, help="LLM for the coach (default: --model)")
+    p.add_argument("--event-model", default=None,
+                   help="LLM for in-game questions: events, shops, boss relics (default: --model)")
     p.add_argument("--base-url", default="http://localhost:11434/v1")
     p.add_argument("--llm-events", action=argparse.BooleanOptionalAction, default=True,
                    help="let the LLM pick event options and boss relics")
@@ -694,8 +710,13 @@ def main() -> None:
                    help="coach thinks while the next runs play (in-game LLM calls use the policy meanwhile)")
     p.add_argument("--llm-shop", action=argparse.BooleanOptionalAction, default=True,
                    help="one LLM shopping list per shop visit")
-    p.add_argument("--llm-gap", type=float, default=1.0,
-                   help="ask the LLM about an event only when its top options score within this gap")
+    p.add_argument("--llm-gap", type=float, default=99.0,
+                   help="ask the LLM about an event only when its top options score within this gap "
+                        "(default: always, calls take ~0.2 s with thinking off)")
+    p.add_argument("--llm-cards", action=argparse.BooleanOptionalAction, default=True,
+                   help="let the LLM advise card rewards")
+    p.add_argument("--llm-share", type=float, default=0.7,
+                   help="explore runs: share of card picks that follow the LLM (the rest explore)")
     p.add_argument("--llm-cache", action=argparse.BooleanOptionalAction, default=True,
                    help="reuse the LLM's event answers across runs (evolve/<char>/llm_cache.json)")
     p.add_argument("--lr", type=float, default=0.08, help="learning rate for the choice weights")

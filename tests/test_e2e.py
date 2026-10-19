@@ -311,7 +311,8 @@ def main() -> None:
         coach_think=False, lr=0.08, cycle=5, bench_seeds=["BENCHA1", "BENCHB2"], revert_margin=1.0,
         max_runs=10, port=0, workdir=str(work / "evolve" / "ironclad"),
         stall_wait=30, relaunch_game=False, max_aborts=3, step_timeout=2.0, live_port=free_port(),
-        coach_background=True, llm_shop=True, llm_gap=1.0, llm_cache=True,
+        coach_background=True, llm_shop=True, llm_gap=99.0, llm_cache=True, event_model=None,
+        llm_cards=True, llm_share=0.7,
         strategy_baseline=str(ROOT / "agent" / "strategy_baseline.md"))
     with HarnessServer(port=0) as server:
         game = FakeSpire(server.port, random.Random(7))

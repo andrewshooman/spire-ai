@@ -16,6 +16,7 @@ the policy falls back to its own heuristics, so a run never stalls on it.
 
 from __future__ import annotations
 
+import collections
 import json
 import random
 import re
@@ -29,6 +30,7 @@ from sts_bench.actions.validate import validate
 from sts_bench.agents.base import Decision
 from sts_bench.runner.session import describe_action
 from sts_bench.state.serialize import cursory_view
+from sts_bench.tools.card_db import card_text
 
 import cards as C
 import planner
@@ -98,17 +100,27 @@ class Config:
     live: object = None          # live.LiveView, or None when nobody is watching
     llm_shop: bool = True        # one LLM shopping list per shop visit
     llm_cache: dict | None = None  # event answers reused across runs (evolve.py persists it)
-    llm_gap: float = 1.0         # ask the LLM about an event only when the top options are this close
+    llm_gap: float = 99.0        # ask the LLM about an event only when the top options are this close
+    llm_cards: bool = True       # the LLM advises card rewards too
+    llm_share: float = 0.7       # explore runs: share of card picks that follow the LLM
 
 
 CONFIG = Config()
 LLM_BUSY = threading.Event()   # set while the coach holds the GPU: in-game questions skip the LLM
 
 
-def ask_llm(base_url: str, model: str, system: str, user: str, timeout: float = 120.0) -> str:
-    body = json.dumps({"model": model, "temperature": 0.3,
-                       "messages": [{"role": "system", "content": system},
-                                    {"role": "user", "content": user}]}).encode("utf-8")
+def ask_llm(base_url: str, model: str, system: str, user: str, timeout: float = 120.0,
+            think: bool = False, max_tokens: int | None = None) -> str:
+    """OpenAI-compatible chat call. think=False switches qwen3's reasoning off at the server
+    (reasoning_effort none): a '/no_think' tag alone was ignored, so every in-game answer
+    spent 500-800 hidden tokens thinking (10-30 s instead of about 0.2 s)."""
+    payload = {"model": model, "temperature": 0.3,
+               "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}]}
+    if not think:
+        payload["reasoning_effort"] = "none"
+    if max_tokens:
+        payload["max_tokens"] = max_tokens
+    body = json.dumps(payload).encode("utf-8")
     req = urllib.request.Request(f"{base_url.rstrip('/')}/chat/completions", data=body,
                                  headers={"Content-Type": "application/json",
                                           "Authorization": "Bearer ollama"})
@@ -179,6 +191,7 @@ class PolicyAgent:
             handler = self._combat
         decision = Decision(action=None)
         note = ""
+        n_events = len(tr.events)
         try:
             if handler is not None:
                 result = handler(message, decision)
@@ -195,6 +208,8 @@ class PolicyAgent:
         decision.action = action
         if note:
             decision.transcript = [{"role": "assistant", "content": note}]
+        for ev in tr.events[n_events:]:
+            ev.setdefault("act", g.act)  # per-act credit assignment in model.learn
         tr.count("COMBAT" if handler == self._combat else screen)
         if cfg.live is not None:
             try:
@@ -361,12 +376,32 @@ class PolicyAgent:
             options.append({f"skip:a{min(g.act, 4)}": 1.0})
         idx, probs = model.choose(options, CONFIG.temperature, CONFIG.rng)
         labels = [card.name for card in offered] + (["(skip)"] if can_skip else [])
+        by = "policy"
+        # with thinking off the LLM answers in ~0.2 s, so it advises every card pick; explore runs
+        # still follow the policy's own sample part of the time so learning keeps exploring
+        if CONFIG.llm_events and CONFIG.llm_cards and (not CONFIG.learn or CONFIG.rng.random() < CONFIG.llm_share):
+            described = []
+            for k, card in enumerate(offered):
+                text = (card_text(card) or "").replace("\n", " ")
+                described.append(f"{card.name} ({card.type.value.lower()}, cost {card.cost}): {text} "
+                                 f"[policy {probs[k]:.0%}]")
+            if can_skip:
+                described.append(f"Skip this reward [policy {probs[-1]:.0%}]")
+            deck = ", ".join(f"{n} x{k}" if k > 1 else n for n, k in
+                             sorted(collections.Counter(d.name for d in g.deck).items()))
+            k = self._ask_option(message, described,
+                                 f"Card reward on floor {g.floor} (act {g.act}, boss {g.act_boss}). "
+                                 f"Deck ({len(g.deck)}): {deck}. Pick the card that most improves this deck "
+                                 f"for the fights ahead, or skip if none does.",
+                                 topic="card", act=g.act)
+            if k is not None:
+                idx, by = k, self._llm_source
         tr.events.append({"kind": "card", "options": options, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
         tr.picks.append({"floor": g.floor, "offered": labels, "chosen": labels[idx],
                          "p": round(probs[idx], 2), "archetype": tr.plan.get("archetype")})
         ranked = sorted(zip(labels, probs), key=lambda x: -x[1])
-        note = "card pick: " + ", ".join(f"{n} {p:.0%}" for n, p in ranked) + \
+        note = f"card pick ({by}): " + ", ".join(f"{n} {p:.0%}" for n, p in ranked) + \
                f" | plan {tr.plan.get('archetype')} wants {', '.join(tr.plan.get('wanted', [])[:3]) or '-'}"
         if can_skip and idx == len(offered):
             self._skipped_rewards[g.floor] = self._skipped_rewards.get(g.floor, 0) + 1
@@ -593,12 +628,12 @@ class PolicyAgent:
                   "for a later shop otherwise. Reply with the numbers to buy in order of priority, comma "
                   "separated, total within the gold, or 'none'.\n\n"
                   f"PLAYBOOK:\n{book}\n\nRUN PLAN: archetype {plan.get('archetype', 'undecided')}; "
-                  f"wanted {', '.join(plan.get('wanted', [])) or '-'}\n/no_think")
+                  f"wanted {', '.join(plan.get('wanted', [])) or '-'}")
         user = (f"Act {g.act}, floor {g.floor}, boss {g.act_boss}. HP {g.current_hp}/{g.max_hp}. "
                 f"Gold {g.gold}. Potions: {', '.join(p.name for p in g.potions)}.\n"
                 f"Relics: {', '.join(r.name for r in g.relics)}.\nDeck ({len(g.deck)}): {deck}\n\n"
                 f"Shop:\n{listing}\n\nWhat do you buy?")
-        answer, ms = self._call_llm(system, user)
+        answer, ms = self._call_llm(system, user, max_tokens=60)
         if answer is None:
             self._log_llm(g, "shop", f"Shop with {g.gold} gold", [l for _, l, _ in items], "(LLM unavailable)", None, ms)
             return None
@@ -827,7 +862,8 @@ class PolicyAgent:
     _llm_source = "llm"
 
     def _ask_option(self, message, labels: list[str], header: str, topic: str = "event",
-                    cache_key: str | None = None, cache_labels: list[str] | None = None) -> int | None:
+                    cache_key: str | None = None, cache_labels: list[str] | None = None,
+                    act: int | None = None) -> int | None:
         g, tr = message.game_state, CONFIG.tracker
         if cache_key and CONFIG.llm_cache is not None and cache_labels:
             hit = CONFIG.llm_cache.get(cache_key)
@@ -837,13 +873,13 @@ class PolicyAgent:
                 self._log_llm(g, topic, header, labels, f"(cached) {hit}", hit, 0)
                 return cache_labels.index(hit)
         plan = tr.plan or {}
-        book = playbook_for(CONFIG.strategy, topic, g.character)
+        book = playbook_for(CONFIG.strategy, topic, g.character, act=act)
         system = (f"You make the big-picture choices in a Slay the Spire run as the {g.character}. "
                   "Use the playbook, the run plan and the scores shown with each option. "
                   "Reply with only the number of your choice.\n\n"
                   f"PLAYBOOK:\n{book}\n\n"
                   f"RUN PLAN: archetype {plan.get('archetype', 'undecided')}; "
-                  f"wanted {', '.join(plan.get('wanted', [])) or '-'}\n/no_think")
+                  f"wanted {', '.join(plan.get('wanted', [])) or '-'}")
         listing = "\n".join(f"{i}: {label}" for i, label in enumerate(labels))
         user = f"{cursory_view(message)}\n\n{header}\nOptions:\n{listing}\n\nAnswer with the option number only."
         answer, ms = self._call_llm(system, user)
@@ -861,14 +897,16 @@ class PolicyAgent:
             CONFIG.llm_cache[cache_key] = cache_labels[k]
         return k
 
-    def _call_llm(self, system: str, user: str, timeout: float = 90) -> tuple[str | None, int]:
+    def _call_llm(self, system: str, user: str, timeout: float = 90,
+                  max_tokens: int = 24) -> tuple[str | None, int]:
         tr = CONFIG.tracker
         if LLM_BUSY.is_set():
             return None, 0
         started = time.monotonic()
         try:
             tr.llm_calls += 1
-            answer = ask_llm(CONFIG.llm_base_url, CONFIG.llm_model, system, user, timeout=timeout)
+            answer = ask_llm(CONFIG.llm_base_url, CONFIG.llm_model, system, user, timeout=timeout,
+                             max_tokens=max_tokens)
         except Exception:
             answer = None
         ms = int((time.monotonic() - started) * 1000)
@@ -890,6 +928,7 @@ TOPIC_SECTIONS = {
     "event": ("Core principles", "Events", "Map, rest sites and shops"),
     "boss_relic": ("Core principles", "Boss relics"),
     "shop": ("Core principles", "Map, rest sites and shops"),
+    "card": ("Core principles",),
 }
 
 
@@ -905,7 +944,8 @@ def playbook_sections(text: str) -> dict[str, str]:
     return out
 
 
-def playbook_for(text: str, topic: str, character: str | None = None, limit: int = 6000) -> str:
+def playbook_for(text: str, topic: str, character: str | None = None, limit: int = 6000,
+                 act: int | None = None) -> str:
     """Only the sections a decision needs, plus the class and the coach's lessons,
     so the prompt stays short and the learned lessons are never cut off."""
     names = TOPIC_SECTIONS.get(topic)
@@ -913,7 +953,8 @@ def playbook_for(text: str, topic: str, character: str | None = None, limit: int
         return (text or "")[:limit]
     secs = playbook_sections(text)
     char = {"THE_SILENT": "Silent"}.get(C.character_key(character), (character or "").title())
-    keep = [n for n in names if n in secs] + ([char] if char in secs else [])
+    keep = [n for n in names if n in secs] + ([char] if char in secs else []) + \
+        ([f"Act {act}"] if act and f"Act {act}" in secs else [])
     body = "\n\n".join(f"## {n}\n{secs[n]}" for n in keep)
     learned = secs.get("Learned from runs", "")
     room = max(0, limit - len(learned) - 40)

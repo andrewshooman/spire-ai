@@ -141,7 +141,7 @@ class Model:
 
     # -------------------------------------------------------------- learning
 
-    REWARD_VERSION = 2
+    REWARD_VERSION = 3
 
     @staticmethod
     def outcome(floor: int, victory: bool, elites: int = 0) -> float:
@@ -153,30 +153,41 @@ class Model:
         return depth + 0.06 * min(elites, 6) + (1.0 if victory else 0.0)
 
     def learn(self, events: list[dict], reward: float, lr: float = 0.08) -> dict:
-        """REINFORCE: push every recorded choice toward (or away from) what it
-        picked, scaled by how this run compares to the running baseline."""
-        base = self.meta["baseline"]
-        if base is None:
-            base = reward
-        std = math.sqrt(max(self.meta["var"], 1e-4))
-        adv = max(-3.0, min(3.0, (reward - base) / std))
-        changed: dict[str, float] = {}
+        """REINFORCE with per-act credit: a choice made in act a is judged against the
+        running average reward of runs that *reached* act a. With one shared baseline every
+        act-2 choice looked good just because the run got past act 1 (and act-1 choices
+        carried all the noise of acts 2-3); per-act baselines remove that bias and variance."""
+        acts = self.meta.setdefault("act_baseline", {})
+        by_act: dict[int, list[dict]] = {}
         for ev in events:
-            probs, chosen, temp = ev["probs"], ev["chosen"], max(ev.get("temp", 1.0), 0.15)
-            for i, feats in enumerate(ev["options"]):
-                g = ((1.0 if i == chosen else 0.0) - probs[i]) / temp
-                if abs(g) < 1e-6:
-                    continue
-                for k, v in feats.items():
-                    delta = lr * adv * g * v
-                    new = max(-6.0, min(6.0, self.w(k) + delta))
-                    self.weights[k] = new
-                    changed[k] = changed.get(k, 0.0) + delta
-        # running baseline / variance of the reward
+            by_act.setdefault(int(ev.get("act") or 1), []).append(ev)
+        advs: dict[int, float] = {}
+        for a in sorted(set(by_act) | {1}):
+            st = acts.setdefault(str(a), {"b": None, "var": 0.04})
+            base = reward if st["b"] is None else st["b"]
+            advs[a] = max(-3.0, min(3.0, (reward - base) / math.sqrt(max(st["var"], 1e-4))))
+            st["b"] = base + 0.1 * (reward - base)
+            st["var"] = 0.9 * st["var"] + 0.1 * (reward - base) ** 2
+        changed: dict[str, float] = {}
+        for a, evs in by_act.items():
+            adv = advs[a]
+            for ev in evs:
+                probs, chosen, temp = ev["probs"], ev["chosen"], max(ev.get("temp", 1.0), 0.15)
+                for i, feats in enumerate(ev["options"]):
+                    g = ((1.0 if i == chosen else 0.0) - probs[i]) / temp
+                    if abs(g) < 1e-6:
+                        continue
+                    for k, v in feats.items():
+                        delta = lr * adv * g * v
+                        self.weights[k] = max(-6.0, min(6.0, self.w(k) + delta))
+                        changed[k] = changed.get(k, 0.0) + delta
+        # whole-run baseline kept for the dashboard and the coach
+        base = self.meta["baseline"] if self.meta["baseline"] is not None else reward
         self.meta["baseline"] = base + 0.1 * (reward - base)
         self.meta["var"] = 0.9 * self.meta["var"] + 0.1 * (reward - base) ** 2
         self.meta["runs_trained"] += 1
-        return {"advantage": adv, "baseline": self.meta["baseline"], "changed": changed}
+        return {"advantage": advs.get(1, 0.0), "act_advantage": advs,
+                "baseline": self.meta["baseline"], "changed": changed}
 
     def es_sample(self, rng: random.Random, sigma: float = 0.15) -> dict[str, float]:
         return {k: rng.gauss(0.0, sigma) for k in self.params}
@@ -196,6 +207,20 @@ class Model:
             self.params[k] = max(0.01, min(50.0, self.params[k] * math.exp(lr * adv * e)))
         self.meta["es_baseline"] = base + 0.1 * (fitness - base)
         self.meta["es_var"] = 0.9 * self.meta["es_var"] + 0.1 * (fitness - base) ** 2
+        return adv
+
+    def es_update_pair(self, eps: dict[str, float], f_plus: float, f_minus: float, lr: float = 0.3) -> float:
+        """Antithetic ES: the same perturbation played as +eps and -eps on the same seed.
+        The difference of the two fitnesses cancels seed difficulty, so each pair is a far
+        cleaner gradient estimate than two independent noisy runs."""
+        diff = f_plus - f_minus
+        var = self.meta.setdefault("es_dvar", 0.01)
+        adv = max(-3.0, min(3.0, diff / math.sqrt(max(var, 1e-4))))
+        for k, e in eps.items():
+            if k in self.params:
+                self.params[k] = max(0.01, min(50.0, self.params[k] * math.exp(lr * adv * e)))
+        self.meta["es_dvar"] = 0.9 * var + 0.1 * diff ** 2
+        self.meta["es_pairs"] = self.meta.get("es_pairs", 0) + 1
         return adv
 
     def nudge(self, card: dict | None = None, archetype: dict | None = None,

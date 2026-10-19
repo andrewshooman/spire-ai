@@ -71,4 +71,12 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
    policy while it holds the GPU (policy.LLM_BUSY).
 6. Reward v2 (model.outcome): convex in depth + 0.06/elite so risky power-ups pay; map rules push act 1-2 elites;
    bench selection compares the same reward and reverts only after two bad cycles in a row.
+
+7. Speed: in-game LLM calls send reasoning_effort "none" (qwen3 ignored /no_think and thought 500-800 tokens per
+   answer: 10-30 s -> ~0.2 s); the coach still thinks. So the LLM now advises every event (--llm-gap 99) and card
+   rewards (--llm-cards; explore runs follow it --llm-share 0.7 of the time). Optional EVENT_MODEL. GAME_SPEED
+   (default 5, was 2) is written to SuperFastMode's config by launch-game.ps1 before the game starts. start.bat sets
+   OLLAMA_KEEP_ALIVE=-1, flash attention and q8_0 KV cache.
+8. Learning v3: per-act REINFORCE baselines (events tagged with act), antithetic ES pairs (+eps then -eps on the
+   same seed, ws.state["es_pair"]).
 Commit and push after each working change.
