@@ -47,7 +47,8 @@ KILLER = {"Gremlin Nob": "Gremlin Nob", "Lagavulin": "Lagavulin", "Sentry": "3 S
           "Spheric Guardian": "Spheric Guardian", "Snake Plant": "Snake Plant",
           "Shelled Parasite": "Shelled Parasite", "Book of Stabbing": "Book of Stabbing",
           "Spiker": "3 Shapes", "Repulsor": "3 Shapes", "Exploder": "3 Shapes", "Orb Walker": "Orb Walker",
-          "Transient": "Transient"}
+          "Transient": "Transient", "The Champ": "The Champ", "Bronze Automaton": "Bronze Automaton",
+          "Orb": "Bronze Automaton"}
 CHECKS = ["Gremlin Nob", "Lagavulin", "3 Sentries", "Hexaghost", "The Guardian", "Slime Boss"]
 
 
@@ -220,7 +221,8 @@ ENC_BY_ENEMIES = {("Sentry",): "3 Sentries", ("Gremlin Nob",): "Gremlin Nob", ("
                   ("Jaw Worm",): "Jaw Worm", ("Cultist",): "Cultist", ("Orb Walker",): "Orb Walker",
                   ("Transient",): "Transient", ("Spiker",): "3 Shapes", ("Repulsor",): "3 Shapes",
                   ("Exploder",): "3 Shapes", ("Repulsor", "Spiker"): "3 Shapes", ("Exploder", "Spiker"): "3 Shapes",
-                  ("Exploder", "Repulsor"): "3 Shapes", ("Exploder", "Repulsor", "Spiker"): "3 Shapes"}
+                  ("Exploder", "Repulsor"): "3 Shapes", ("Exploder", "Repulsor", "Spiker"): "3 Shapes",
+                  ("The Champ",): "The Champ", ("Bronze Automaton", "Orb"): "Bronze Automaton"}
 
 
 def real_fights(ws: Path) -> list[dict]:

@@ -130,6 +130,10 @@ def _hp(rng, lo, hi):
 
 def spawn(name: str, rng: random.Random) -> list[Monster]:
     """Monsters of one encounter, A0 stats."""
+    if name == "Bronze Automaton":  # boss with two Bronze Orbs from the start
+        boss = Monster("Bronze Automaton", 300, 300, powers={"Artifact": 3})
+        orbs = [Monster("Orb", h, h, powers={"Minion": 1}) for h in (_hp(rng, 52, 58), _hp(rng, 52, 58))]
+        return [orbs[0], boss, orbs[1]]
     if name == "3 Shapes":  # act 3: three of Spiker / Repulsor / Exploder
         out = []
         for kind in [rng.choice(["Spiker", "Repulsor", "Exploder"]) for _ in range(3)]:
@@ -152,6 +156,7 @@ def spawn(name: str, rng: random.Random) -> list[Monster]:
         "Acid Slime (L)": (65, 69, {"Split": 1}), "Spike Slime (L)": (64, 70, {"Split": 1}),
         "Spiker": (42, 56, {"Thorns": 3}), "Repulsor": (29, 35, {}), "Exploder": (30, 30, {"Explosive": 3}),
         "Orb Walker": (90, 96, {"Generic Strength Up": 3}), "Transient": (999, 999, {"Fading": 5, "Shifting": 1}),
+        "The Champ": (420, 420, {}),
     }
     lo, hi, powers = table[name]
     h = _hp(rng, lo, hi)
@@ -168,12 +173,14 @@ def spawn(name: str, rng: random.Random) -> list[Monster]:
 
 ENCOUNTERS = ["Jaw Worm", "Cultist", "Gremlin Nob", "Lagavulin", "3 Sentries", "Hexaghost", "The Guardian",
               "Slime Boss", "Spheric Guardian", "Snake Plant", "Shelled Parasite", "Book of Stabbing",
-              "3 Shapes", "Orb Walker", "Transient"]
+              "3 Shapes", "Orb Walker", "Transient", "The Champ", "Bronze Automaton"]
 ACT = {"Jaw Worm": 1, "Cultist": 1, "Gremlin Nob": 1, "Lagavulin": 1, "3 Sentries": 1, "Hexaghost": 1,
        "The Guardian": 1, "Slime Boss": 1, "Spheric Guardian": 2, "Snake Plant": 2, "Shelled Parasite": 2,
-       "Book of Stabbing": 2, "3 Shapes": 3, "Orb Walker": 3, "Transient": 3}
+       "Book of Stabbing": 2, "3 Shapes": 3, "Orb Walker": 3, "Transient": 3, "The Champ": 2,
+       "Bronze Automaton": 2}
 KIND = {"Gremlin Nob": "elite", "Lagavulin": "elite", "3 Sentries": "elite", "Book of Stabbing": "elite",
-        "Hexaghost": "boss", "The Guardian": "boss", "Slime Boss": "boss"}
+        "Hexaghost": "boss", "The Guardian": "boss", "Slime Boss": "boss", "The Champ": "boss",
+        "Bronze Automaton": "boss"}
 
 
 def set_move(m: Monster, move: str, intent: str, dmg: int = 0, hits: int = 1) -> None:
@@ -307,6 +314,33 @@ def choose_move(m: Monster, f: "Fight") -> None:
             set_move(m, "laser", "ATTACK_DEBUFF", 10)
     elif n == "Transient":
         set_move(m, "attack", "ATTACK", 30 + 10 * t)
+    elif n == "The Champ":
+        if m.hp < m.max_hp // 2 and not m.state.get("angry"):
+            set_move(m, "anger", "BUFF")
+        elif m.state.get("angry") and last[-1:] != ["execute"]:
+            set_move(m, "execute", "ATTACK", 10, 2)
+        elif r < 0.15 and m.state.get("stances", 0) < 2 and last[-1:] != ["stance"]:
+            set_move(m, "stance", "DEFEND_BUFF")
+        elif r < 0.30 and last[-1:] != ["gloat"] and not m.state.get("angry"):
+            set_move(m, "gloat", "BUFF")
+        elif r < 0.45 and last[-1:] != ["taunt"]:
+            set_move(m, "taunt", "DEBUFF")
+        elif r < 0.70 and last[-1:] != ["slap"]:
+            set_move(m, "slap", "ATTACK_DEBUFF", 12)
+        else:
+            set_move(m, "slash", "ATTACK", 16)
+    elif n == "Bronze Automaton":
+        seq = ["flail", "boost", "flail", "boost", "hyper", "stunned"]
+        mv = seq[t % len(seq)]
+        {"flail": lambda: set_move(m, "flail", "ATTACK", 7, 2), "boost": lambda: set_move(m, "boost", "DEFEND_BUFF"),
+         "hyper": lambda: set_move(m, "hyper", "ATTACK", 45), "stunned": lambda: set_move(m, "stunned", "STUN")}[mv]()
+    elif n == "Orb":
+        if t == 0:
+            set_move(m, "stasis", "STRONG_DEBUFF")
+        elif r < 0.5:
+            set_move(m, "beam", "ATTACK", 8)
+        else:
+            set_move(m, "support", "DEFEND")
     else:
         set_move(m, "attack", "ATTACK", 8)
 
@@ -443,6 +477,8 @@ class Fight:
         if m.hp <= 0:
             m.hp = 0
             m.gone = True
+            if m.state.get("stolen"):
+                self.hand.append(m.state.pop("stolen")) if len(self.hand) < 10 else self.discard.append(m.state.pop("stolen"))
         return through
 
     # -------------------------------------------------- state for the policy
@@ -874,6 +910,35 @@ class Fight:
             self.powers["Frail"] = self.p("Frail") + 2
         elif mv == "suck":
             m.hp = min(m.max_hp, m.hp + 10)
+        elif mv == "anger":
+            m.state["angry"] = True
+            for k in ("Vulnerable", "Weakened"):
+                m.powers.pop(k, None)
+            m.powers["Strength"] = m.p("Strength") + 6
+        elif mv == "stance":
+            m.block += 15
+            m.powers["Metallicize"] = m.p("Metallicize") + 5
+            m.state["stances"] = m.state.get("stances", 0) + 1
+        elif mv == "gloat":
+            m.powers["Strength"] = m.p("Strength") + 2
+        elif mv == "taunt":
+            self.powers["Weakened"] = self.p("Weakened") + 2
+            self.powers["Vulnerable"] = self.p("Vulnerable") + 2
+        elif mv == "slap":
+            self.powers["Frail"] = self.p("Frail") + 2
+            self.powers["Vulnerable"] = self.p("Vulnerable") + 2
+        elif mv == "boost":
+            m.powers["Strength"] = m.p("Strength") + 3
+            m.block += 9
+        elif mv == "stasis" and self.draw:
+            # steals the best card until the orb dies (approximation: it leaves the draw pile)
+            best = max(self.draw, key=lambda c: (c["type"] == "POWER", c["rarity"] != "BASIC", c["cost"]))
+            self.draw.remove(best)
+            m.state["stolen"] = best
+        elif mv == "support":
+            for o in self.alive():
+                if o.name == "Bronze Automaton":
+                    o.block += 12
         elif mv == "spike":
             m.powers["Thorns"] = m.p("Thorns") + 2
         elif mv == "repulse":

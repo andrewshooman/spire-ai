@@ -35,7 +35,7 @@ MAX_NODES = 3000
 PRIORITY = {"Red Slaver": 1.5, "Donu": 1.6, "Dagger": 1.5, "Mystic": 1.4, "Gremlin Wizard": 1.3,
             "Orb": 1.25, "Bronze Orb": 1.25, "Sentry": 1.1, "Torch Head": 0.6, "Darkling": 0.8,
             "Repulsor": 0.9, "Spiker": 0.7, "Gremlin Leader": 1.1, "Cultist": 1.0,
-            "Orb Walker": 1.3, "Exploder": 1.3, "Transient": 0.3}
+            "Orb Walker": 1.3, "Exploder": 1.3, "Transient": 0.3, "Bronze Automaton": 1.0}
 
 
 def pw(powers, *names) -> int:
