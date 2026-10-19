@@ -23,3 +23,6 @@ set AUTO_LAUNCH_GAME=yes
 
 @rem Ollama context window in tokens
 set CONTEXT=32768
+
+@rem Open the live page (http://127.0.0.1:8765/) in the browser when the bot starts: yes or no
+set OPEN_LIVE_VIEW=yes

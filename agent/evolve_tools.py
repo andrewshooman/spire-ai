@@ -40,6 +40,7 @@ from sts_bench.smoke import LOG_DIR, run_html_path, session_dir  # noqa: E402
 from sts_bench.trajectory import read_records  # noqa: E402
 
 EVOLVE = HERE.parent / "evolve"
+LIVE_PORT = 8765
 
 
 def workspace(character: str | None) -> Path:
@@ -93,6 +94,14 @@ def emit(line: str, keep) -> None:
 
 
 def cmd_dashboard(args) -> None:
+    """The live page when the bot is running (it serves it), otherwise the page from disk."""
+    try:
+        socket.create_connection(("127.0.0.1", LIVE_PORT), timeout=0.5).close()
+        print(f"Opening http://127.0.0.1:{LIVE_PORT}/")
+        webbrowser.open(f"http://127.0.0.1:{LIVE_PORT}/")
+        return
+    except OSError:
+        pass
     open_page(dashboard.render(workspace(args.character)))
 
 

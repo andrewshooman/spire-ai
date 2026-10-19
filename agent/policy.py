@@ -25,6 +25,7 @@ from dataclasses import dataclass, field
 from sts_bench.actions.schema import (Choose, EndTurn, PlayCard, Proceed, ReturnBack, UsePotion)
 from sts_bench.actions.validate import validate
 from sts_bench.agents.base import Decision
+from sts_bench.runner.session import describe_action
 from sts_bench.state.serialize import cursory_view
 
 import cards as C
@@ -89,6 +90,7 @@ class Config:
     llm_model: str = "qwen3:14b"
     llm_base_url: str = "http://localhost:11434/v1"
     strategy: str = ""
+    live: object = None          # live.LiveView, or None when nobody is watching
 
 
 CONFIG = Config()
@@ -153,6 +155,8 @@ class PolicyAgent:
             return Decision(action=None, forced_reason="no game state")
         screen = g.screen_type.value
         if g.combat_state is not None and screen == "NONE" and not cmds & {"play", "end"}:
+            if cfg.live is not None:
+                cfg.live.update(message, "", "", tr)
             return Decision(action=None, forced_reason="waiting")  # enemy turn or animation
         handler = {
             "EVENT": self._event, "MAP": self._map, "CARD_REWARD": self._card_reward,
@@ -181,6 +185,12 @@ class PolicyAgent:
         if note:
             decision.transcript = [{"role": "assistant", "content": note}]
         tr.count("COMBAT" if handler == self._combat else screen)
+        if cfg.live is not None:
+            try:
+                text = describe_action(action, message) if action is not None else f"({decision.forced_reason})"
+            except Exception:
+                text = str(action)
+            cfg.live.update(message, text, note, tr, force=screen in ("GAME_OVER", "BOSS_REWARD"))
         return decision
 
     def _advance(self, message):
@@ -415,6 +425,8 @@ class PolicyAgent:
                           "temp": CONFIG.temperature})
         tr.path.append({"floor": g.floor + 1, "node": labels[idx], "hp": g.current_hp,
                         "max_hp": g.max_hp})
+        if CONFIG.live is not None:
+            CONFIG.live.chose_node(g.act, nodes[idx].x, nodes[idx].y)
         names = {"M": "fight", "E": "ELITE", "R": "rest", "$": "shop", "?": "event", "T": "chest"}
         note = "path: " + ", ".join(f"{names.get(l, l)} {p:.0%}" for l, p in zip(labels, probs)) + \
                f" -> {names.get(labels[idx], labels[idx])}"

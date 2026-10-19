@@ -1,0 +1,269 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spire AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Kreon:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#13110e;--stone:#201c17;--stone2:#2b261f;--edge:#4c4233;--edge2:#6b5b42;--ink:#ebe2cc;--muted:#a69c86;
+--gold:#e2b653;--gold2:#a8802c;--red:#d2473a;--blood:#7d241b;--blue:#5ea8db;--green:#7fb85f;--purple:#b088d8;
+--card:var(--stone);--fg:var(--ink);--line:#3a3329;--accent:var(--gold);--explore:#7d7466;--bench:var(--gold);
+--win:var(--green);--champ:var(--green);--roll:var(--blue);--pos:var(--blue);--neg:var(--red);color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;color:var(--ink);font:15px/1.45 Kreon,Georgia,"Times New Roman",serif;
+background:radial-gradient(ellipse at 50% -10%,#2f281f 0,#1a1713 45%,#100e0b 100%) fixed var(--bg)}
+main{max-width:1400px;margin:0 auto;padding:12px 16px 40px}
+h1{font-size:24px;margin:0;color:var(--gold);letter-spacing:.04em;text-shadow:0 2px 0 #000}
+h2{font-size:13px;margin:0 0 10px;color:var(--gold);text-transform:uppercase;letter-spacing:.12em;font-weight:600}
+.top{display:flex;align-items:center;gap:16px;flex-wrap:wrap;margin-bottom:10px}
+.tabs{display:flex;gap:6px;margin-left:auto}
+.tabs button{font:inherit;color:var(--muted);background:var(--stone);border:1px solid var(--edge);border-radius:8px 8px 0 0;
+padding:6px 16px;cursor:pointer}
+.tabs button.on{color:var(--gold);background:var(--stone2);border-color:var(--edge2);border-bottom-color:var(--stone2)}
+.card{background:linear-gradient(180deg,#25211b,#1c1915);border:1px solid var(--edge);border-radius:10px;padding:14px;
+margin:12px 0;box-shadow:inset 0 1px 0 rgba(255,255,255,.04),0 3px 12px rgba(0,0,0,.45)}
+.muted{color:var(--muted)} .hide{display:none!important}
+/* HUD */
+.hud{display:flex;flex-wrap:wrap;align-items:center;gap:14px 22px;padding:10px 14px;border:1px solid var(--edge2);border-radius:10px;
+background:linear-gradient(180deg,#3a3125,#231e18);box-shadow:0 3px 12px rgba(0,0,0,.5)}
+.stat{display:flex;align-items:center;gap:6px;font-size:18px;font-weight:600}
+.stat svg,.card .stat svg{width:22px;height:22px;flex:none}
+.chips{display:flex;flex-wrap:wrap;gap:5px}
+.relic{font-size:12px;padding:2px 8px;border-radius:12px;background:#3b2f1d;border:1px solid var(--gold2);color:#f1d99a}
+.pot{width:26px;height:32px;border-radius:9px 9px 12px 12px;border:2px solid var(--edge2);background:#18150f;display:inline-block;
+position:relative}
+.pot.full{background:radial-gradient(circle at 40% 60%,#d36a5c,#6a1e18);border-color:#e08a7c}
+.pot.full.kind-defense{background:radial-gradient(circle at 40% 60%,#7cc0ee,#1d4a6a);border-color:#9ccff2}
+.pot.full.kind-buff{background:radial-gradient(circle at 40% 60%,#f2c96a,#7a5512);border-color:#f2d58a}
+.status{font-size:13px;color:var(--muted)}
+/* layout */
+.live{display:grid;grid-template-columns:300px minmax(0,1fr) 360px;gap:12px;align-items:start}
+@media (max-width:1150px){.live{grid-template-columns:minmax(0,1fr)}.live>.map{order:2}.live>.card:last-child{order:3}}
+/* map */
+.map svg{width:100%;max-width:320px;height:auto;display:block;margin:0 auto}
+.map .edge{stroke:#5a4d3a;stroke-width:1.5;stroke-dasharray:3 4}
+.map .redge{stroke:var(--gold);stroke-width:3}
+.map circle{fill:#2b251d;stroke:#6b5b42;stroke-width:1.5}
+.map .route circle{fill:#5a4520;stroke:var(--gold)}
+.map .cur circle{stroke:#fff3c4;stroke-width:3;animation:pulse 1.4s ease-in-out infinite}
+@keyframes pulse{50%{stroke-opacity:.25}}
+.map text{fill:var(--ink);font-size:14px;text-anchor:middle;dominant-baseline:central;font-family:"Segoe UI Symbol",Kreon,serif}
+.map .E text{fill:#ff8c7a} .map .R text{fill:#ffb35c} .map .S text{fill:var(--gold)} .map .B text{fill:var(--red);font-size:22px}
+/* combat */
+.enemies{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-bottom:12px}
+.enemy{min-width:180px;max-width:240px;flex:1;background:#1a1612;border:1px solid var(--edge);border-radius:10px;padding:10px}
+.enemy b{display:block;font-size:16px}
+.intent{display:inline-block;margin:6px 0 4px;padding:2px 9px;border-radius:12px;font-size:14px;font-weight:600;background:#3a1a14;color:#ffb3a6}
+.intent.buff{background:#3a3014;color:#f2d58a} .intent.debuff{background:#2c1d3a;color:#d6b8f2}
+.intent.defend{background:#14283a;color:#a8d4f5} .intent.other{background:#2a2a2a;color:#ccc}
+.bar{height:13px;background:#3a1612;border-radius:7px;position:relative;overflow:hidden;border:1px solid #5a2a22}
+.bar i{display:block;height:100%;background:linear-gradient(180deg,#ec6a5c,#a52c20)}
+.bar span{position:absolute;inset:0;text-align:center;font-size:11px;line-height:12px;color:#fff;text-shadow:0 1px 1px #000}
+.shield{display:inline-block;margin-left:6px;padding:0 6px;border-radius:6px;background:#1f3f58;color:#cfe8fb;font-size:12px}
+.pw{font-size:11px;color:var(--muted)}
+.player{display:flex;align-items:center;gap:14px;flex-wrap:wrap;margin:6px 0 10px}
+.energy{width:46px;height:46px;border-radius:50%;display:grid;place-items:center;font-size:22px;font-weight:700;color:#2a1405;
+background:radial-gradient(circle at 35% 35%,#ffe08a,#e07a17 60%,#8a3a06);border:2px solid #4a2206;box-shadow:0 0 12px rgba(240,140,40,.45)}
+.hand{display:flex;flex-wrap:wrap;gap:12px;padding-top:8px}
+.ctile{position:relative;width:96px;height:124px;border-radius:9px;border:2px solid;padding:20px 7px 6px;font-size:13px;
+text-align:center;display:flex;flex-direction:column;justify-content:space-between;box-shadow:0 3px 8px rgba(0,0,0,.5)}
+.ctile.ATTACK{background:linear-gradient(180deg,#6a2a20,#3a1510);border-color:#d2473a}
+.ctile.SKILL{background:linear-gradient(180deg,#24485c,#13283a);border-color:#5ea8db}
+.ctile.POWER{background:linear-gradient(180deg,#5c4a1c,#33280c);border-color:var(--gold)}
+.ctile.STATUS,.ctile.CURSE{background:linear-gradient(180deg,#3a3a3a,#1e1e1e);border-color:#777}
+.ctile.no{opacity:.45} .ctile .t{font-size:10px;color:rgba(255,255,255,.55);text-transform:uppercase;letter-spacing:.08em}
+.ctile.next{outline:3px solid #fff3c4;outline-offset:2px}
+.orb{position:absolute;top:-9px;left:-9px;width:28px;height:28px;border-radius:50%;display:grid;place-items:center;font-weight:700;
+color:#2a1405;background:radial-gradient(circle at 35% 35%,#ffe08a,#d0701a);border:2px solid #4a2206;font-size:14px}
+.plan{margin-top:10px;font-size:13px;color:#f1d99a;background:#2a2216;border-left:3px solid var(--gold);padding:6px 10px;border-radius:4px}
+.piles{font-size:13px;color:var(--muted)}
+/* log */
+.log{max-height:640px;overflow:auto;font-size:13px}
+.log div{padding:5px 0;border-bottom:1px solid var(--line)}
+.log .a{color:var(--ink);font-weight:600} .log .w{color:var(--muted);font-size:12px;word-break:break-word}
+.deck{display:flex;flex-wrap:wrap;gap:5px}
+.dchip{font-size:12px;padding:2px 7px;border-radius:6px;border:1px solid}
+.dchip.ATTACK{border-color:#8e3a30;background:#2e1612}.dchip.SKILL{border-color:#3d6f91;background:#132331}
+.dchip.POWER{border-color:var(--gold2);background:#2c2410}.dchip.CURSE,.dchip.STATUS{border-color:#666;background:#222}
+/* history (existing dashboard charts) */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}
+.kpi{background:linear-gradient(180deg,#2c261e,#1e1a15);border:1px solid var(--edge);border-radius:10px;padding:10px 12px}
+.kpi span{color:var(--muted);font-size:12px;text-transform:uppercase;letter-spacing:.08em} .kpi b{display:block;font-size:26px;color:var(--gold)}
+.kpi small{color:var(--muted)}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:12px}
+@media (max-width:500px){.grid2{grid-template-columns:minmax(0,1fr)}}
+svg{max-width:100%} .card svg{width:100%;height:auto} svg text{fill:var(--muted);font-size:11px;font-family:Kreon,Georgia,serif}
+.grid{stroke:var(--line)} .act{stroke:var(--accent);stroke-dasharray:4 4;opacity:.6} .actlabel{fill:var(--accent)}
+.explore{fill:var(--explore)} .bench{fill:var(--bench)} .win{fill:var(--win)}
+.roll{fill:none;stroke:var(--roll);stroke-width:2} .champ{fill:none;stroke:var(--champ);stroke-width:2;stroke-dasharray:6 3}
+.pos{fill:var(--pos)} .neg{fill:var(--neg)} .death{fill:var(--neg);opacity:.85} .axis{stroke:var(--muted)}
+.hpline{fill:none;stroke:var(--neg);stroke-width:2}
+table{width:100%;border-collapse:collapse} td,th{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left}
+th{color:var(--gold);font-weight:600} tr.win td{color:var(--win);font-weight:600}
+.big{font-size:20px;font-weight:600;margin:0 0 6px;color:var(--gold)} .path{font-size:18px;letter-spacing:2px}
+.badges{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}
+.badge{border:1px dashed var(--edge);border-radius:10px;padding:10px;opacity:.45} .badge.got{border-style:solid;border-color:var(--gold);opacity:1}
+.badge span{display:block;color:var(--muted);font-size:12px}
+.picks{margin:0;padding-left:18px} .legend span{margin-right:14px}
+pre{white-space:pre-wrap;font:13px/1.5 ui-monospace,Consolas,monospace;margin:0}
+.add{color:var(--win)} .del{color:var(--neg);text-decoration:line-through} .scroll{overflow-x:auto}
+</style></head><body><main>
+<div class=top><h1>Spire AI</h1><span class=status id=status>__CHAR__</span>
+<nav class=tabs><button data-tab=live class=on>Live run</button><button data-tab=history>History</button></nav></div>
+
+<section id=tab-live>
+ <div class=hud id=hud><span class=status id=livestatus>Waiting for the bot...</span></div>
+ <div class=live>
+  <div class="card map"><h2 id=maptitle>Act map</h2><div id=map><p class=muted>No map yet.</p></div></div>
+  <div>
+   <div class=card><h2 id=screentitle>Now</h2><div id=now><p class=muted>Nothing yet.</p></div></div>
+   <div class=card><h2>Run plan</h2><div id=plan class=muted>-</div></div>
+   <div class=card><h2 id=decktitle>Deck</h2><div id=deck class=deck></div></div>
+  </div>
+  <div class=card><h2>Decisions and why</h2><div id=log class=log><p class=muted>No decisions yet.</p></div></div>
+ </div>
+</section>
+
+<section id=tab-history class=hide>__HISTORY__</section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const ICON = {M:"⚔", E:"☠", R:"♨", "$":"$", "?":"?", T:"▣", B:"♛"};
+const POT = __POTIONS__;
+const served = location.protocol.startsWith("http");
+
+function showTab(t){
+  document.querySelectorAll(".tabs button").forEach(b => b.classList.toggle("on", b.dataset.tab === t));
+  $("#tab-live").classList.toggle("hide", t !== "live");
+  $("#tab-history").classList.toggle("hide", t !== "history");
+  try { localStorage.setItem("spire-tab", t); } catch (e) {}
+}
+document.querySelectorAll(".tabs button").forEach(b => b.onclick = () => showTab(b.dataset.tab));
+try { const t = localStorage.getItem("spire-tab"); if (t) showTab(t); } catch (e) {}
+
+const heart = '<svg viewBox="0 0 24 24"><path fill="#d2473a" stroke="#4a0f0a" d="M12 21s-7.5-4.6-9.6-9.3C.9 8.3 3 4.5 6.6 4.5c2.1 0 3.6 1.2 5.4 3.1 1.8-1.9 3.3-3.1 5.4-3.1 3.6 0 5.7 3.8 4.2 7.2C19.5 16.4 12 21 12 21z"/></svg>';
+const coin = '<svg viewBox="0 0 24 24"><circle cx=12 cy=12 r=9 fill="#e2b653" stroke="#6a4a10" stroke-width=2 /><text x=12 y=16 text-anchor=middle font-size=11 fill="#6a4a10">G</text></svg>';
+
+function hud(d){
+  const relics = (d.relics || []).map(r => `<span class=relic title="${esc(r[0])}${r[1] > 0 ? " (" + r[1] + ")" : ""}">${esc(r[0])}</span>`).join("");
+  const pots = (d.potions || []).map(p => p === "Potion Slot" ? '<span class=pot title="empty"></span>'
+    : `<span class="pot full kind-${POT[p] || "tempo"}" title="${esc(p)}"></span>`).join("");
+  const age = Date.now() / 1000 - (d.updated || 0);
+  $("#hud").innerHTML =
+    `<span class=stat>${heart}${d.hp}/${d.max_hp}</span><span class=stat>${coin}${d.gold}</span>` +
+    `<span class=stat>Floor ${d.floor} <span class=muted>&middot; Act ${d.act}</span></span>` +
+    `<span class=muted>Boss: ${esc(d.act_boss)}</span>` +
+    `<span class=muted>Run ${d.run ?? "?"} &middot; ${esc(d.kind ?? "")} &middot; seed ${esc(d.seed ?? "")} &middot; temp ${d.temperature ?? "-"}</span>` +
+    `<span class=chips>${pots}</span><span class=chips>${relics}</span>` +
+    `<span class=status>${age > 20 ? "last update " + Math.round(age) + " s ago" : "live"}</span>`;
+}
+
+function drawMap(d){
+  const nodes = (d.map && d.map.nodes) || [];
+  if (!nodes.length) { $("#map").innerHTML = '<p class=muted>The map appears after Neow.</p>'; return; }
+  const maxY = Math.max(...nodes.map(n => n[1]));
+  const W = 7 * 40 + 20, top = 56, step = 36, H = top + (maxY + 1) * step + 10;
+  const X = x => 30 + x * 40, Y = y => H - 26 - y * step;
+  const key = (x, y) => x + "," + y;
+  const has = new Set(nodes.map(n => key(n[0], n[1])));
+  const route = (d.map.route || []);
+  const onRoute = new Set(route.map(r => key(r[0], r[1])));
+  let edges = "", redges = "", dots = "";
+  for (const [x, y, s, ch] of nodes) for (const [cx, cy] of ch) {
+    const tx = has.has(key(cx, cy)) ? X(cx) : W / 2, ty = has.has(key(cx, cy)) ? Y(cy) : 30;
+    edges += `<line class=edge x1=${X(x)} y1=${Y(y)} x2=${tx} y2=${ty} />`;
+  }
+  for (let i = 1; i < route.length; i++)
+    redges += `<line class=redge x1=${X(route[i-1][0])} y1=${Y(route[i-1][1])} x2=${X(route[i][0])} y2=${Y(route[i][1])} />`;
+  const cur = route.length ? key(route[route.length - 1][0], route[route.length - 1][1]) : "";
+  for (const [x, y, s] of nodes) {
+    const k = key(x, y), cls = [({"$": "S", "?": "Q"})[s] || s, onRoute.has(k) ? "route" : "", k === cur ? "cur" : ""].join(" ");
+    dots += `<g class="${cls}"><circle cx=${X(x)} cy=${Y(y)} r=13 /><text x=${X(x)} y=${Y(y)}>${esc(ICON[s] || s)}</text></g>`;
+  }
+  dots += `<g class=B><circle cx=${W/2} cy=30 r=19 /><text x=${W/2} y=30>${ICON.B}</text></g>`;
+  $("#map").innerHTML = `<svg viewBox="0 0 ${W} ${H}" role=img aria-label="Act map">${edges}${redges}${dots}</svg>`;
+  $("#maptitle").textContent = `Act ${d.act} map`;
+}
+
+function intent(m){
+  const v = m.intent || "UNKNOWN";
+  if (v.includes("ATTACK")) {
+    const extra = v === "ATTACK" ? "" : " +" + v.split("_")[1].toLowerCase();
+    return `<span class=intent>⚔ ${m.dmg ?? "?"}${m.hits > 1 ? "×" + m.hits : ""}${extra}</span>`;
+  }
+  const cls = v.includes("BUFF") ? "buff" : v.includes("DEBUFF") ? "debuff" : v.includes("DEFEND") ? "defend" : "other";
+  const label = {BUFF:"▲ buff", DEBUFF:"▼ debuff", STRONG_DEBUFF:"▼▼ debuff", DEFEND:"⛨ block",
+    DEFEND_BUFF:"⛨ block + buff", DEFEND_DEBUFF:"⛨ block + debuff", SLEEP:"z z z", STUN:"stunned",
+    ESCAPE:"fleeing", UNKNOWN:"?"}[v] || v.toLowerCase();
+  return `<span class="intent ${cls}">${label}</span>`;
+}
+
+function now(d){
+  const c = d.combat;
+  const last = (d.decisions || [])[0];
+  if (c && d.screen === "COMBAT") {
+    $("#screentitle").textContent = `Combat · turn ${c.turn}`;
+    const mons = c.monsters.filter(m => !m.gone).map(m => {
+      const pct = Math.max(0, Math.min(100, 100 * m.hp / Math.max(1, m.max_hp)));
+      return `<div class=enemy><b>${esc(m.name)}</b>${intent(m)}${m.block ? `<span class=shield>⛨ ${m.block}</span>` : ""}
+        <div class=bar><i style="width:${pct}%"></i><span>${m.hp}/${m.max_hp}</span></div>
+        <div class=pw>${m.powers.map(p => esc(p[0]) + (p[1] && p[1] !== -1 ? " " + p[1] : "")).join(" · ")}</div></div>`;
+    }).join("");
+    const plan = (d.decisions || []).find(x => x.screen === "COMBAT" && x.why && x.why.includes("turn plan"));
+    const nextName = plan && plan.why.match(/turn plan ([^,|>]+)/);
+    let marked = false;
+    const hand = c.hand.map(h => {
+      const next = !marked && nextName && h.name.trim() === nextName[1].trim();
+      if (next) marked = true;
+      return `<div class="ctile ${esc(h.type)} ${h.ok ? "" : "no"} ${next ? "next" : ""}"><span class=orb>${h.cost < 0 ? "X" : h.cost}</span>
+        <span>${esc(h.name)}</span><span class=t>${esc(h.type.toLowerCase())}</span></div>`;
+    }).join("");
+    $("#now").innerHTML = `<div class=enemies>${mons}</div>
+      <div class=player><span class=energy title="energy">${c.energy}</span>
+       <span class=stat>${heart}${c.hp}/${c.max_hp}</span>${c.block ? `<span class=shield>⛨ ${c.block}</span>` : ""}
+       <span class=pw>${c.powers.map(p => esc(p[0]) + " " + p[1]).join(" · ")}</span>
+       <span class=piles>draw ${c.draw} · discard ${c.discard} · exhaust ${c.exhaust}</span></div>
+      <div class=hand>${hand}</div>
+      ${plan ? `<div class=plan>${esc(plan.why)}</div>` : ""}`;
+  } else {
+    $("#screentitle").textContent = (d.screen || "").replace(/_/g, " ").toLowerCase();
+    $("#now").innerHTML = last ? `<p class=a><b>${esc(last.action)}</b></p><div class=plan>${esc(last.why || "-")}</div>`
+                               : "<p class=muted>-</p>";
+  }
+}
+
+function render(d){
+  $("#livestatus") && ($("#livestatus").textContent = "");
+  hud(d); drawMap(d); now(d);
+  const p = d.plan || {};
+  $("#plan").innerHTML = `<b style="color:var(--gold)">${esc(p.archetype || "Undecided")}</b>` +
+    ` <span class=muted>commitment ${p.commitment ?? 0}</span><br>Core: ${esc((p.core || []).join(", ") || "-")}` +
+    `<br>Wanted: ${esc((p.wanted || []).join(", ") || "-")}<br><span class=muted>LLM calls this run: ${d.llm_calls ?? 0}</span>`;
+  const counts = {};
+  for (const c of d.deck || []) { const k = c.name + "|" + c.type; counts[k] = (counts[k] || 0) + 1; }
+  $("#decktitle").textContent = `Deck (${(d.deck || []).length})`;
+  $("#deck").innerHTML = Object.entries(counts).sort().map(([k, n]) => {
+    const [name, type] = k.split("|");
+    return `<span class="dchip ${esc(type)}">${esc(name)}${n > 1 ? " ×" + n : ""}</span>`;
+  }).join("");
+  $("#log").innerHTML = (d.decisions || []).map(x =>
+    `<div><span class=muted>${esc(x.t)} · F${x.floor} · ${esc(x.screen.toLowerCase())}</span><br>` +
+    `<span class=a>${esc(x.action)}</span>${x.why ? `<br><span class=w>${esc(x.why)}</span>` : ""}</div>`).join("");
+}
+
+async function poll(){
+  try {
+    const r = await fetch("live.json?t=" + Date.now(), {cache: "no-store"});
+    if (!r.ok) throw new Error(r.status);
+    render(await r.json());
+  } catch (e) {
+    $("#hud").innerHTML = `<span class=status>${served ? "Waiting for the bot to start a run..." :
+      "Open http://127.0.0.1:8765/ while the bot runs to watch it live (this file can't read live data)."}</span>`;
+  }
+}
+async function refreshHistory(){
+  if (!served) return;
+  try { const r = await fetch("history.html?t=" + Date.now(), {cache: "no-store"}); if (r.ok) $("#tab-history").innerHTML = await r.text(); } catch (e) {}
+}
+poll(); setInterval(poll, 2000); setInterval(refreshHistory, 30000);
+</script></body></html>

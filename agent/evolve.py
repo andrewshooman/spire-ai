@@ -48,6 +48,7 @@ from sts_bench.smoke import session_dir  # noqa: E402
 from sts_bench.trajectory import read_records  # noqa: E402
 
 import dashboard  # noqa: E402
+import live  # noqa: E402
 import policy  # noqa: E402
 from model import Model  # noqa: E402
 
@@ -419,6 +420,16 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
     own = server is None
     server = server or HarnessServer(port=args.port)
     aborted_streak = 0
+    live_port = getattr(args, "live_port", 0)
+    httpd = live.serve(ws.root, live_port) if live_port else None
+    if live_port:
+        try:
+            dashboard.render(ws.root)
+        except Exception as exc:
+            say(f"dashboard render failed: {type(exc).__name__}: {exc}")
+        say(f"live view: http://127.0.0.1:{live_port}/" if httpd else
+            f"live view: port {live_port} is busy (another bot running?); continuing without it")
+    viewer = live.LiveView(ws.root / "live.json") if live_port else None
 
     def play_leftover(env, router) -> None:
         """Finish a run already in progress (after a stall or a restart) without learning from it."""
@@ -451,7 +462,11 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                 model=ws.model, tracker=policy.RunTracker(), temperature=temp,
                 params=ws.model.es_params(eps), rng=rng, learn=explore,
                 llm_events=args.llm_events, llm_model=args.model, llm_base_url=args.base_url,
-                strategy=ws.strategy)
+                strategy=ws.strategy, live=viewer)
+            if viewer is not None:
+                viewer.info = {"run": index + 1, "kind": kind, "seed": seed, "temperature": round(temp, 2),
+                               "runs_trained": ws.model.meta["runs_trained"]}
+                viewer.route, viewer.route_act = [], 0
             say(f"=== run {index + 1} [{kind}] seed {seed} | temperature {temp:.2f} ===")
             job = JobSpec(agent="policy", seed=seed, character=args.character, ascension=args.ascension,
                           provider=provider, api="chat")
@@ -538,6 +553,8 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                 say(f"dashboard render failed: {type(exc).__name__}: {exc}")
         return 0
     finally:
+        if httpd is not None:
+            httpd.shutdown()
         if own:
             server.close()
 
@@ -565,6 +582,7 @@ def main() -> None:
                    help="restart Slay the Spire by itself when it hangs or disconnects")
     p.add_argument("--max-aborts", type=int, default=3, help="aborted runs in a row before stopping")
     p.add_argument("--step-timeout", type=float, default=None, help="seconds to wait for the game per command")
+    p.add_argument("--live-port", type=int, default=8765, help="serve the live page here (0 = off)")
     p.add_argument("--port", type=int, default=9999)
     p.add_argument("--workdir", default=None, help="default: evolve/<character> next to agent/")
     p.add_argument("--strategy-baseline", default=str(HERE / "strategy_baseline.md"))

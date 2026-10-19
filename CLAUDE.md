@@ -30,7 +30,11 @@ agent\evolve.py     Main loop. Cycles (default 10): explore runs learn; 2 bench 
                     runs (NOTES / NUDGES json / LEARNED -> strategy.md "Learned from runs"). Writes runs\run_NNNN.json,
                     progress.csv, state.json, dashboard. Patches: Path.symlink_to (Windows), session.choose_command
                     (tutorial "FTUE" tip screens: key Confirm / wait 300). Registers SCAFFOLDS["policy"].
-agent\dashboard.py  Static dashboard.html (inline SVG, auto-refresh 30 s), rendered after every run.
+agent\live.py       LiveView: policy writes evolve\<char>\live.json (~1/s, on screen change): HUD data, map + route, combat
+                    (hand, enemies, intents), last 40 decisions with "why". serve() = localhost http thread.
+agent\dashboard.py  Renders index.html (= dashboard.html) from template agent\page.html: Spire-themed app, tabs Live run
+                    (polls live.json every 2 s) / History (inline-SVG charts; history.html refreshed every 30 s).
+                    evolve.py serves the workspace at http://127.0.0.1:8765/ (--live-port, 0 = off).
 agent\evolve_tools.py  watch/stats/weights/notes/dashboard/report/campaign/baseline/reset (the .bat launchers).
 agent\strategy_baseline.md  Playbook by topic (Neow, Combat, Map, Events, Boss relics, Act 1-4, classes). Synced into
                     evolve\<char>\strategy.md on start, keeping the coach's "Learned from runs" bullets.
@@ -53,14 +57,12 @@ The game must be at the main menu, not mid-run. A fresh profile shows tutorial t
 sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run after every change)
 
 ## Open tasks
-1. install.ps1: support a repo cloned directly into C:\sts-evolve (skip the copy when source == destination). Add README
+1. DONE install.ps1 (copy or in-place, sts-bench pin, venv, CommunicationMod config, mods check, Ollama model,
    shortcuts, self-tests) + README "Setup on a new PC" and "Updating".
-2. Live view: PolicyAgent writes live.json (~1/s): floor, act, HP, gold, deck, relics, potions, plan, screen, combat
-   (hand with costs, enemies HP/block/intent, energy), last 40 decisions with their "why" notes. evolve.py serves
-   the workspace at http://127.0.0.1:8765 (thread); the live page polls every 2 s; dashboard.bat/start.bat open it.
-3. Slay the Spire themed redesign: dark stone/parchment, Kreon-style font, vertical act map with room icons, HUD top
-   bar (heart HP, gold, relics, potion slots), card tiles with a cost orb, enemy panels with HP bar and intent;
-   tabs: Live run / History (existing charts restyled).
+2. DONE live view (live.json + server on 8765; dashboard.bat opens it when the bot runs; start.bat opens it
+   unless OPEN_LIVE_VIEW=no).
+3. DONE Spire-themed page (agent\page.html): HUD, vertical act map with route, enemy panels, card tiles with cost
+   orbs and the planned next card highlighted, decision log; History tab restyled.
 4. After real testing: fix edge cases from logs (unhandled screens, loops, forced moves); add tier priors for
    Silent/Defect/Watcher; consider experiments (LLM events on/off, coach on/off, learning rate).
 Commit and push after each working change.

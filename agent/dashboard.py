@@ -1,8 +1,13 @@
-"""dashboard.html: everything about the bot on one auto-refreshing page.
+"""The bot's page: a Slay the Spire themed app with two tabs.
 
-Built from the workspace files only (runs/*.json, progress.csv, model.json,
-state.json, coach.md, strategy.md), with inline SVG charts and no external
-scripts, so it opens straight from disk and works offline.
+  Live run   polls live.json (written by the policy every ~1 s) when served by
+             evolve.py at http://127.0.0.1:8765/ -- HUD, act map, enemies,
+             hand, the turn plan and every decision with its reason
+  History    built here from the workspace files (runs/*.json, progress.csv,
+             model.json, state.json, coach.md, strategy.md) as inline SVG;
+             rewritten after every run and refreshed by the open page
+
+The template is agent/page.html; no external scripts, so it also opens from disk.
 """
 
 from __future__ import annotations
@@ -295,40 +300,7 @@ def render(root: Path) -> Path:
     ]
     kpi_html = "".join(f"<div class=kpi><span>{k}</span><b>{v}</b><small>{s}</small></div>" for k, v, s in kpis)
 
-    page = f"""<!doctype html><html><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<meta http-equiv="refresh" content="30"><title>Spire AI dashboard</title>
-<style>
-:root{{--bg:#f6f5f1;--card:#fff;--fg:#1d1d1f;--muted:#7a7a80;--line:#e3e1da;--accent:#c2410c;
---explore:#94a3b8;--bench:#ea580c;--win:#16a34a;--champ:#16a34a;--roll:#2563eb;--pos:#2563eb;--neg:#dc2626;color-scheme:light}}
-@media (prefers-color-scheme:dark){{:root{{--bg:#111214;--card:#1b1c1f;--fg:#ececec;--muted:#8b8d93;--line:#2c2e33;
---accent:#fb923c;--explore:#5b6472;--bench:#fb923c;--win:#4ade80;--champ:#4ade80;--roll:#60a5fa;--pos:#60a5fa;--neg:#f87171;color-scheme:dark}}}}
-*{{box-sizing:border-box}} body{{margin:0;background:var(--bg);color:var(--fg);font:14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}}
-main{{max-width:1180px;margin:0 auto;padding:20px}} h1{{font-size:22px;margin:0}} h2{{font-size:15px;margin:0 0 10px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}}
-.card{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px;margin:14px 0}}
-.kpis{{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}}
-.kpi{{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:12px}} .kpi span{{color:var(--muted);font-size:12px}}
-.kpi b{{display:block;font-size:24px}} .kpi small{{color:var(--muted)}}
-.grid2{{display:grid;grid-template-columns:repeat(auto-fit,minmax(380px,1fr));gap:14px}}
-svg{{width:100%;height:auto}} svg text{{fill:var(--muted);font-size:11px}}
-.grid{{stroke:var(--line)}} .act{{stroke:var(--accent);stroke-dasharray:4 4;opacity:.6}} .actlabel{{fill:var(--accent)}}
-.explore{{fill:var(--explore)}} .bench{{fill:var(--bench)}} .win{{fill:var(--win)}}
-.roll{{fill:none;stroke:var(--roll);stroke-width:2}} .champ{{fill:none;stroke:var(--champ);stroke-width:2;stroke-dasharray:6 3}}
-.pos{{fill:var(--pos)}} .neg{{fill:var(--neg)}} .death{{fill:var(--neg);opacity:.8}} .axis{{stroke:var(--muted)}}
-.hpline{{fill:none;stroke:var(--neg);stroke-width:2}}
-table{{width:100%;border-collapse:collapse}} td,th{{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left}}
-th{{color:var(--muted);font-weight:500}} tr.win td{{color:var(--win);font-weight:600}}
-.muted{{color:var(--muted)}} .big{{font-size:20px;font-weight:600;margin:0 0 6px}} .path{{font-size:18px;letter-spacing:2px}}
-.badges{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:8px}}
-.badge{{border:1px dashed var(--line);border-radius:10px;padding:10px;opacity:.45}} .badge.got{{border-style:solid;border-color:var(--win);opacity:1}}
-.badge span{{display:block;color:var(--muted);font-size:12px}}
-.picks{{margin:0;padding-left:18px}} .legend span{{margin-right:14px}}
-pre{{white-space:pre-wrap;font:13px/1.5 ui-monospace,Consolas,monospace;margin:0}}
-.add{{color:var(--win)}} .del{{color:var(--neg);text-decoration:line-through}}
-.scroll{{overflow-x:auto}}
-</style></head><body><main>
-<h1>Spire AI &middot; {E(model.get('character', ''))}</h1>
-<p class=muted>Updated {__import__('datetime').datetime.now():%Y-%m-%d %H:%M} &middot; refreshes every 30 s</p>
+    history = f"""<p class=muted>Updated {__import__('datetime').datetime.now():%Y-%m-%d %H:%M}</p>
 <div class=kpis>{kpi_html}</div>
 
 <div class=card><h2>Floor reached per run</h2>{_scatter(runs, rows)}
@@ -367,10 +339,25 @@ pre{{white-space:pre-wrap;font:13px/1.5 ui-monospace,Consolas,monospace;margin:0
  <div class=card><h2>Playbook lessons learned</h2><pre>{E(learned) or '(none yet)'}</pre>
   <h2 style="margin-top:14px">Changes since champion</h2>{_diff_html(champ_strategy, strategy)}</div>
 </div>
-</main></body></html>"""
-    out = root / "dashboard.html"
-    out.write_text(page, encoding="utf-8")
-    return out
+"""
+    return write_pages(root, history, model.get("character", ""))
+
+
+def write_pages(root: Path, history: str, character: str) -> Path:
+    """index.html: the themed app (Live run + History tabs); history.html: the History
+    fragment the open page refreshes; dashboard.html: same as index for file:// use."""
+    sys.path.insert(0, str(HERE))
+    import policy  # lazy: needs the venv
+    shell = (HERE / "page.html").read_text(encoding="utf-8")
+    kinds = {n: k for k, names in policy.POTION_KINDS.items() for n in names}
+    page = (shell.replace("__HISTORY__", history)
+            .replace("__CHAR__", E(character.title()))
+            .replace("__POTIONS__", json.dumps(kinds)))
+    for name, text in (("history.html", history), ("index.html", page), ("dashboard.html", page)):
+        tmp = root / (name + ".tmp")
+        tmp.write_text(text, encoding="utf-8")
+        tmp.replace(root / name)
+    return root / "dashboard.html"
 
 
 if __name__ == "__main__":
