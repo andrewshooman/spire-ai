@@ -325,6 +325,15 @@ def coach(ws: Workspace, args, background: bool = False):
     bottom = ", ".join(f"{n} {v:+.2f}" for n, v in table[-8:])
     nodes = ", ".join(f"{k[5:]} {v:+.2f}" for k, v in sorted(model.weights.items()) if k.startswith("node:"))
     deaths = death_table(ws.runs())
+    risky = {}
+    for r in ws.runs()[-80:]:
+        if r.get("kind") == "explore" and "risk" in r and not r.get("aborted"):
+            risky.setdefault(r["risk"], []).append(r)
+    if risky:
+        deaths += "\nDEPTH BY RISK LEVEL (explore runs; risk = extra pull toward act 1-2 elites):\n" + "\n".join(
+            f"- risk {k:+.1f}: {len(v)} runs, avg floor {mean(x['floor'] for x in v):.1f}, "
+            f"elites {mean(x.get('elites_killed', 0) for x in v):.1f}, act 1 cleared "
+            f"{sum(x['floor'] >= 17 for x in v)}/{len(v)}" for k, v in sorted(risky.items()))
     params = ", ".join(f"{k} {v:.2f}" for k, v in model.params.items())
     system = ("You coach a learning Slay the Spire bot. A fast policy plays every move; its card, path, "
               "rest and shop choices are learned weights trained on how deep each run gets. You see its "
