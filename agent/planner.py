@@ -396,6 +396,8 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
         dealt += removed
         if m.barricade and not m.dead:
             v += P["damage"] * 0.8 * max(0, m.block0 - m.block)
+        if m.name == "The Champ" and not m.dead and m.hp0 > m.max_hp // 2 >= m.hp > 0.3 * m.max_hp:
+            v -= 8.0  # playbook: don't push the Champ past half (his transform) unless the burst goes deep
         if m.dead:
             kills += 1
             v += P["kill"] * m.prio

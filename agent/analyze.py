@@ -97,6 +97,18 @@ def main() -> None:
                for k, v in sorted(by.items())], ("risk", "runs", "avg floor", "elites", "act1 cleared", "act3"))
         out["risk"] = {str(k): round(mean(x["floor"] for x in v), 2) for k, v in by.items()}
 
+    # build flavor tried early (explore runs)
+    flav = [r for r in runs if r.get("kind") == "explore" and "flavor" in r]
+    if flav:
+        print("\nDepth by early build flavor (explore runs):")
+        by = collections.defaultdict(list)
+        for r in flav:
+            by[r["flavor"] or "(none)"].append(r)
+        table([(k, len(v), f"{mean(x['floor'] for x in v):.1f}", pct(sum(x['floor'] >= 34 for x in v), len(v)),
+                sum(x["victory"] for x in v), (v[-1].get("plan") or {}).get("archetype", ""))
+               for k, v in sorted(by.items())], ("flavor", "runs", "avg floor", "act2 cleared", "wins", "last plan"))
+        out["flavor"] = {k: round(mean(x["floor"] for x in v), 2) for k, v in by.items()}
+
     # who picked cards
     pick_src = collections.Counter()
     for r in runs:

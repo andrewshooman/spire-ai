@@ -106,6 +106,7 @@ class Config:
     llm_cards: bool = True       # the LLM advises card rewards too
     llm_share: float = 0.7       # explore runs: share of card picks that follow the LLM
     risk: float = 0.0            # explore runs sample a risk appetite: extra pull toward elites in acts 1-2
+    flavor: str | None = None    # explore runs sample a build flavor (an archetype) to try early in act 1
 
 
 CONFIG = Config()
@@ -288,7 +289,8 @@ class PolicyAgent:
             choice, why = pick(["buff", "tempo", "damage"]), "boss fight: potions are free power"
         elif boss and hp_frac < 0.5:
             choice, why = pick(["heal", "defense", "buff", "damage", "tempo"]), "boss fight, HP low"
-        elif elite and c.turn == 1 and used_now == 0 and (len(usable) >= 2 or hp_frac < 0.6):
+        elif elite and c.turn == 1 and used_now == 0 and (len(usable) >= 2 or hp_frac < 0.6) \
+                and g.floor % 17 < 12:  # close to the boss: keep them for it
             choice, why = pick(["buff", "damage", "tempo"]), "elite opener"
         elif hp_frac < P["potion_hp"] and taken > 0:
             choice, why = pick(["defense", "heal"]), "low HP"
@@ -373,6 +375,39 @@ class PolicyAgent:
         tr.plan = plan
         return commit
 
+    @staticmethod
+    def _boss_needs_now(g) -> dict:
+        """The act boss's needs, stronger in the second half of the act when it is close."""
+        needs = C.BOSS_NEEDS.get(g.act_boss, {})
+        late = (g.floor % 17) >= 8 or g.floor % 17 == 0
+        return {k: v * (1.0 if late else 0.5) for k, v in needs.items()}
+
+    def _card_bonus(self, card, g) -> float:
+        b = sum(v for r, v in self._boss_needs_now(g).items() if r in C.roles(card))
+        if CONFIG.flavor and g.act == 1 and C.base_name(card.name) in C.archetypes(g.character).get(CONFIG.flavor, {}):
+            b += 0.6  # this run tries a different build early; learning sees how it goes
+        return b
+
+    @staticmethod
+    def _skip_bonus(g) -> float:
+        n = len(g.deck)
+        if g.act >= 2 and n >= 32:
+            return 1.0
+        if g.act >= 2 and n >= 25:
+            return 0.6
+        return 0.0
+
+    def _pick_guidance(self, g, commit: dict) -> str:
+        syn = ", ".join(f"{a} {v:.0%}" for a, v in sorted(commit.items(), key=lambda kv: -kv[1]) if v > 0)
+        needs = ", ".join(k for k, _ in sorted(C.BOSS_NEEDS.get(g.act_boss, {}).items(), key=lambda kv: -kv[1]))
+        text = (f"Synergies so far: {syn or 'none yet'}. Build around what the deck already has instead of forcing "
+                "an archetype; early in act 1 take strong flexible cards (damage, area damage, block, draw).")
+        if needs:
+            text += f" The act boss {g.act_boss} tests: {needs}."
+        if g.act >= 2 and len(g.deck) >= 25:
+            text += f" The deck already has {len(g.deck)} cards: skip unless the card is clearly better than the deck's average card."
+        return text
+
     def _card_reward(self, message, decision):
         g, model, tr = message.game_state, CONFIG.model, CONFIG.tracker
         offered = g.screen.cards
@@ -384,7 +419,8 @@ class PolicyAgent:
         can_skip = validate(ReturnBack(), message).ok
         if can_skip:
             options.append({f"skip:a{min(g.act, 4)}": 1.0})
-        idx, probs = model.choose(options, CONFIG.temperature, CONFIG.rng)
+        bonus = [self._card_bonus(card, g) for card in offered] + ([self._skip_bonus(g)] if can_skip else [])
+        idx, probs = model.choose(options, CONFIG.temperature, CONFIG.rng, bonus)
         labels = [card.name for card in offered] + (["(skip)"] if can_skip else [])
         by = "policy"
         # with thinking off the LLM answers in ~0.2 s, so it advises every card pick; explore runs
@@ -401,8 +437,8 @@ class PolicyAgent:
                              sorted(collections.Counter(d.name for d in g.deck).items()))
             k = self._ask_option(message, described,
                                  f"Card reward on floor {g.floor} (act {g.act}, boss {g.act_boss}). "
-                                 f"Deck ({len(g.deck)}): {deck}. Pick the card that most improves this deck "
-                                 f"for the fights ahead, or skip if none does.",
+                                 f"Deck ({len(g.deck)}): {deck}. {self._pick_guidance(g, commit)} "
+                                 f"Pick the card that most improves this deck for the fights ahead, or skip if none does.",
                                  topic="card", act=g.act)
             if k is not None:
                 idx, by = k, self._llm_source
@@ -516,7 +552,7 @@ class PolicyAgent:
             out["E"] = 1.0 if hp_frac >= 0.5 and damage >= 1 else (0.3 if hp_frac >= 0.5 else -0.6)
             out["E"] += CONFIG.risk if hp_frac >= 0.4 else 0.0
         elif g.act == 2:
-            out["E"] = 0.6 if hp_frac >= 0.6 else -0.3
+            out["E"] = 0.9 if hp_frac >= 0.6 else -0.3
             out["E"] += CONFIG.risk if hp_frac >= 0.5 else 0.0
         elif hp_frac < 0.7:
             out["E"] = -1.0                  # act 3 elites end shaky runs
@@ -539,7 +575,7 @@ class PolicyAgent:
         pre_boss = g.floor in (15, 32, 49)
         need = 0.55 if g.act_boss == "Hexaghost" else (0.75 if g.act >= 2 else 0.65)
         rule = {"rest": 4.0 if pre_boss and hp_frac < need else 0.0,
-                "smith": 1.0 if pre_boss and hp_frac >= 0.8 else 0.0}
+                "smith": 1.0 if pre_boss and hp_frac >= 0.8 else (0.8 if not pre_boss and hp_frac >= 0.5 else 0.0)}
         for i, opt in enumerate(g.choice_list):
             if opt in ("rest", "smith"):
                 options.append({f"{opt}:h{hb}": 1.0}); bonus.append(rule[opt])

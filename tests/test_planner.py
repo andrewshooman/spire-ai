@@ -253,6 +253,19 @@ def main() -> None:
           pull(NS(gold=40, deck=[])) < 0 < pull(NS(gold=120, deck=[])) < pull(NS(gold=300, deck=[]))
           and pull(NS(gold=120, deck=[NS(type=NS(value="CURSE"))])) > pull(NS(gold=120, deck=[])))
 
+    # boss-aware picks and less dilution late; Champ: don't cross half without a deep burst
+    gq = NS(act_boss="The Champ", floor=28, act=2, character="IRONCLAD", deck=[NS()] * 30)
+    policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P), llm_events=False)
+    ag = policy.PolicyAgent()
+    infl = parse_message(state(["Inflame"], [monster("Jaw Worm", 40, 0)])).game_state.combat_state.hand[0]
+    strike = parse_message(state(["Strike"], [monster("Jaw Worm", 40, 0)])).game_state.combat_state.hand[0]
+    check("before the Champ, scaling cards get a boost", ag._card_bonus(infl, gq) > ag._card_bonus(strike, gq))
+    check("big act-2 deck leans toward skipping", ag._skip_bonus(gq) > 0)
+    msg = state(["Strike"], [monster("The Champ", 420, 0)], energy=1)
+    msg.game_state.combat_state.monsters[0].current_hp = 214
+    plan = planner.plan_turn(msg, P, [])
+    check("Champ: no chip across half", not plan.steps, str(plan.steps))
+
     # per-act credit: an act-2 choice in a run that died early in act 2 is judged against act-2 runs
     m = Model(Path(tempfile.mkdtemp()) / "m.json")
     ev = lambda a, key: {"options": [{key: 1.0}, {"other": 1.0}], "chosen": 0, "probs": [0.5, 0.5], "temp": 1.0, "act": a}
