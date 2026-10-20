@@ -51,6 +51,7 @@ from sts_bench.trajectory import read_records  # noqa: E402
 
 import dashboard  # noqa: E402
 import cards as cards_mod  # noqa: E402
+import evidence  # noqa: E402
 import live  # noqa: E402
 import policy  # noqa: E402
 from model import Model  # noqa: E402
@@ -504,6 +505,28 @@ def wait_until_ready(env: CommunicationModEnv, seconds: float) -> dict | None:
     return None
 
 
+REPLAY_KEEP = 150
+
+
+def replay(ws: Workspace, events: list[dict], reward: float, run_no: int, args) -> int:
+    """Experience replay: store this run's decisions, then re-learn a few older runs with the
+    current weights (smaller step), so every 5-minute run teaches more than once."""
+    path = ws.root / "replay.jsonl"
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    lines.append(json.dumps({"run": run_no, "reward": reward, "events": events}, separators=(",", ":")))
+    lines = lines[-REPLAY_KEEP:]
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    older = lines[:-1]
+    k = min(args.replay, len(older))
+    for line in random.sample(older, k):
+        try:
+            old = json.loads(line)
+            ws.model.learn(old["events"], old["reward"], lr=args.lr * args.replay_lr, replay=True)
+        except (json.JSONDecodeError, KeyError):
+            continue
+    return k
+
+
 def load_cache(ws: Workspace) -> dict:
     p = ws.root / "llm_cache.json"
     try:
@@ -587,6 +610,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                 llm_cards=args.llm_cards, llm_share=args.llm_share,
                 risk=rng.choice([-0.5, 0.0, 0.5, 1.0, 1.5]) if explore else 0.0,
                 flavor=rng.choice([None] + sorted(cards_mod.archetypes(args.character.upper()))) if explore else None,
+                evidence=evidence.build(ws.runs()[-400:]),
                 llm_cache=llm_cache if args.llm_cache else None)
             if viewer is not None:
                 done = ws.runs()[-10:]
@@ -650,6 +674,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
             learned = {}
             if explore and s["decisions"] >= 5:
                 learned = ws.model.learn(policy.CONFIG.tracker.events, reward, lr=args.lr)
+                learned["replayed"] = replay(ws, policy.CONFIG.tracker.events, reward, index + 1, args)
                 fit = fight_fitness(s, reward)
                 if es_sign > 0:
                     ws.state["es_pair"] = {"eps": eps, "seed": seed, "f_plus": fit}
@@ -734,6 +759,8 @@ def main() -> None:
     p.add_argument("--llm-cache", action=argparse.BooleanOptionalAction, default=True,
                    help="reuse the LLM's event answers across runs (evolve/<char>/llm_cache.json)")
     p.add_argument("--lr", type=float, default=0.08, help="learning rate for the choice weights")
+    p.add_argument("--replay", type=int, default=3, help="older runs re-learned after each explore run (0 = off)")
+    p.add_argument("--replay-lr", type=float, default=0.3, help="replay step size as a fraction of --lr")
     p.add_argument("--cycle", type=int, default=10, help="runs per cycle, bench runs included")
     p.add_argument("--bench-seeds", default="BENCHA1,BENCHB2")
     p.add_argument("--revert-margin", type=float, default=1.0,

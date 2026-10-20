@@ -155,11 +155,38 @@ class Model:
         depth = f / 50.0 + 0.6 * max(0, f - 17) / 34.0 + 0.8 * max(0, f - 34) / 17.0
         return depth + 0.06 * min(elites, 6) + (1.0 if victory else 0.0)
 
-    def learn(self, events: list[dict], reward: float, lr: float = 0.08) -> dict:
-        """REINFORCE with per-act credit: a choice made in act a is judged against the
-        running average reward of runs that *reached* act a. With one shared baseline every
-        act-2 choice looked good just because the run got past act 1 (and act-1 choices
-        carried all the noise of acts 2-3); per-act baselines remove that bias and variance."""
+    VALUE_MIN_RUNS = 20   # runs before the learned value estimate replaces the per-act baselines
+
+    def value(self, state: dict | None) -> float | None:
+        """Learned estimate of a run's final reward from its state at a decision (HP, deck, relics,
+        act...): a linear model fitted on every past decision -> final reward."""
+        vw = self.meta.get("value_w")
+        if not state or not vw or self.meta.get("value_runs", 0) < self.VALUE_MIN_RUNS:
+            return None
+        return vw.get("bias", 0.0) + sum(vw.get(k, 0.0) * x for k, x in state.items())
+
+    def fit_value(self, events: list[dict], reward: float, lr: float = 0.02) -> None:
+        vw = self.meta.setdefault("value_w", {"bias": 0.0})
+        states = [ev["state"] for ev in events if ev.get("state")]
+        for _ in range(3):
+            for s in states:
+                pred = vw.get("bias", 0.0) + sum(vw.get(k, 0.0) * x for k, x in s.items())
+                err = reward - pred
+                vw["bias"] = vw.get("bias", 0.0) + lr * err
+                for k, x in s.items():
+                    vw[k] = vw.get(k, 0.0) + lr * err * x
+        if states:
+            errs = [reward - (vw["bias"] + sum(vw.get(k, 0.0) * x for k, x in s.items())) for s in states]
+            self.meta["value_var"] = 0.9 * self.meta.get("value_var", 0.04) + 0.1 * (sum(e * e for e in errs) / len(errs))
+            self.meta["value_runs"] = self.meta.get("value_runs", 0) + 1
+
+    def learn(self, events: list[dict], reward: float, lr: float = 0.08, replay: bool = False) -> dict:
+        """REINFORCE with a per-decision baseline.
+
+        Each choice is judged against the learned value of the state it was made in (value());
+        until that model has seen VALUE_MIN_RUNS runs, against the running average of runs that
+        reached the same act (per-act credit). replay=True re-learns an older run: action
+        probabilities are recomputed with the current weights and no baseline is updated."""
         acts = self.meta.setdefault("act_baseline", {})
         by_act: dict[int, list[dict]] = {}
         for ev in events:
@@ -169,27 +196,37 @@ class Model:
             st = acts.setdefault(str(a), {"b": None, "var": 0.04})
             base = reward if st["b"] is None else st["b"]
             advs[a] = max(-3.0, min(3.0, (reward - base) / math.sqrt(max(st["var"], 1e-4))))
-            st["b"] = base + 0.1 * (reward - base)
-            st["var"] = 0.9 * st["var"] + 0.1 * (reward - base) ** 2
+            if not replay:
+                st["b"] = base + 0.1 * (reward - base)
+                st["var"] = 0.9 * st["var"] + 0.1 * (reward - base) ** 2
+        vstd = math.sqrt(max(self.meta.get("value_var", 0.04), 1e-4))
         changed: dict[str, float] = {}
+        used_value = 0
         for a, evs in by_act.items():
-            adv = advs[a]
             for ev in evs:
-                probs, chosen, temp = ev["probs"], ev["chosen"], max(ev.get("temp", 1.0), 0.15)
+                v = self.value(ev.get("state"))
+                if v is None:
+                    adv = advs[a]
+                else:
+                    adv = max(-3.0, min(3.0, (reward - v) / vstd))
+                    used_value += 1
+                chosen, temp = ev["chosen"], max(ev.get("temp", 1.0), 0.15)
+                probs = (self.softmax([self.score(f) for f in ev["options"]], temp) if replay else ev["probs"])
                 for i, feats in enumerate(ev["options"]):
                     g = ((1.0 if i == chosen else 0.0) - probs[i]) / temp
                     if abs(g) < 1e-6:
                         continue
-                    for k, v in feats.items():
-                        delta = lr * adv * g * v
+                    for k, x in feats.items():
+                        delta = lr * adv * g * x
                         self.weights[k] = max(-6.0, min(6.0, self.w(k) + delta))
                         changed[k] = changed.get(k, 0.0) + delta
-        # whole-run baseline kept for the dashboard and the coach
-        base = self.meta["baseline"] if self.meta["baseline"] is not None else reward
-        self.meta["baseline"] = base + 0.1 * (reward - base)
-        self.meta["var"] = 0.9 * self.meta["var"] + 0.1 * (reward - base) ** 2
-        self.meta["runs_trained"] += 1
-        return {"advantage": advs.get(1, 0.0), "act_advantage": advs,
+        if not replay:
+            self.fit_value(events, reward)
+            base = self.meta["baseline"] if self.meta["baseline"] is not None else reward
+            self.meta["baseline"] = base + 0.1 * (reward - base)
+            self.meta["var"] = 0.9 * self.meta["var"] + 0.1 * (reward - base) ** 2
+            self.meta["runs_trained"] += 1
+        return {"advantage": advs.get(1, 0.0), "act_advantage": advs, "value_used": used_value,
                 "baseline": self.meta["baseline"], "changed": changed}
 
     def es_sample(self, rng: random.Random, sigma: float = 0.15) -> dict[str, float]:

@@ -33,6 +33,7 @@ from sts_bench.state.serialize import cursory_view
 from sts_bench.tools.card_db import card_text, upgraded_card_text
 
 import cards as C
+import evidence
 import gamedata
 import planner
 from model import Model, hp_bucket
@@ -107,6 +108,7 @@ class Config:
     llm_share: float = 0.7       # explore runs: share of card picks that follow the LLM
     risk: float = 0.0            # explore runs sample a risk appetite: extra pull toward elites in acts 1-2
     flavor: str | None = None    # explore runs sample a build flavor (an archetype) to try early in act 1
+    evidence: dict | None = None # this bot's track record (evidence.build), shown to the LLM
 
 
 CONFIG = Config()
@@ -213,8 +215,11 @@ class PolicyAgent:
         decision.action = action
         if note:
             decision.transcript = [{"role": "assistant", "content": note}]
-        for ev in tr.events[n_events:]:
-            ev.setdefault("act", g.act)  # per-act credit assignment in model.learn
+        if len(tr.events) > n_events:
+            st = self._state_features(g)
+            for ev in tr.events[n_events:]:
+                ev.setdefault("act", g.act)  # per-act credit assignment in model.learn
+                ev.setdefault("state", st)   # input to the learned value estimate
         tr.count("COMBAT" if handler == self._combat else screen)
         if cfg.live is not None:
             try:
@@ -223,6 +228,21 @@ class PolicyAgent:
                 text = str(action)
             cfg.live.update(message, text, note, tr, force=screen in ("GAME_OVER", "BOSS_REWARD"))
         return decision
+
+    def _state_features(self, g) -> dict:
+        """Compact run state for the value estimate (all roughly 0..1)."""
+        deck = list(g.deck)
+        roles = collections.Counter(r for d in deck for r in C.roles(d))
+        elites = sum(1 for p in CONFIG.tracker.path if p.get("node") == "E")
+        return {
+            "hp": g.current_hp / max(1, g.max_hp), "maxhp": g.max_hp / 100, "fl": g.floor / 50,
+            "a2": 1.0 if g.act == 2 else 0.0, "a3": 1.0 if g.act >= 3 else 0.0,
+            "deck": len(deck) / 30, "basic": sum(1 for d in deck if C.base_name(d.name) in C.BASIC) / 10,
+            "up": sum(1 for d in deck if d.upgrades) / 10, "relics": len(g.relics) / 10,
+            "gold": min(g.gold, 500) / 300, "curse": sum(1 for d in deck if d.type.value == "CURSE") / 3,
+            "scal": roles["scaling"] / 5, "aoe": roles["aoe"] / 3, "blk": roles["block"] / 6,
+            "dmg": roles["damage"] / 8, "draw": roles["draw"] / 4, "elites": elites / 5,
+        }
 
     def _advance(self, message):
         for action in (Proceed(), ReturnBack(), EndTurn(), Choose(choice_index=0)):
@@ -318,7 +338,12 @@ class PolicyAgent:
     def _card_features(self, card, g, commit: dict) -> dict[str, float]:
         char = g.character
         name = C.base_name(card.name)
-        f = {f"card:{name}": 1.0}
+        f = {f"card:{name}": 1.0, f"cardctx:{name}:a{min(g.act, 3)}": 1.0}
+        lean = (CONFIG.tracker.plan or {}).get("lean")
+        if lean and commit.get(lean, 0.0) >= 0.35:
+            f[f"cardctx:{name}|{lean}"] = 1.0
+        if len(g.deck) >= 28:
+            f[f"cardctx:{name}:big"] = 1.0
         for a in C.card_archetypes(char, name):
             f[f"tag:{a}"] = 1.0
             if commit.get(a, 0) > 0:
@@ -430,7 +455,7 @@ class PolicyAgent:
             for k, card in enumerate(offered):
                 text = (card_text(card) or "").replace("\n", " ")
                 described.append(f"{card.name} ({card.type.value.lower()}, cost {card.cost}): {text} "
-                                 f"[policy {probs[k]:.0%}]")
+                                 f"[policy {probs[k]:.0%}] {evidence.card(CONFIG.evidence, card.name, g.act)}".strip())
             if can_skip:
                 described.append(f"Skip this reward [policy {probs[-1]:.0%}]")
             deck = ", ".join(f"{n} x{k}" if k > 1 else n for n, k in
@@ -710,7 +735,8 @@ class PolicyAgent:
                 d = f"{c.type.value.lower()}, cost {c.cost}: {(card_text(c) or '').strip()}"
             if lab == "remove a card":
                 d = "remove one card from the deck for good"
-            return f"{lab}: {d}" if d else lab
+            h = evidence.shop(CONFIG.evidence, lab)
+            return (f"{lab}: {d}" if d else lab) + (f" {h}" if h else "")
 
         listing = "\n".join(f"{n}: {described(lab)} - {price} gold (policy {probs[k]:.0%})"
                             for n, (k, lab, price) in enumerate(items))
@@ -720,6 +746,7 @@ class PolicyAgent:
                   "(3) at most one card, and only if it is clearly better than the deck's average card and "
                   "fills a need (damage, area damage, block, scaling); (4) potions before a boss. "
                   "Spending everything on cards makes the deck worse. Keeping gold for a later shop is fine. "
+                  f"{evidence.NOTE} "
                   "Reply with the numbers to buy in order of priority, comma separated, total within the "
                   "gold, or 'none'.\n\n"
                   f"PLAYBOOK:\n{book}\n\nRUN PLAN: archetype {plan.get('archetype', 'undecided')}; "
@@ -865,7 +892,8 @@ class PolicyAgent:
         by = "policy"
         if CONFIG.llm_events:
             ranked = sorted(range(len(relics)), key=lambda k: -probs[k])
-            labels = [f"{gamedata.with_relic(relics[k].name)} [policy {probs[k]:.0%}{'; ' + rules[k][1] if rules[k][1] else ''}]"
+            labels = [f"{gamedata.with_relic(relics[k].name)} [policy {probs[k]:.0%}{'; ' + rules[k][1] if rules[k][1] else ''}] "
+                      f"{evidence.boss_relic(CONFIG.evidence, relics[k].name, g.act)}".rstrip()
                       for k in range(len(relics))]
             pick = self._ask_option(message, labels, "Choose a boss relic. Policy ranking: " +
                                     ", ".join(relics[k].name for k in ranked), topic="boss_relic")
@@ -914,7 +942,8 @@ class PolicyAgent:
         close = neow or len(best2) < 2 or best2[0] - best2[1] < CONFIG.llm_gap
         by = "policy"
         if CONFIG.llm_events and close:
-            labels = [f"{o.label} {o.text}".strip() + f" (score {v:+.1f})" for o, v in zip(live, values)]
+            labels = [f"{o.label} {o.text}".strip() + f" (score {v:+.1f}) "
+                      f"{evidence.event(CONFIG.evidence, s.event_name, o.label)}".rstrip() for o, v in zip(live, values)]
             key = "|".join(["event", s.event_name, *sorted(o.label for o in live),
                             f"h{hp_bucket(g.current_hp, g.max_hp)}", f"a{g.act}"])
             k = self._ask_option(message, labels, f"Event: {s.event_name}. {(s.body_text or '')[:300]}",
@@ -1030,6 +1059,7 @@ class PolicyAgent:
         book = playbook_for(CONFIG.strategy, topic, g.character, act=act)
         system = (f"You make the big-picture choices in a Slay the Spire run as the {g.character}. "
                   "Use the playbook, the run plan and the scores shown with each option. "
+                  f"{evidence.NOTE} "
                   "Reply with only the number of your choice.\n\n"
                   f"PLAYBOOK:\n{book}\n\n"
                   f"RUN PLAN: archetype {plan.get('archetype', 'undecided')}; "

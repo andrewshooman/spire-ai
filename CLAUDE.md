@@ -94,6 +94,13 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     with current -> upgraded text.
 12. analyze.bat (agent\analyze.py): runs/hr, act reach, killers, depth by risk, shops, relics, LLM use, aborted runs.
 13. Simulator: Act 3 hallway (3 Shapes, Orb Walker, Transient); results in the History tab "Offline simulator".
+14. Self-improvement: evidence.py track record in LLM prompts (cards: takers vs passers of the same offer in the
+    same act; events; boss relics vs all boss relics; shop buys); replay.jsonl buffer (last 150 runs, --replay 3
+    older runs re-learned per explore run at --replay-lr 0.3 with current-weight probabilities); learned value
+    estimate model.value(state) (linear, fitted on decision states -> final reward; replaces per-act baselines
+    after 20 runs; states from policy._state_features); context card features cardctx:<card>:a<act>,
+    cardctx:<card>|<archetype>, cardctx:<card>:big. Explore runs also sample a build "flavor" (analyze.bat shows
+    depth by flavor); card picks get boss-need bonuses (cards.BOSS_NEEDS).
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

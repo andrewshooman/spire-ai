@@ -266,6 +266,35 @@ def main() -> None:
     plan = planner.plan_turn(msg, P, [])
     check("Champ: no chip across half", not plan.steps, str(plan.steps))
 
+    # 1: track record compares takers with passers of the same offer in the same act
+    import evidence
+    runs = [{"run": i, "floor": fl, "victory": False,
+             "picks": [{"floor": 3, "offered": ["Clothesline", "Strike"], "chosen": ch}]}
+            for i, (fl, ch) in enumerate([(40, "Clothesline")] * 3 + [(20, "Strike")] * 3)]
+    e = evidence.build(runs)
+    check("track record: taken vs passed", evidence.card(e, "Clothesline", 1)
+          == "[history act 1: taken 3x -> avg floor 40 | passed 3x -> avg floor 20]", evidence.card(e, "Clothesline", 1))
+    check("track record hides thin samples", evidence.card(e, "Bash", 1) == "")
+
+    # 3: value estimate learns which states lead deeper; 2: replay leaves baselines alone
+    m = Model(Path(tempfile.mkdtemp()) / "m.json")
+    for k in range(40):
+        hp = 0.9 if k % 2 else 0.3
+        m.learn([{"options": [{"x": 1.0}, {"y": 1.0}], "chosen": 0, "probs": [0.5, 0.5], "temp": 1.0, "act": 1,
+                  "state": {"hp": hp}}] * 30, 1.5 if hp > 0.5 else 0.4)  # ~30 decisions per real run
+    check("value estimate: healthy states predict deeper runs", m.value({"hp": 0.9}) > m.value({"hp": 0.3}) + 0.5,
+          f"{m.value({'hp': 0.9}):.2f} vs {m.value({'hp': 0.3}):.2f}")
+    before = (json.dumps(m.meta["act_baseline"]), m.meta["runs_trained"])
+    m.learn([{"options": [{"x": 1.0}, {"y": 1.0}], "chosen": 1, "probs": [0.5, 0.5], "temp": 1.0, "act": 1}], 0.1, replay=True)
+    check("replay updates weights only", before == (json.dumps(m.meta["act_baseline"]), m.meta["runs_trained"]))
+
+    # 4: card features carry context (act, archetype lean, big deck)
+    policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P), llm_events=False)
+    policy.CONFIG.tracker.plan = {"lean": "Strength"}
+    hb = parse_message(state(["Strike"], [monster("Jaw Worm", 40, 0)]))
+    feats = policy.PolicyAgent()._card_features(hb.game_state.combat_state.hand[0], hb.game_state, {"Strength": 0.5})
+    check("context card features", "cardctx:Strike:a2" in feats and "cardctx:Strike|Strength" in feats, str(sorted(feats)))
+
     # per-act credit: an act-2 choice in a run that died early in act 2 is judged against act-2 runs
     m = Model(Path(tempfile.mkdtemp()) / "m.json")
     ev = lambda a, key: {"options": [{key: 1.0}, {"other": 1.0}], "chosen": 0, "probs": [0.5, 0.5], "temp": 1.0, "act": a}
