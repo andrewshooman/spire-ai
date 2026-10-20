@@ -636,11 +636,14 @@ def learn_human_runs(ws, args) -> dict | None:
             say(f"imported {c['new']} of your runs ({c['total']} in total)")
         items = human.take_pending(args.character)
         for it in items:
-            ws.model.learn(it["events"], it["reward"], lr=args.lr * getattr(args, "human_lr", 0.25), replay=True)
+            # a light data point, not something to copy: low weight and a capped push per decision
+            # (a win would otherwise push every choice of that run at the maximum)
+            ws.model.learn(it["events"], it["reward"], lr=args.lr * getattr(args, "human_lr", 0.1), replay=True,
+                           adv_cap=1.0)
         if items:
             ws.model.meta["human_runs_learned"] = ws.model.meta.get("human_runs_learned", 0) + len(items)
             ws.save()
-            say(f"learned from {len(items)} of your runs (weight {getattr(args, 'human_lr', 0.25):.2f})")
+            say(f"learned from {len(items)} of your runs (weight {getattr(args, 'human_lr', 0.1):.2f})")
         runs = human.runs(args.character)
         return evidence.build(runs[-400:]) if runs else None
     except Exception as exc:  # your runs are a bonus; never stop the bot over them
@@ -736,7 +739,8 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
             rng = random.Random()
             # A/B switches: each explore run turns recent features on/off so analyze.bat can measure them
             ab = ({"hp_budget": rng.random() < 0.5, "llm_cards": rng.random() < 0.7,
-                   "syn_notes": rng.random() < 0.5, "skip_rules": rng.random() < 0.5} if explore and args.ab else {})
+                   "syn_notes": rng.random() < 0.5, "skip_rules": rng.random() < 0.5,
+                   "event_pull": rng.random() < 0.5} if explore and args.ab else {})
             eps, es_sign = None, 0
             if explore:
                 pair = ws.state.get("es_pair")
@@ -925,7 +929,8 @@ def main() -> None:
     p.add_argument("--strategy-baseline", default=str(HERE / "strategy_baseline.md"))
     p.add_argument("--human-learn", action=argparse.BooleanOptionalAction, default=True,
                    help="learn from runs you played on another save slot / evolve/human_inbox")
-    p.add_argument("--human-lr", type=float, default=0.25, help="weight of your runs vs the bot's own")
+    p.add_argument("--human-lr", type=float, default=0.1,
+                   help="weight of your runs vs the bot's own (a light data point; pushes capped)")
     p.add_argument("--web-settings", action=argparse.BooleanOptionalAction, default=True,
                    help="apply evolve/settings.json (the web page's Settings tab) before each run")
     args = p.parse_args()

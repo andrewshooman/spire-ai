@@ -146,6 +146,9 @@ uns (never mixed into bot stats); evolve.py learns pending ones before each run
     (model.learn replay=True, lr * --human-lr 0.25) and passes human evidence to the LLM ('human player's
     runs'). Bot runs skipped by seed (human.seed_number). launch-game.ps1 sets DEFAULT_SLOT=BOT_SLOT;
     evolve.wait_for_bot_slot() never plays while the game has another profile open. gamedata has id->name.
+22. Your runs are a light data point: --human-lr 0.1 (Settings max 0.5) and model.learn(adv_cap=1.0) so one
+    human win doesn't push every choice at the maximum. A/B switch event_pull (explore runs): ? rooms +0.8,
+    hallway fights -0.3 in _map_rules (the player took 5.7 events/run vs the bot's 2.2, +5 relics).
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

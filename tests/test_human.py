@@ -92,6 +92,15 @@ def main() -> None:
     for it in items:
         m.learn(it["events"], it["reward"], lr=0.02, replay=True)
     check("learning from your runs moves the weights", m.w("card:Pommel Strike") != before)
+    # a light data point: the capped push moves weights less than an uncapped one would
+    capped, full = Model(Path(tempfile.mkdtemp()) / "a.json", "IRONCLAD"), Model(Path(tempfile.mkdtemp()) / "b.json", "IRONCLAD")
+    for mm in (capped, full):
+        mm.meta["act_baseline"] = {str(a): {"b": 0.6, "var": 0.04} for a in (1, 2, 3)}
+    w0 = capped.w("card:Pommel Strike")
+    capped.learn(items[0]["events"], 3.5, lr=0.008, replay=True, adv_cap=1.0)
+    full.learn(items[0]["events"], 3.5, lr=0.008, replay=True)
+    check("your runs push gently (capped advantage)",
+          0 < abs(capped.w("card:Pommel Strike") - w0) < abs(full.w("card:Pommel Strike") - w0))
     check("human runs stored apart from the bot's", len(human.runs("ironclad")) == 2
           and len(list((tmp / "ironclad" / "runs").glob("*.json"))) == 1)
     print("HUMAN OK")

@@ -709,6 +709,11 @@ class PolicyAgent:
             out["E"] += CONFIG.risk if hp_frac >= 0.5 else 0.0
         elif hp_frac < 0.7:
             out["E"] = -1.0                  # act 3 elites end shaky runs
+        if CONFIG.ab.get("event_pull"):
+            # A/B: the player's runs took ~5.7 event rooms per run vs the bot's 2.2 and ended with ~5 more
+            # relics; test whether pulling toward ? rooms (away from hallway fights) helps the bot too
+            out["?"] = out.get("?", 0.0) + 0.8
+            out["M"] = out.get("M", 0.0) - 0.3
         # Budget HP for the boss. Act 2 boss losses entered at ~48% HP vs ~86% for wins: runs chained
         # 4-5 hallway fights (12-18 HP each) before the boss and one rest (30% heal) couldn't fix it.
         boss_floor = {1: 16, 2: 33, 3: 50}.get(g.act, 99)

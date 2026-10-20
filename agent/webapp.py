@@ -47,12 +47,14 @@ SETTINGS_SCHEMA = {
     "llm_share": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.7, "label": "Share of card picks the LLM makes in training runs"},
     "coach_every": {"type": "int", "min": 0, "max": 50, "default": 5, "label": "Coach review every N training runs (0 = off)"},
     "ab": {"type": "bool", "default": True, "label": "A/B experiments in training runs",
-           "help": "Randomly switches HP-budget pathing, LLM card advice and synergy notes per run."},
+           "help": "Randomly switches HP-budget pathing, LLM card advice, synergy notes, skip rules and the "
+                   "event-room pull per run."},
     "human_learn": {"type": "bool", "default": True, "label": "Learn from your own runs",
                     "help": "Runs you play on another profile (save slot) or drop into evolve/human_inbox "
                             "(import_runs.bat <folder>, e.g. from the Steam Deck). Teaches picks, relics and rests."},
-    "human_lr": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.25,
-                 "label": "Weight of your runs vs the bot's own"},
+    "human_lr": {"type": "float", "min": 0.0, "max": 0.5, "default": 0.1,
+                 "label": "Weight of your runs vs the bot's own",
+                 "help": "Kept low on purpose: your runs are one data point, not something to copy."},
     "pause": {"type": "bool", "default": False, "label": "Pause after the current run",
               "help": "The bot waits at the main menu until this is turned off."},
 }

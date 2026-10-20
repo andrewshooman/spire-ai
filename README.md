@@ -41,7 +41,7 @@ says the dependency pin changed.
   Your stats stay separate, `launch-game.ps1` switches the game back to the bot's profile when the bot starts
   it, and the bot waits instead of playing while the game is on your profile.
 - Finished runs on your profile are imported before the bot's next run. It learns your card picks and skips,
-  boss relics and rest/smith choices (weight 0.25 vs its own runs; Settings tab), and the LLM sees how your
+  boss relics and rest/smith choices as a light data point (weight 0.1 vs its own runs, capped push; Settings tab), and the LLM sees how your
   picks did ("human player's runs"). Combat isn't in the game's run history, so combat isn't learned.
 - Steam Deck: copy its run history folder (`~/.local/share/Steam/steamapps/common/SlayTheSpire/runs`; the second profile's runs are in
   `runs/1_IRONCLAD`) to the PC, then `import_runs.bat <that folder>`. Runs the bot played are

@@ -195,7 +195,8 @@ class Model:
             self.meta["value_var"] = 0.9 * self.meta.get("value_var", 0.04) + 0.1 * (sum(e * e for e in errs) / len(errs))
             self.meta["value_runs"] = self.meta.get("value_runs", 0) + 1
 
-    def learn(self, events: list[dict], reward: float, lr: float = 0.08, replay: bool = False) -> dict:
+    def learn(self, events: list[dict], reward: float, lr: float = 0.08, replay: bool = False,
+              adv_cap: float = 3.0) -> dict:
         """REINFORCE with a per-decision baseline.
 
         Each choice is judged against the learned value of the state it was made in (value());
@@ -210,7 +211,7 @@ class Model:
         for a in sorted(set(by_act) | {1}):
             st = acts.setdefault(str(a), {"b": None, "var": 0.04})
             base = reward if st["b"] is None else st["b"]
-            advs[a] = max(-3.0, min(3.0, (reward - base) / math.sqrt(max(st["var"], 1e-4))))
+            advs[a] = max(-adv_cap, min(adv_cap, (reward - base) / math.sqrt(max(st["var"], 1e-4))))
             if not replay:
                 st["b"] = base + 0.1 * (reward - base)
                 st["var"] = 0.9 * st["var"] + 0.1 * (reward - base) ** 2
@@ -223,7 +224,7 @@ class Model:
                 if v is None:
                     adv = advs[a]
                 else:
-                    adv = max(-3.0, min(3.0, (reward - v) / vstd))
+                    adv = max(-adv_cap, min(adv_cap, (reward - v) / vstd))
                     used_value += 1
                 chosen, temp = ev["chosen"], max(ev.get("temp", 1.0), 0.15)
                 probs = (self.softmax([self.score(f) for f in ev["options"]], temp) if replay else ev["probs"])

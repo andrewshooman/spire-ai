@@ -341,6 +341,13 @@ def main() -> None:
     rules = policy.PolicyAgent()._map_rules(gm)
     check("pre-boss HP budget: avoid fights, favor rest", rules.get("M", 0) < 0 and rules.get("E", 0) < -1 and rules.get("R", 0) > 0,
           str(rules))
+    early = NS(act=1, floor=4, current_hp=75, max_hp=80, gold=99, relics=[], deck=real_deck)
+    plain = policy.PolicyAgent()._map_rules(early)
+    policy.CONFIG.ab = {"event_pull": True}
+    pulled = policy.PolicyAgent()._map_rules(early)
+    policy.CONFIG.ab = {}
+    check("event_pull A/B favors ? rooms over fights", pulled.get("?", 0) > plain.get("?", 0)
+          and pulled.get("M", 0) < plain.get("M", 0), f"{plain} -> {pulled}")
 
     # per-act credit: an act-2 choice in a run that died early in act 2 is judged against act-2 runs
     m = Model(Path(tempfile.mkdtemp()) / "m.json")
