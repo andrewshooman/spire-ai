@@ -114,6 +114,10 @@ class Config:
 
 CONFIG = Config()
 LLM_BUSY = threading.Event()   # set while the coach holds the GPU: in-game questions skip the LLM
+LLM_TIMEOUT = 20.0             # in-game calls give up after this (the policy decides instead)
+LLM_COOLDOWN = 120.0           # after a failed call, skip the LLM this long instead of stacking waits
+_LLM_DOWN_UNTIL = [0.0]
+ON_LLM_FAILURE = None          # evolve.py sets a health check that restarts a hung Ollama
 
 
 def ask_llm(base_url: str, model: str, system: str, user: str, timeout: float = 120.0,
@@ -1157,18 +1161,24 @@ class PolicyAgent:
         order = ["E", "R", "$", "?", "T"]
         return ", ".join(f"{names[s]} in {first[s]}" for s in order if s in first)
 
-    def _call_llm(self, system: str, user: str, timeout: float = 90,
+    def _call_llm(self, system: str, user: str, timeout: float | None = None,
                   max_tokens: int = 24) -> tuple[str | None, int]:
         tr = CONFIG.tracker
-        if LLM_BUSY.is_set():
+        if LLM_BUSY.is_set() or time.monotonic() < _LLM_DOWN_UNTIL[0]:
             return None, 0
         started = time.monotonic()
         try:
             tr.llm_calls += 1
-            answer = ask_llm(CONFIG.llm_base_url, CONFIG.llm_model, system, user, timeout=timeout,
+            answer = ask_llm(CONFIG.llm_base_url, CONFIG.llm_model, system, user, timeout=timeout or LLM_TIMEOUT,
                              max_tokens=max_tokens)
         except Exception:
             answer = None
+            _LLM_DOWN_UNTIL[0] = time.monotonic() + LLM_COOLDOWN
+            if ON_LLM_FAILURE is not None:
+                try:
+                    ON_LLM_FAILURE()
+                except Exception:
+                    pass
         ms = int((time.monotonic() - started) * 1000)
         tr.llm_ms += ms
         return answer, ms

@@ -527,6 +527,32 @@ def replay(ws: Workspace, events: list[dict], reward: float, run_no: int, args) 
     return k
 
 
+_OLLAMA_RESTARTED = [0.0]
+
+
+def ollama_health(base_url: str) -> None:
+    """Called when an in-game LLM call fails: if Ollama doesn't answer a quick health check,
+    restart it with the environment start.bat gave this process (Vulkan GPU, context, cache
+    settings). At most once per 5 minutes; the policy plays on without the LLM meanwhile."""
+    root = base_url.rstrip("/").removesuffix("/v1")
+    try:
+        urllib.request.urlopen(f"{root}/api/version", timeout=5).read()
+        return  # alive: it was a slow call, the cooldown is enough
+    except Exception:
+        pass
+    if time.time() - _OLLAMA_RESTARTED[0] < 300 or "localhost" not in root and "127.0.0.1" not in root:
+        return
+    _OLLAMA_RESTARTED[0] = time.time()
+    say("Ollama is not responding: restarting it (the policy decides alone meanwhile)")
+    subprocess.run(["taskkill", "/f", "/im", "ollama.exe"], capture_output=True)
+    time.sleep(2)
+    flags = getattr(subprocess, "CREATE_NEW_CONSOLE", 0) | getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    try:
+        subprocess.Popen(["ollama", "serve"], creationflags=flags, close_fds=True)
+    except OSError as exc:
+        say(f"could not restart Ollama: {exc}")
+
+
 def load_cache(ws: Workspace) -> dict:
     p = ws.root / "llm_cache.json"
     try:
@@ -549,6 +575,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
     server = server or HarnessServer(port=args.port)
     aborted_streak = 0
     coach_job = None
+    policy.ON_LLM_FAILURE = lambda: ollama_health(args.base_url)
     llm_cache = load_cache(ws)
     if ws.model.meta.get("reward_version") != Model.REWARD_VERSION:
         # the reward scale changed: restart the running baselines instead of comparing apples to oranges

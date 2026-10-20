@@ -297,6 +297,18 @@ def main() -> None:
     feats = policy.PolicyAgent()._card_features(hb.game_state.combat_state.hand[0], hb.game_state, {"Strength": 0.5})
     check("context card features", "cardctx:Strike:a2" in feats and "cardctx:Strike|Strength" in feats, str(sorted(feats)))
 
+    # a failed LLM call trips a cooldown (no stacked timeouts) and calls the health check
+    pings = []
+    policy.ON_LLM_FAILURE = lambda: pings.append(1)
+    real_ask = policy.ask_llm
+    policy.ask_llm = lambda *a, **k: (_ for _ in ()).throw(TimeoutError("hung"))
+    policy._LLM_DOWN_UNTIL[0] = 0.0
+    policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P))
+    ag = policy.PolicyAgent()
+    first, second = ag._call_llm("s", "u"), ag._call_llm("s", "u")
+    check("LLM failure: cooldown + health check", first[0] is None and second == (None, 0) and pings == [1])
+    policy.ask_llm, policy.ON_LLM_FAILURE, policy._LLM_DOWN_UNTIL[0] = real_ask, None, 0.0
+
     # per-act credit: an act-2 choice in a run that died early in act 2 is judged against act-2 runs
     m = Model(Path(tempfile.mkdtemp()) / "m.json")
     ev = lambda a, key: {"options": [{key: 1.0}, {"other": 1.0}], "chosen": 0, "probs": [0.5, 0.5], "temp": 1.0, "act": a}
