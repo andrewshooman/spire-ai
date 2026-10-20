@@ -628,6 +628,9 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
             kind, seed = plan_run(index, args)
             explore = kind == "explore"
             rng = random.Random()
+            # A/B switches: each explore run turns recent features on/off so analyze.bat can measure them
+            ab = ({"hp_budget": rng.random() < 0.5, "llm_cards": rng.random() < 0.7,
+                   "syn_notes": rng.random() < 0.5} if explore and args.ab else {})
             eps, es_sign = None, 0
             if explore:
                 pair = ws.state.get("es_pair")
@@ -643,7 +646,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                 llm_events=args.llm_events, llm_model=args.event_model or args.model,
                 llm_base_url=args.base_url,
                 strategy=ws.strategy, live=viewer, llm_shop=args.llm_shop, llm_gap=args.llm_gap,
-                llm_cards=args.llm_cards, llm_share=args.llm_share,
+                llm_cards=args.llm_cards and ab.get("llm_cards", True), llm_share=args.llm_share, ab=ab,
                 risk=rng.choice([-0.5, 0.0, 0.5, 1.0, 1.5]) if explore else 0.0,
                 flavor=rng.choice([None] + sorted(cards_mod.archetypes(args.character.upper()))) if explore else None,
                 evidence=evidence.build(ws.runs()[-400:]),
@@ -725,7 +728,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                       "duration_s": duration, "temperature": round(temp, 3), "reward": round(reward, 3),
                       "advantage": round(learned.get("advantage", 0.0), 3),
                       "params": {k: round(v, 3) for k, v in policy.CONFIG.params.items()},
-                      "risk": policy.CONFIG.risk, "flavor": policy.CONFIG.flavor})
+                      "risk": policy.CONFIG.risk, "flavor": policy.CONFIG.flavor, "ab": ab})
             (ws.root / "runs" / f"run_{index + 1:04d}.json").write_text(json.dumps(s, indent=1),
                                                                         encoding="utf-8")
             say(f"run {index + 1} done: {'VICTORY' if s['victory'] else 'died on floor ' + str(s['floor'])}"
@@ -809,6 +812,8 @@ def main() -> None:
     p.add_argument("--max-aborts", type=int, default=3, help="aborted runs in a row before stopping")
     p.add_argument("--step-timeout", type=float, default=None, help="seconds to wait for the game per command")
     p.add_argument("--live-port", type=int, default=8765, help="serve the live page here (0 = off)")
+    p.add_argument("--ab", action=argparse.BooleanOptionalAction, default=True,
+                   help="explore runs randomly switch HP-budget pathing, LLM card advice and synergy notes")
     p.add_argument("--port", type=int, default=9999)
     p.add_argument("--workdir", default=None, help="default: evolve/<character> next to agent/")
     p.add_argument("--strategy-baseline", default=str(HERE / "strategy_baseline.md"))

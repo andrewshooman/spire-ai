@@ -110,6 +110,7 @@ class Config:
     risk: float = 0.0            # explore runs sample a risk appetite: extra pull toward elites in acts 1-2
     flavor: str | None = None    # explore runs sample a build flavor (an archetype) to try early in act 1
     evidence: dict | None = None # this bot's track record (evidence.build), shown to the LLM
+    ab: dict = field(default_factory=dict)  # per-run A/B switches (explore runs); missing = on
 
 
 CONFIG = Config()
@@ -455,6 +456,8 @@ class PolicyAgent:
 
     @staticmethod
     def _syn_note(name: str, g) -> str:
+        if not CONFIG.ab.get("syn_notes", True):
+            return ""
         _, why = synergy.explain(name, [d.name for d in g.deck], [r.name for r in g.relics])
         return f"({why})" if why else ""
 
@@ -612,7 +615,7 @@ class PolicyAgent:
         # 4-5 hallway fights (12-18 HP each) before the boss and one rest (30% heal) couldn't fix it.
         boss_floor = {1: 16, 2: 33, 3: 50}.get(g.act, 99)
         coffee = any(r.name == "Coffee Dripper" for r in g.relics)  # no resting: protect HP harder
-        if g.act >= 2 and boss_floor - g.floor <= 8:
+        if g.act >= 2 and boss_floor - g.floor <= 8 and CONFIG.ab.get("hp_budget", True):
             low, mid = (0.6, 0.8) if coffee else (0.5, 0.7)
             if hp_frac < low:
                 for sym, b in (("M", -1.2), ("E", -2.0), ("?", 0.6), ("R", 0.8 if not coffee else 0.0), ("$", 0.4)):

@@ -310,7 +310,7 @@ def main() -> None:
         base_url=f"http://127.0.0.1:{llm.server_address[1]}/v1", llm_events=True, coach_every=3,
         coach_think=False, lr=0.08, cycle=5, bench_seeds=["BENCHA1", "BENCHB2"], revert_margin=1.0,
         max_runs=10, port=0, workdir=str(work / "evolve" / "ironclad"),
-        stall_wait=30, relaunch_game=False, max_aborts=3, step_timeout=2.0, live_port=free_port(), replay=3, replay_lr=0.3,
+        stall_wait=30, relaunch_game=False, max_aborts=3, step_timeout=2.0, live_port=free_port(), replay=3, replay_lr=0.3, ab=True,
         coach_background=True, llm_shop=True, llm_gap=99.0, llm_cache=True, event_model=None,
         llm_cards=True, llm_share=0.7,
         strategy_baseline=str(ROOT / "agent" / "strategy_baseline.md"))
@@ -340,6 +340,9 @@ def main() -> None:
     print("live.json:", snap["screen"], "floor", snap["floor"], "| decisions", len(snap["decisions"]),
           "| keys", sorted(snap)[:8])
     assert snap["decisions"] and "deck" in snap and "map" in snap
+    explore_ab = [json.loads(p.read_text()).get("ab") for p in runs if json.loads(p.read_text())["kind"] == "explore"]
+    print("A/B switches recorded:", explore_ab[:2])
+    assert all(a and set(a) == {"hp_budget", "llm_cards", "syn_notes"} for a in explore_ab)
     topics = sorted({c["topic"] for c in snap["llm"]})
     print("llm topics in live feed:", topics)
     assert "shop" in topics, "the shop should ask the LLM for a shopping list"

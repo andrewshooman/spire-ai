@@ -97,6 +97,21 @@ def main() -> None:
                for k, v in sorted(by.items())], ("risk", "runs", "avg floor", "elites", "act1 cleared", "act3"))
         out["risk"] = {str(k): round(mean(x["floor"] for x in v), 2) for k, v in by.items()}
 
+    # A/B switches (explore runs): each feature on vs off
+    abr = [r for r in runs if r.get("kind") == "explore" and r.get("ab")]
+    if abr:
+        print("\nA/B switches (explore runs; same period, randomly assigned per run):")
+        rows = []
+        for key in sorted({k for r in abr for k in r["ab"]}):
+            for val in (True, False):
+                g = [r for r in abr if r["ab"].get(key) is val]
+                if g:
+                    rows.append((key, "on" if val else "off", len(g), f"{mean(x['floor'] for x in g):.1f}",
+                                 pct(sum(x["floor"] >= 17 for x in g), len(g)), pct(sum(x["floor"] >= 34 for x in g), len(g)),
+                                 sum(x["victory"] for x in g)))
+        table(rows, ("switch", "", "runs", "avg floor", "act1 cleared", "act2 cleared", "wins"))
+        out["ab"] = {f"{r[0]}={r[1]}": float(r[3]) for r in rows}
+
     # build flavor tried early (explore runs)
     flav = [r for r in runs if r.get("kind") == "explore" and "flavor" in r]
     if flav:
