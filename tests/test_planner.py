@@ -381,6 +381,26 @@ def main() -> None:
                 room="MonsterRoomBoss")
     action, note = first(msg)
     check("Block Potion on the Execute turn", isinstance(action, UsePotion) and "Block Potion" in note, note)
+    # The Champ: burst potions wait for phase 2; permanent power is fine on turn 1
+    def champ(hp, dmg=0, hits=1):
+        m = monster("The Champ", hp, dmg, hits)
+        m["max_hp"] = 420
+        return m
+    msg = state(["Defend"], [champ(420)], potions=["Fire Potion", "Strength Potion"], room="MonsterRoomBoss")
+    action, note = first(msg)
+    check("Champ opening: Strength Potion, Fire Potion saved", "Strength Potion" in note and "Fire" not in note, note)
+    msg = state(["Strike"], [champ(200)], potions=["Fire Potion"], room="MonsterRoomBoss")
+    action, note = first(msg)
+    check("Champ phase 2: burst potions now", isinstance(action, UsePotion) and "phase 2" in note, note)
+    # crossing half HP triggers Anger + Execute: with low HP don't chip it across; with HP to spare, fine
+    low = state(["Heavy Blade", "Defend"], [champ(222)], hp=40, energy=2, room="MonsterRoomBoss")
+    high = state(["Heavy Blade", "Defend"], [champ(222)], hp=78, energy=2, room="MonsterRoomBoss")
+    pl, ph = planner.plan_turn(low, P, []), planner.plan_turn(high, P, [])
+    check("Champ: won't push it into phase 2 when two Executes would kill",
+          "Heavy Blade" not in names(pl, low) and "Heavy Blade" in names(ph, high),
+          f"low HP: {names(pl, low)} | high HP: {names(ph, high)}")
+    check("Champ: after a waiting turn it crosses anyway (never stalls)",
+          "Heavy Blade" in names(planner.plan_turn(low, P, [], stall=1), low))
     # Coffee Dripper: Burning Blood alone is not healing enough
     g = state(["Strike"], [monster("Jaw Worm", 40, 0)]).game_state
     check("Coffee Dripper ruled out without real healing", policy.boss_relic_rule("Coffee Dripper", g)[0] <= -2.0)

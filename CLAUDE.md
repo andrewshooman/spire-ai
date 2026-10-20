@@ -25,7 +25,7 @@ agent\policy.py     PolicyAgent: all moves. Combat = planner first step + playbo
 agent\model.py      Linear softmax policy + REINFORCE (reward = floor/50 + 1 if win, advantage vs running baseline),
                     ES for combat params, priors, coach nudges, save/load model.json.
 agent\cards.py      Priors (Ironclad tiers, archetypes for all 4 classes, boss relic priors), printed-text effect parser.
-agent\evolve.py     Main loop. Cycles (default 10): explore runs learn; 2 bench runs on fixed seeds (BENCHA1, BENCHB2),
+agent\evolve.py     Main loop. Cycles (default 10): explore runs learn; 2 bench runs per cycle rotating over 6 seeds,
                     near-greedy; selection keeps/reverts the champion (model.json + strategy.md). Coach every 5 explore
                     runs (NOTES / NUDGES json / LEARNED -> strategy.md "Learned from runs"). Writes runs\run_NNNN.json,
                     progress.csv, state.json, dashboard. Patches: Path.symlink_to (Windows), session.choose_command
@@ -148,6 +148,16 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
 22. Your runs are a light data point: --human-lr 0.1 (Settings max 0.5) and model.learn(adv_cap=1.0) so one
     human win doesn't push every choice at the maximum. A/B switch event_pull (explore runs): ? rooms +0.8,
     hallway fights -0.3 in _map_rules (the player took 5.7 events/run vs the bot's 2.2, +5 relics).
+23. Champion selection v2 (the run-130 champion, crowned by one lucky 2-run bench avg of 40, caused 5 reverts
+    that kept wiping learning + migrations): 6 bench seeds BENCHA1..BENCHF6, --bench-per-cycle 2 rotating;
+    each bench reward scored vs its seed's history (state bench_hist, residual); model score = mean of the
+    last 6 residuals (state bench_window); new champion only on a full window above it; revert only when
+    < champion - 2 SE two cycles in a row; evolve.migrate() (bounds clamp + reward version) runs on load
+    and after every revert; window resets after a revert. tests	est_select.py.
+    The Champ (9 of 43 recent deaths, all in phase 2 at 84% entry HP): potions -- only permanent buffs
+    while it is above 55%, burst potions (damage/buff/tempo) below, Block/heal kept for Execute; planner --
+    phase 2 damage on it x1.5, crossing half penalized (0.6 x Execute) when two Executes would kill,
+    lifted by the stall guard after one turn.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

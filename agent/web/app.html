@@ -420,7 +420,7 @@ function insights(s) {
   $("#relics").innerHTML = hbars(s.boss_relics.map(r => [`${r.relic} (${r.taken}×)`, r.avg_floor, 0, r.passed ? `passed ${r.passed}× → avg floor ${r.passed_floor}` : ""]), {cls: "b", fmtv: v => fmt(v)}) +
     `<p class=muted>Average final floor after taking it (a win counts as 70); hover for runs offered it that took another. LLM picked ${pct(s.boss_relic_llm_share)} of them.</p>`;
   const m = s.model || {};
-  $("#model").innerHTML = `Runs trained ${m.runs_trained ?? "-"} &middot; value estimate fitted on ${m.value_runs ?? 0} runs &middot; champion ${s.champion ? "bench avg " + s.champion.bench_mean + " (cycle " + s.champion.cycle + ")" : "-"} &middot; LLM time ${s.llm_s_per_run} s/run &middot; shops (last 50): ${s.shops_last50.removals} removals, ${s.shops_last50.buys} buys<br>
+  $("#model").innerHTML = `Runs trained ${m.runs_trained ?? "-"} &middot; value estimate fitted on ${m.value_runs ?? 0} runs &middot; champion ${s.champion ? (s.champion.score != null ? "score " + (s.champion.score >= 0 ? "+" : "") + s.champion.score + " vs seed average, " : "") + "bench avg " + s.champion.bench_mean + " (cycle " + s.champion.cycle + ")" : "-"} &middot; LLM time ${s.llm_s_per_run} s/run &middot; shops (last 50): ${s.shops_last50.removals} removals, ${s.shops_last50.buys} buys<br>
    Combat weights: ${Object.entries(m.params || {}).map(([k, v]) => `<span class=tag>${k} ${v}</span>`).join("")}`;
 }
 

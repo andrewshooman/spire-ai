@@ -432,45 +432,101 @@ def _section(text: str, name: str, stops: tuple) -> str:
 
 # ---------------------------------------------------------------- the loop
 
+BENCH_WINDOW = 6       # bench runs that make up a model's score (3 cycles of 2)
+
+
 def plan_run(index: int, args) -> tuple[str, str]:
+    """Each cycle ends with a few bench runs; their seeds rotate through the bench pool so a model is
+    judged on many seeds over time, not the same two."""
+    per = min(getattr(args, "bench_per_cycle", 2), len(args.bench_seeds))
     pos = index % args.cycle
-    first_bench = args.cycle - len(args.bench_seeds)
+    first_bench = args.cycle - per
     if pos >= first_bench:
-        return "bench", args.bench_seeds[pos - first_bench]
+        cycle = index // args.cycle
+        return "bench", args.bench_seeds[(cycle * per + pos - first_bench) % len(args.bench_seeds)]
     return "explore", "".join(random.choice(SEED_CHARS) for _ in range(10))
 
 
+def bench_history(ws: Workspace) -> dict:
+    """seed -> rewards of every bench run on it (all models), to know how hard each seed is."""
+    hist = ws.state.get("bench_hist")
+    if hist is None:
+        hist = {}
+        for r in ws.runs():
+            if r.get("kind") == "bench" and not r.get("aborted"):
+                rw = r.get("reward")
+                if rw is None:
+                    rw = Model.outcome(r["floor"], r.get("victory", False), r.get("elites_killed", 0))
+                hist.setdefault(r["seed"], []).append(round(rw, 3))
+        ws.state["bench_hist"] = hist
+    return hist
+
+
+def residual(hist: dict, seed: str, reward: float) -> float:
+    """A bench result relative to how this seed usually goes (hard seeds don't look like bad models)."""
+    xs = hist.get(seed, [])[-12:]
+    if len(xs) < 3:
+        allx = [x for v in hist.values() for x in v[-12:]]
+        return reward - (mean(allx) if allx else reward)
+    return reward - mean(xs)
+
+
+def residual_sd(hist: dict) -> float:
+    res = [x - mean(v[-12:]) for v in hist.values() if len(v) >= 3 for x in v[-12:]]
+    if len(res) < 6:
+        return 0.4
+    m = mean(res)
+    return max(0.15, (sum((x - m) ** 2 for x in res) / (len(res) - 1)) ** 0.5)
+
+
 def select(ws: Workspace, args) -> str:
-    """Bench runs are judged on the same shaped reward the learner uses (deep runs count most),
-    and a model is only rolled back after two bad cycles in a row (two seeds are noisy)."""
+    """Champion selection that noise can't game.
+
+    Every bench result is scored against its own seed's history (residual), and a model's score is the mean
+    of its last BENCH_WINDOW residuals -- accumulated over 3 cycles, never one lucky pair of runs (the old
+    rule crowned a 2-run average of 40 at run 130 and then reverted 5 times, throwing away the learning).
+    The model is only rolled back when that score is clearly below the champion's (2 standard errors) two
+    cycles in a row; after a rollback the model is migrated to the current code."""
+    seeds = ws.state.get("cycle_bench_seed") or []
+    rewards = ws.state.get("cycle_bench_reward") or []
     floors = ws.state["cycle_bench"]
-    rewards = ws.state.get("cycle_bench_reward") or [Model.outcome(f, False) for f in floors]
-    ws.state["cycle_bench"], ws.state["cycle_bench_reward"] = [], []
+    ws.state["cycle_bench"], ws.state["cycle_bench_reward"], ws.state["cycle_bench_seed"] = [], [], []
     ws.state["cycle"] += 1
-    score = round(mean(floors), 2) if floors else 0.0
-    value = round(mean(rewards), 3) if rewards else 0.0
-    champ = ws.state["champion"]
     shutil.copyfile(ws.model_path, ws.root / "history" / f"model_c{ws.state['cycle']:03d}.json")
-    if champ is not None and "bench_reward" not in champ:
-        champ["bench_reward"] = Model.outcome(champ["bench_mean"], False)
-    if champ is None or value >= champ["bench_reward"]:
+    hist = bench_history(ws)
+    window = ws.state.setdefault("bench_window", [])
+    for seed, rw in zip(seeds, rewards):
+        window.append(round(residual(hist, seed, rw), 3))
+        hist.setdefault(seed, []).append(round(rw, 3))
+    del window[:-BENCH_WINDOW]
+    floor_avg = round(mean(floors), 1) if floors else 0.0
+    if len(window) < BENCH_WINDOW:
+        say(f"selection: bench avg floor {floor_avg}; measuring this model ({len(window)}/{BENCH_WINDOW} bench runs)")
+        return f"measuring ({len(window)}/{BENCH_WINDOW})"
+    score = round(mean(window), 3)
+    se = residual_sd(hist) / BENCH_WINDOW ** 0.5
+    champ = ws.state.get("champion")
+    if not champ or "score" not in champ or score > champ["score"]:
         ws.state["below"] = 0
-        ws.state["champion"] = {"cycle": ws.state["cycle"], "bench_mean": score, "bench_reward": value,
-                                "run": ws.state["run"]}
+        ws.state["champion"] = {"cycle": ws.state["cycle"], "run": ws.state["run"], "score": score,
+                                "bench_mean": floor_avg}
         ws.snapshot_champion()
-        say(f"selection: bench avg {score} -> NEW CHAMPION")
-        return f"champion={score}"
-    if score < champ["bench_mean"] - args.revert_margin:
+        say(f"selection: model score {score:+.2f} over {BENCH_WINDOW} bench runs -> NEW CHAMPION")
+        return f"champion (score {score:+.2f})"
+    if score < champ["score"] - 2 * se:
         ws.state["below"] = ws.state.get("below", 0) + 1
         if ws.state["below"] < 2:
-            say(f"selection: bench avg {score} below champion {champ['bench_mean']} (first time); keeping for now")
-            return f"kept (bench avg {score}, below once)"
+            say(f"selection: score {score:+.2f} clearly below champion {champ['score']:+.2f} (once); keeping")
+            return f"kept (score {score:+.2f}, clearly below once)"
         ws.state["below"] = 0
         ws.revert_to_champion()
-        say(f"selection: bench avg {score} < champion {champ['bench_mean']} - margin -> reverted")
-        return f"reverted (bench avg {score})"
-    say(f"selection: bench avg {score} within margin of champion {champ['bench_mean']}; keeping")
-    return f"kept (bench avg {score})"
+        migrate(ws)
+        ws.state["bench_window"] = []
+        say(f"selection: score {score:+.2f} < champion {champ['score']:+.2f} - 2 SE twice -> reverted")
+        return f"reverted (score {score:+.2f})"
+    ws.state["below"] = 0
+    say(f"selection: score {score:+.2f} vs champion {champ['score']:+.2f} (within noise, SE {se:.2f}); keeping")
+    return f"kept (score {score:+.2f})"
 
 
 def connect(server: HarnessServer, step_timeout: float | None = None) -> tuple[CommunicationModEnv, LogRouter]:
@@ -573,27 +629,30 @@ def save_cache(ws: Workspace, cache: dict) -> None:
 def open_workspace(args) -> Workspace:
     """Load evolve/<character> and apply one-time model migrations."""
     ws = Workspace(Path(args.workdir), args.character.upper(), Path(args.strategy_baseline))
-    if not ws.model.meta.get("skip_bounds_v1"):
-        # one-time: pull the runaway skip weights back into their bounds so deck size counts again
-        for k in [k for k in ws.model.weights if k.startswith("skip:")]:
-            ws.model.weights[k] = max(-1.5, min(1.5, ws.model.weights[k]))
-        ws.model.meta["skip_bounds_v1"] = True
-    if not ws.model.meta.get("arch_bounds_v1"):
-        # one-time: shrink the snowballed archetype weights into the new bounds
-        from model import WEIGHT_BOUNDS
-        for k in list(ws.model.weights):
-            lo, hi = WEIGHT_BOUNDS.get(k.partition(":")[0], (None, None))
-            if lo is not None:
-                ws.model.weights[k] = max(lo, min(hi, ws.model.weights[k]))
-        ws.model.meta["arch_bounds_v1"] = True
-        say("archetype weights bounded (Strength had snowballed); builds will vary more")
+    migrate(ws)
+    return ws
+
+
+def migrate(ws: Workspace) -> None:
+    """Keep a model consistent with the current code: weights inside their bounds (skip, archetype tags,
+    relic context...) and baselines on the current reward scale. Idempotent; also runs after a revert,
+    because the champion file can predate these fixes (the run-130 champion had skip:a2 = -5.5)."""
+    from model import WEIGHT_BOUNDS
+    clamped = 0
+    for k in list(ws.model.weights):
+        lo, hi = WEIGHT_BOUNDS.get(k.partition(":")[0], (None, None))
+        if lo is not None and not lo <= ws.model.weights[k] <= hi:
+            ws.model.weights[k] = max(lo, min(hi, ws.model.weights[k]))
+            clamped += 1
+    if clamped:
+        say(f"{clamped} weights pulled back into their bounds")
+    ws.model.meta["skip_bounds_v1"] = ws.model.meta["arch_bounds_v1"] = True
     if ws.model.meta.get("reward_version") != Model.REWARD_VERSION:
         # the reward scale changed: restart the running baselines instead of comparing apples to oranges
         ws.model.meta.update({"reward_version": Model.REWARD_VERSION, "baseline": None, "var": 0.04,
                               "es_baseline": None, "es_var": 0.01, "act_baseline": {}})
         ws.state["es_pair"] = None
         say(f"reward v{Model.REWARD_VERSION}: convex depth + elites, per-act credit; baselines reset")
-    return ws
 
 
 # settings the web page may change (evolve/settings.json), applied before each run
@@ -847,6 +906,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
             if kind == "bench":
                 ws.state["cycle_bench"].append(s["floor"])
                 ws.state.setdefault("cycle_bench_reward", []).append(reward)
+                ws.state.setdefault("cycle_bench_seed", []).append(seed)
             ws.state["run"] = index + 1
             note = select(ws, args) if (index + 1) % args.cycle == 0 else ""
             ws.append_row({"run": index + 1, "time": s["started"], "kind": kind, "seed": seed,
@@ -911,9 +971,11 @@ def main() -> None:
     p.add_argument("--replay", type=int, default=3, help="older runs re-learned after each explore run (0 = off)")
     p.add_argument("--replay-lr", type=float, default=0.3, help="replay step size as a fraction of --lr")
     p.add_argument("--cycle", type=int, default=10, help="runs per cycle, bench runs included")
-    p.add_argument("--bench-seeds", default="BENCHA1,BENCHB2")
+    p.add_argument("--bench-seeds", default="BENCHA1,BENCHB2,BENCHC3,BENCHD4,BENCHE5,BENCHF6",
+                   help="bench seed pool; each cycle uses --bench-per-cycle of them, rotating")
+    p.add_argument("--bench-per-cycle", type=int, default=2)
     p.add_argument("--revert-margin", type=float, default=1.0,
-                   help="floors below the champion's bench average before reverting")
+                   help="unused since champion selection v2 (kept so old launch flags still work)")
     p.add_argument("--max-runs", type=int, default=0)
     p.add_argument("--stall-wait", type=int, default=180,
                    help="seconds to nudge a stuck game before giving up on it")
@@ -935,8 +997,8 @@ def main() -> None:
                    help="apply evolve/settings.json (the web page's Settings tab) before each run")
     args = p.parse_args()
     args.bench_seeds = [s.strip().upper() for s in args.bench_seeds.split(",") if s.strip()]
-    if len(args.bench_seeds) >= args.cycle:
-        p.error("--cycle must be larger than the number of bench seeds")
+    if args.bench_per_cycle >= args.cycle:
+        p.error("--cycle must be larger than --bench-per-cycle")
     args.reflect_model = args.reflect_model or args.model
     # the web page's settings (character, LLM switches, pause) apply only to the standard workspace layout
     args.web_settings = args.workdir is None and args.web_settings

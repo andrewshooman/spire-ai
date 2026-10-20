@@ -109,6 +109,7 @@ class Ctx:
     energy0: int
     stall: int = 0        # turns in a row the enemies' HP did not move
     no_safe_target: bool = False  # every living enemy has Thorns / Sharp Hide
+    champ_str: int = 0    # The Champ's Strength (sizes its Execute)
     inc0: float = 0.0     # incoming damage before this turn's plays
 
 
@@ -438,6 +439,19 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
         # the fight is over: no more enemy turns (ending the turn instead keeps taking hits)
         v += P["block"] * max(ctx.inc0, 5.0) * 1.5
     v -= P["hp_cost"] * sim.card_loss * (2.0 if hp_frac < 0.3 else 1.0)
+    for m in sim.mons:
+        if m.name != "The Champ":
+            continue
+        half = m.max_hp / 2
+        if m.hp0 <= half:
+            # phase 2: it cleansed debuffs, gained Strength and Executes for two big hits -- race it down
+            v += P["damage"] * (m.hp0 - m.hp) * 0.5
+        elif m.hp <= half and not m.dead and not ctx.stall:
+            # crossing half triggers Anger then Execute: fine with HP to spare, costly when two Executes
+            # would kill (every recent Champ loss died in phase 2 with the Champ at 107-180 HP)
+            execute = 2 * (16 + ctx.champ_str)
+            if ctx.hp - (taken + sim.self_loss + sim.card_loss) < 1.5 * execute:
+                v -= P["block"] * 0.6 * execute   # the stall guard lifts this after one turn: never a stall
     if taken + sim.self_loss + sim.card_loss >= ctx.hp:
         v -= 500.0
     fight = 1.0 + min(2.0, enemy_left / 40.0)
@@ -475,6 +489,8 @@ def plan_turn(message, P: dict, deck_names: list[str], max_nodes: int = MAX_NODE
     sim, ctx = build(message, deck_names)
     ctx.stall = stall
     ctx.inc0 = incoming(sim.copy())[0]
+    champ = next((m for m in message.game_state.combat_state.monsters if m.name == "The Champ" and alive(m)), None)
+    ctx.champ_str = pw(champ.powers, "Strength") if champ else 0
     alive_mons = [m for m in sim.mons if not m.dead]
     ctx.no_safe_target = bool(alive_mons) and all(m.thorns or m.sharp for m in alive_mons)
     base, base_sum = evaluate(sim.copy(), ctx, P)

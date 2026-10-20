@@ -13,6 +13,7 @@ from __future__ import annotations
 import argparse
 import copy
 import http.server
+import csv
 import json
 import random
 import socket
@@ -349,7 +350,10 @@ def main() -> None:
     page = (ws / "index.html").read_text()
     assert "Live run" in page and "Floor reached per run" in page and "__HISTORY__" not in page
     assert rc == 0 and len(runs) == 10 and model["meta"]["runs_trained"] == 6
-    assert (ws / "champion_model.json").exists() and (ws / "dashboard.html").exists()
+    # selection v2 needs 6 bench runs before a champion; 2 short cycles = 4 bench runs -> "measuring"
+    notes = [r["note"] for r in csv.DictReader((ws / "progress.csv").open(encoding="utf-8")) if r.get("note")]
+    assert notes and all(n.startswith(("measuring", "champion", "kept", "reverted")) for n in notes), notes
+    assert (ws / "dashboard.html").exists()
     print("E2E OK")
 
 

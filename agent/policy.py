@@ -313,6 +313,7 @@ class PolicyAgent:
         used_now = self._potions_used.get(key, 0)
 
         attacks_now = any(c.hand[i].type.value == "ATTACK" for i, _ in plan.steps)
+        champ = next((m for m in c.monsters if m.name == "The Champ" and _alive(m)), None)
 
         def wasted(p) -> bool:
             n = p.name
@@ -343,6 +344,13 @@ class PolicyAgent:
         elif boss and taken >= max(20, 0.35 * hp):
             # the big turns: Champ's Execute, Automaton's Hyper Beam, Collector's spike
             choice, why = pick(["defense", "heal"]), "boss big hit"
+        elif champ is not None and champ.current_hp <= 0.55 * champ.max_hp:
+            # The Champ's second half: Strength and damage potions now, to end it before the Executes pile up
+            choice, why = pick(["damage", "buff", "tempo"]), "Champ phase 2: burst it down"
+        elif champ is not None and c.turn <= 2:
+            # opening vs The Champ: only permanent power now; the rest waits for phase 2
+            perm = [(s, p) for s, p in usable if p.name in PERMANENT_POTIONS and not wasted(p)]
+            choice, why = (perm[0] if perm else None), "Champ: permanent buffs now, burst potions for phase 2"
         elif boss and c.turn <= 2:
             choice, why = pick(["buff", "tempo", "damage"], keep_one=True), "boss fight: potions are free power"
         elif boss and hp_frac < 0.5:
