@@ -69,7 +69,7 @@ FEATURE_PRIORS = {
 # Archetype-wide weights apply to every card of an archetype at once; unbounded they snowballed
 # (tag:Strength reached +3.8) until nearly every run drafted Strength. Keep them small so the
 # individual card weights, synergy rules and the LLM decide.
-WEIGHT_BOUNDS = {"tag": (-1.0, 1.0), "syn": (-1.0, 1.5)}
+WEIGHT_BOUNDS = {"tag": (-1.0, 1.0), "syn": (-1.0, 1.5), "relicctx": (-1.0, 1.0), "relicfit": (-0.5, 2.5)}
 
 
 def hp_bucket(hp: int, max_hp: int) -> int:
@@ -120,6 +120,8 @@ class Model:
             return BOSS_RELIC_PRIOR.get(rest, 0.5)
         if kind == "shoprelic":
             return 0.8
+        if kind == "relicfit":  # relicfit:<synergy tag>, value = synergy.relic_fit for this deck
+            return 1.0
         return 0.0
 
     def w(self, key: str) -> float:

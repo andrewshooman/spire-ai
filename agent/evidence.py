@@ -32,6 +32,7 @@ def build(runs: list[dict]) -> dict:
     ev: dict = defaultdict(list)        # (event, choice) -> final floors
     relic: dict = defaultdict(list)     # (relic, act) -> final floors
     relic_all: dict = defaultdict(list)
+    relic_passed: dict = defaultdict(list)   # (relic, act) -> final floors of runs offered it that took another
     bought: dict = defaultdict(list)
     for r in runs:
         if r.get("aborted"):
@@ -50,11 +51,15 @@ def build(runs: list[dict]) -> dict:
             act = 1 + max(0, (b["floor"] - 1) // 17)
             relic[(b["relic"], act)].append(fl)
             relic_all[act].append(fl)
+            for o in b.get("offered", []):
+                if o != b["relic"]:
+                    relic_passed[(o, act)].append(fl)
         for s in r.get("shops", []):
             if s["bought"] not in ("(leave)",):
                 bought[_base(s["bought"])].append(fl)
     return {"taken": dict(taken), "passed": dict(passed), "event": dict(ev), "relic": dict(relic),
-            "relic_all": dict(relic_all), "bought": dict(bought), "runs": len(runs)}
+            "relic_all": dict(relic_all), "relic_passed": dict(relic_passed), "bought": dict(bought),
+            "runs": len(runs)}
 
 
 def _fmt(xs: list) -> str:
@@ -83,8 +88,11 @@ def boss_relic(e: dict | None, name: str, act: int) -> str:
     if not e:
         return ""
     xs, all_ = e["relic"].get((name, act), []), e["relic_all"].get(act, [])
+    passed = e.get("relic_passed", {}).get((name, act), [])
     if len(xs) < MIN_N or len(all_) < 2 * MIN_N:
         return ""
+    if len(passed) >= MIN_N:  # like with like: runs offered this relic that took another one
+        return f"[history: taken {_fmt(xs)} | passed {_fmt(passed)}]"
     return f"[history: taken {_fmt(xs)} vs all boss relics {mean(all_):.0f}]"
 
 

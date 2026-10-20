@@ -399,7 +399,8 @@ function insights(s) {
   const crd = rows => rows.length ? `<table><tr><th>Card</th><th>Act</th><th>Taken</th><th>Passed</th><th>Lift</th></tr>${rows.map(c => `<tr><td>${esc(c.card)}</td><td>${c.act}</td><td>${c.taken}→${c.taken_floor}</td><td>${c.passed}→${c.passed_floor}</td><td class="${c.lift >= 0 ? "up" : "down"}">${c.lift > 0 ? "+" : ""}${c.lift}</td></tr>`).join("")}</table>` : "<p class=muted>Needs more runs.</p>";
   $("#cardsbest").innerHTML = crd(s.cards_best) + "<p class=muted>Average final floor of runs that took vs passed the card when offered in that act (a win counts as 70).</p>";
   $("#cardsworst").innerHTML = crd(s.cards_worst);
-  $("#relics").innerHTML = hbars(s.boss_relics.map(r => [`${r.relic} (${r.taken}×)`, r.avg_floor]), {cls: "b", fmtv: v => fmt(v)}) + "<p class=muted>Average final floor after taking it.</p>";
+  $("#relics").innerHTML = hbars(s.boss_relics.map(r => [`${r.relic} (${r.taken}×)`, r.avg_floor, 0, r.passed ? `passed ${r.passed}× → avg floor ${r.passed_floor}` : ""]), {cls: "b", fmtv: v => fmt(v)}) +
+    `<p class=muted>Average final floor after taking it (a win counts as 70); hover for runs offered it that took another. LLM picked ${pct(s.boss_relic_llm_share)} of them.</p>`;
   const m = s.model || {};
   $("#model").innerHTML = `Runs trained ${m.runs_trained ?? "-"} &middot; value estimate fitted on ${m.value_runs ?? 0} runs &middot; champion ${s.champion ? "bench avg " + s.champion.bench_mean + " (cycle " + s.champion.cycle + ")" : "-"} &middot; LLM time ${s.llm_s_per_run} s/run &middot; shops (last 50): ${s.shops_last50.removals} removals, ${s.shops_last50.buys} buys<br>
    Combat weights: ${Object.entries(m.params || {}).map(([k, v]) => `<span class=tag>${k} ${v}</span>`).join("")}`;

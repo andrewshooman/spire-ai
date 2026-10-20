@@ -150,14 +150,20 @@ def summary(char: str, since: int = 0) -> dict:
                    "risk": group(lambda r: r.get("risk"), "risk"),
                    "flavor": group(lambda r: (r.get("flavor") or "none") if "flavor" in r else None, "flavor")}
     # boss relics and card track record
+    import evidence
+    ev = evidence.build(real)
     rel: dict = defaultdict(list)
+    passed: dict = defaultdict(list)
+    llm_picks = 0
     for r in real:
         for b in r.get("boss_relics", []):
             rel[b["relic"]].append(r["floor"] + (20 if r.get("victory") else 0))
-    relic_rows = sorted(({"relic": k, "taken": len(v), "avg_floor": _r(mean(v))} for k, v in rel.items()),
+            llm_picks += b.get("by") == "llm"
+    for (k, _), v in ev.get("relic_passed", {}).items():
+        passed[k] += v
+    relic_rows = sorted(({"relic": k, "taken": len(v), "avg_floor": _r(mean(v)), "passed": len(passed.get(k, [])),
+                          "passed_floor": _r(mean(passed[k])) if passed.get(k) else None} for k, v in rel.items()),
                         key=lambda x: -x["taken"])
-    import evidence
-    ev = evidence.build(real)
     cards = []
     for (c, a), t in ev["taken"].items():
         p = ev["passed"].get((c, a), [])
@@ -201,6 +207,7 @@ def summary(char: str, since: int = 0) -> dict:
         "median_minutes": _r(median(r.get("duration_s", 0) for r in last) / 60), "runs_per_hr": _r(per_hr),
         "reach": {k: _r(v, 3) for k, v in reach.items()}, "reach_last50": {k: _r(v, 3) for k, v in reach_last.items()},
         "killers": killer_rows[:15], "experiments": experiments, "boss_relics": relic_rows[:15],
+        "boss_relic_llm_share": _r(llm_picks / max(1, sum(len(v) for v in rel.values())), 2),
         "cards_best": cards[:12], "cards_worst": cards[-12:][::-1], "series": series,
         "rolling": [_r(x) for x in _window(floors, 20)], "blocks": blocks,
         "shops_last50": {"removals": sum(1 for s in shops if s["bought"] in ("remove a card", "purge")),

@@ -113,6 +113,11 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     Settings -> evolve\settings.json, applied by evolve.py before each run (--web-settings, only with the default
     workdir): character switch (own workspace), ascension, LLM switches, coach_every, ab, pause. Character chips
     read every evolve\<char>. Planner: fight-over bonus + stall guard (run 199 ended 60 turns vs Thorns).
+17. Relics learned like cards: policy._relic_features -> relic:/shoprelic:<name>, relicctx:<relic>|<archetype>,
+    relicctx:<relic>:a<act>, relicctx:<relic>:big, relicfit:<tag> (value = synergy.relic_fit; prior 1.0) for boss
+    and shop relics. Boss relics: training runs ask the LLM only --llm-share of the time (it had made 100% of
+    picks: Runic Pyramid/Astrolabe/Coffee Dripper) + novelty bonus 0.5/sqrt(1+times taken); run files record
+    'offered' so evidence compares taken vs passed. Shop relics are rarely affordable (150-250 gold).
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

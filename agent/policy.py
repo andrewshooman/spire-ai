@@ -353,6 +353,22 @@ class PolicyAgent:
     def _deck_names(self, g) -> list[str]:
         return [d.name for d in g.deck]
 
+    def _relic_features(self, name: str, g, commit: dict, kind: str) -> dict[str, float]:
+        """Relic choice features (boss relics: kind 'relic', shop relics: 'shoprelic'): the relic, the relic in
+        this build and act, and the deck-fit score per synergy tag so the bot learns which fits pay off."""
+        f = {f"{kind}:{name}": 1.0, f"relicctx:{name}:a{min(g.act, 3)}": 1.0}
+        lean = (CONFIG.tracker.plan or {}).get("lean")
+        if lean and commit.get(lean, 0.0) >= 0.35:
+            f[f"relicctx:{name}|{lean}"] = 1.0
+        if len(g.deck) >= 28:
+            f[f"relicctx:{name}:big"] = 1.0
+        fit, _ = synergy.relic_fit(name, [d.name for d in g.deck])
+        if fit:
+            tags = sorted(synergy.RELIC_TAGS.get(name, {"special"}))
+            for t in tags:
+                f[f"relicfit:{t}"] = fit / len(tags)
+        return f
+
     def _card_features(self, card, g, commit: dict) -> dict[str, float]:
         char = g.character
         name = C.base_name(card.name)
@@ -716,10 +732,10 @@ class PolicyAgent:
         for relic in s.relics:
             n = relic.name.lower()
             if n in choices:
-                quality = C.SHOP_RELIC_PRIOR.get(relic.name, 0.8) - 0.8 + \
-                    synergy.relic_fit(relic.name, [d.name for d in g.deck])[0]
-                add({f"shoprelic:{relic.name}": 1.0, "shop:relic": 1.0, "shop:price": (relic.price or 0) / 100},
-                    relic.name, choices.index(n), relic.price or 0, quality)
+                quality = C.SHOP_RELIC_PRIOR.get(relic.name, 0.8) - 0.8
+                f = self._relic_features(relic.name, g, commit, "shoprelic")
+                f.update({"shop:relic": 1.0, "shop:price": (relic.price or 0) / 100})
+                add(f, relic.name, choices.index(n), relic.price or 0, quality)
         if any(p.id == EMPTY_POTION for p in g.potions):
             late = 1.0 if g.act >= 3 or g.floor in (14, 15, 31, 32, 48, 49) else 0.0
             for potion in s.potions:
@@ -941,12 +957,18 @@ class PolicyAgent:
     def _boss_reward(self, message, decision):
         g, model, tr = message.game_state, CONFIG.model, CONFIG.tracker
         relics = g.screen.relics
-        options = [{f"relic:{r.name}": 1.0} for r in relics]
+        commit = self._update_plan(g)
+        # learned like cards: the relic itself, the relic in this build / act, and how much its synergy fit counts
+        options = [self._relic_features(r.name, g, commit, "relic") for r in relics]
         rules = []
         for r in relics:
             b, why = boss_relic_rule(r.name, g)
-            fb, fwhy = synergy.relic_fit(r.name, [d.name for d in g.deck])
-            rules.append((b + fb, "; ".join(x for x in (why, fwhy) if x)))
+            _, fwhy = synergy.relic_fit(r.name, [d.name for d in g.deck])
+            if CONFIG.learn:
+                # training runs: relics this bot has rarely taken get a try (the LLM kept picking the same few)
+                n = len((CONFIG.evidence or {}).get("relic", {}).get((r.name, g.act), []))
+                b += 0.5 / (1 + n) ** 0.5
+            rules.append((b, "; ".join(x for x in (why, fwhy) if x)))
         bonus = [b for b, _ in rules]
         can_skip = validate(ReturnBack(), message).ok
         if can_skip:
@@ -954,7 +976,8 @@ class PolicyAgent:
             bonus.append(0.0)
         idx, probs = model.choose(options, CONFIG.temperature, CONFIG.rng, bonus)
         by = "policy"
-        if CONFIG.llm_events:
+        # bench runs always ask the LLM; training runs only llm_share of the time so the learned weights get tried
+        if CONFIG.llm_events and (not CONFIG.learn or CONFIG.rng.random() < CONFIG.llm_share):
             ranked = sorted(range(len(relics)), key=lambda k: -probs[k])
             labels = [f"{gamedata.with_relic(relics[k].name)} [policy {probs[k]:.0%}{'; ' + rules[k][1] if rules[k][1] else ''}] "
                       f"{evidence.boss_relic(CONFIG.evidence, relics[k].name, g.act)}".rstrip()
@@ -966,10 +989,11 @@ class PolicyAgent:
         # learn from the outcome whoever chose: the LLM's picks train the relic weights too
         tr.events.append({"kind": "boss_relic", "options": options, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
+        offered = [r.name for r in relics]
         if can_skip and idx == len(relics):
-            tr.boss_relics.append({"floor": g.floor, "relic": "(skip)", "by": by})
+            tr.boss_relics.append({"floor": g.floor, "relic": "(skip)", "by": by, "offered": offered})
             return ReturnBack(), "boss relic: skip"
-        tr.boss_relics.append({"floor": g.floor, "relic": relics[idx].name, "by": by})
+        tr.boss_relics.append({"floor": g.floor, "relic": relics[idx].name, "by": by, "offered": offered})
         return Choose(choice_index=idx), f"boss relic ({by}): {relics[idx].name}"
 
     def _event(self, message, decision):
