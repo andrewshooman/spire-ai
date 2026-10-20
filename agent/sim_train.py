@@ -222,7 +222,9 @@ ENC_BY_ENEMIES = {("Sentry",): "3 Sentries", ("Gremlin Nob",): "Gremlin Nob", ("
                   ("Transient",): "Transient", ("Spiker",): "3 Shapes", ("Repulsor",): "3 Shapes",
                   ("Exploder",): "3 Shapes", ("Repulsor", "Spiker"): "3 Shapes", ("Exploder", "Spiker"): "3 Shapes",
                   ("Exploder", "Repulsor"): "3 Shapes", ("Exploder", "Repulsor", "Spiker"): "3 Shapes",
-                  ("The Champ",): "The Champ", ("Bronze Automaton", "Orb"): "Bronze Automaton"}
+                  ("The Champ",): "The Champ", ("Bronze Automaton", "Orb"): "Bronze Automaton",
+                  ("Bronze Automaton",): "Bronze Automaton", ("Acid Slime (L)",): "Acid Slime (L)",
+                  ("Spike Slime (L)",): "Spike Slime (L)"}
 
 
 def real_fights(ws: Path) -> list[dict]:
