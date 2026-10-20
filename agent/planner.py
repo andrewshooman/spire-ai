@@ -354,6 +354,15 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int])
                 m.artifact -= 1
             else:
                 m.poison += e.poison
+    if getattr(e, "shivs", 0):
+        # Shivs cost nothing and hit for 4 (+Strength): count them now, on the priority target
+        for _ in range(e.shivs):
+            live = [m for m in sim.mons if not m.dead]
+            if not live:
+                break
+            m = max(live, key=lambda x: (x.prio, -x.hp))
+            per = (4 + sim.str) * (0.75 if sim.weak else 1.0)
+            _hit(sim, m, int(per * (1.5 if m.vuln > 0 else 1.0)))
     if e.draw and vuln_ok:
         sim.draw_value += e.draw * (1.0 if sim.energy > 0 else 0.4)
     sim.card_loss += e.hp_loss

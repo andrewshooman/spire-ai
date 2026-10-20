@@ -31,6 +31,21 @@ TIERS = {
               "Berserk", "Evolve", "Fire Breathing"],
     },
 }
+# The Silent (community tier lists, A0-ish): seeds the learned card:<name> weights like the Ironclad ones.
+TIERS["THE_SILENT"] = {
+    1.2: ["Footwork", "Noxious Fumes", "Catalyst", "Wraith Form", "Adrenaline", "Backflip", "Blade Dance", "Dash",
+          "Leg Sweep", "Piercing Wail", "Malaise", "Well-Laid Plans", "Acrobatics", "Escape Plan", "Dodge and Roll",
+          "Blur", "Terror", "Bullet Time", "After Image", "Accuracy", "Burst", "Glass Knife", "Die Die Die",
+          "Predator", "Deadly Poison", "Bouncing Flask", "Cloak and Dagger", "Corpse Explosion", "Crippling Cloud",
+          "Riddle with Holes", "Tools of the Trade", "Calculated Gamble", "Heel Hook", "Skewer", "Dagger Spray",
+          "Sucker Punch", "Quick Slash", "A Thousand Cuts"],
+    0.6: ["Poisoned Stab", "Dagger Throw", "Slice", "Sneaky Strike", "Flying Knee", "Prepared", "Outmaneuver",
+          "Deflect", "Caltrops", "Infinite Blades", "Storm of Steel", "Eviscerate", "Unload", "Finisher", "Reflex",
+          "Tactician", "Expertise", "Choke", "All-Out Attack", "Phantasmal Killer", "Nightmare", "Alchemize",
+          "Backstab", "Bane", "Concentrate", "Doppelganger"],
+    0.0: ["Sadistic Nature", "Envenom", "Grand Finale", "Flechettes", "Distraction", "Setup", "Masterful Stab",
+          "Endless Agony"],
+}
 BASIC = {"Strike": -1.0, "Defend": -0.6}
 DEFAULT_CARD_PRIOR = 0.3
 
@@ -280,7 +295,7 @@ class Effects:
                  "conditional_strength", "self_vuln", "self_weak", "self_frail", "enemy_str_down",
                  "enemy_str_down_temp", "poison", "per_strike", "exhaust_hand", "block_per_exhaust",
                  "damage_per_exhaust", "if_vuln", "per_turn_strength", "per_turn_block",
-                 "per_turn_energy", "per_turn_damage", "thorns", "dex", "known")
+                 "per_turn_energy", "per_turn_damage", "thorns", "dex", "known", "shivs")
 
     def __init__(self):
         self.damage = 0; self.hits = 1; self.aoe = False; self.random_target = False
@@ -295,6 +310,7 @@ class Effects:
         self.damage_per_exhaust = 0; self.if_vuln = False
         self.per_turn_strength = 0; self.per_turn_block = 0; self.per_turn_energy = 0
         self.per_turn_damage = 0; self.thorns = 0; self.dex = 0; self.known = False
+        self.shivs = 0   # Silent: Shivs added to the hand (0 cost, 4 damage each)
 
 
 def _int(pattern: str, text: str, default: int = 0) -> int:
@@ -354,6 +370,9 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
             e.enemy_str_down = int(m.group(1))
         e.aoe_debuff = e.aoe_debuff or "ALL enemies" in m.group(0)
     e.poison = _int(r"Apply (\d+) Poison", t)
+    m = re.search(r"Add (\d+|a) \*?Shivs?\b", t, re.I)
+    if m:
+        e.shivs = 1 if m.group(1).lower() == "a" else int(m.group(1))
     if re.search(r"damage equal to your Block", t, re.I):
         e.block_scaling = True
     if re.search(r"damage (?:\w+ )*X times", t, re.I):

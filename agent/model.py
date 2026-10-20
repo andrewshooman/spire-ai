@@ -136,7 +136,8 @@ class Model:
     def temperature(self) -> float:
         """Exploration for explore runs: decays slowly and never below 0.35, so runs keep
         trying different paths, picks and shops instead of converging on one safe line."""
-        return max(0.35, 1.0 * (0.985 ** self.meta["runs_trained"]))
+        runs = self.meta["runs_trained"] + self.meta.get("temp_offset", 0)   # warm start counts as experience
+        return max(0.35, 1.0 * (0.985 ** runs))
 
     @staticmethod
     def softmax(scores: list[float], temperature: float) -> list[float]:

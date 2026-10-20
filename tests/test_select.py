@@ -69,6 +69,21 @@ def main() -> None:
     check("reverted model migrated to the current bounds", ws.model.w("skip:a2") >= -1.5, f"{ws.model.w('skip:a2')}")
     check("after a revert the model is measured afresh", ws.state["bench_window"] == [])
     check("champion score is seed-relative", abs(champ_score) < 0.5, f"{champ_score:+.2f}")
+    # warm start: a young Silent model takes the Ironclad's character-neutral weights, not its card weights
+    iron = Model(tmp / "iron.json", "IRONCLAD")
+    iron.weights.update({"node:E:h2": 1.7, "rest:h0": 2.2, "card:Bash": 3.0})
+    iron.params["block"] = 1.9
+    iron.save()
+    sws = evolve.Workspace(tmp / "silent", "THE_SILENT", ROOT / "agent" / "strategy_baseline.md")
+    evolve.warm_start(sws, "silent", src=tmp / "iron.json")
+    check("warm start copies path/rest weights and combat weights",
+          sws.model.w("node:E:h2") == 1.7 and sws.model.w("rest:h0") == 2.2 and sws.model.params["block"] == 1.9)
+    check("warm start leaves card weights to the new character", sws.model.w("card:Bash") != 3.0)
+    t_warm = sws.model.temperature()
+    check("warm-started model explores less than a blank one", t_warm < Model(tmp / "blank.json", "THE_SILENT").temperature(),
+          f"{t_warm:.2f}")
+    evolve.warm_start(sws, "silent", src=tmp / "iron.json")
+    check("warm start runs once", sws.model.meta["warm_start"]["weights"] == 2)
     print("SELECT OK")
 
 

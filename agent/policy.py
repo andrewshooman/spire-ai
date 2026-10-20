@@ -709,7 +709,13 @@ class PolicyAgent:
             return out
         damage = sum(1 for d in g.deck if "damage" in C.roles(d) or "aoe" in C.roles(d))
         # elites are where a run powers up (relics, rare cards): take them in acts 1-2 unless HP is low
-        if g.act == 1:
+        if g.act == 1 and getattr(g, "character", "IRONCLAD") != "IRONCLAD":
+            # weaker starters (no Burning Blood, no Bash): act 1 elites only with HP and some real damage;
+            # the first Silent runs lost 37-45 HP to floor 6-7 elites with starter decks
+            ready = hp_frac >= 0.6 and damage >= 2
+            out["E"] = 0.8 if ready else (-0.2 if hp_frac >= 0.6 else -0.8)
+            out["E"] += CONFIG.risk if ready else 0.0
+        elif g.act == 1:
             out["E"] = 1.0 if hp_frac >= 0.5 and damage >= 1 else (0.3 if hp_frac >= 0.5 else -0.6)
             out["E"] += CONFIG.risk if hp_frac >= 0.4 else 0.0
         elif g.act == 2:
@@ -755,8 +761,9 @@ class PolicyAgent:
         need = 0.55 if g.act_boss == "Hexaghost" else (0.85 if g.act >= 2 else 0.65)
         if pre_boss:
             rule = {"rest": 4.0 if hp_frac < need else 0.0, "smith": 1.0 if hp_frac >= max(0.8, need) else 0.0}
-        elif g.act >= 2 and hp_frac < 0.6:
-            # act 2 hallways wear runs down: losses smithed under 60% HP three times as often as wins
+        elif (g.act >= 2 and hp_frac < 0.6) or hp_frac < 0.45:
+            # act 2 hallways wear runs down: losses smithed under 60% HP three times as often as wins;
+            # and nowhere is smithing at under 45% HP right (an early Silent run smithed at 21%)
             rule = {"rest": 2.5, "smith": 0.0}
         else:
             rule = {"rest": 0.0, "smith": 0.8 if hp_frac >= (0.6 if g.act >= 2 else 0.5) else 0.0}

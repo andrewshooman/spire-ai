@@ -4,6 +4,11 @@
 <link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Kreon:wght@400;600;700&display=swap" rel="stylesheet">
 <style>
+body[data-char=ironclad]{--accent:#d2473a} body[data-char=silent]{--accent:#7fb85f}
+body[data-char=defect]{--accent:#5ea8db} body[data-char=watcher]{--accent:#b088d8}
+h1 .who{color:var(--accent);margin-left:8px} .chip.on{box-shadow:0 0 0 2px var(--accent) inset}
+.pill.other{cursor:pointer;color:#f1d99a;border-color:var(--gold2)}
+.loading{color:var(--muted);font-style:italic}
 :root{--bg:#13110e;--stone:#201c17;--stone2:#2b261f;--edge:#4c4233;--edge2:#6b5b42;--ink:#ebe2cc;--muted:#a69c86;
 --gold:#e2b653;--gold2:#a8802c;--red:#d2473a;--blue:#5ea8db;--green:#7fb85f;--purple:#b088d8;--line:#3a3329;color-scheme:dark}
 *{box-sizing:border-box}
@@ -79,7 +84,7 @@ select,input{font:inherit;background:#1a1612;color:var(--ink);border:1px solid v
 .enemy{display:inline-block;min-width:150px;margin:0 8px 8px 0;padding:8px;border:1px solid var(--edge);border-radius:8px;background:#1a1612;vertical-align:top}
 </style></head><body><main>
 <div class=top>
- <h1>Spire AI</h1>
+ <h1>Spire AI<span class=who id=who></span></h1>
  <div class=chars id=chars></div>
  <span class=pill id=status>connecting...</span>
 </div>
@@ -169,8 +174,19 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const pct = x => x == null ? "-" : Math.round(100 * x) + "%";
 const fmt = (x, d = 1) => x == null ? "-" : (+x).toFixed(d);
-let CHAR = "ironclad", TAB = "overview", SUM = null, RUNS = [], LIVE = null, lastWins = null;
-try { CHAR = localStorage.getItem("spire-char") || CHAR; } catch (e) {}
+let CHAR = "ironclad", TAB = "overview", SUM = null, RUNS = [], LIVE = null, lastWins = null, LIVECHAR = null, loadingSum = false;
+let PICKED = false;   // the user chose a character in this tab; otherwise follow the one the bot is playing
+try { CHAR = localStorage.getItem("spire-char") || CHAR; PICKED = sessionStorage.getItem("spire-picked") === "1"; } catch (e) {}
+const NAME = c => c[0].toUpperCase() + c.slice(1);
+function setChar(c, picked) {
+  if (picked) { PICKED = true; try { sessionStorage.setItem("spire-picked", "1"); localStorage.setItem("spire-char", c); } catch (e) {} }
+  if (c === CHAR) return;
+  CHAR = c; RUNS = []; SUM = null; lastWins = null; LIVE = null;
+  document.body.dataset.char = CHAR; $("#who").textContent = "\u00b7 " + NAME(CHAR);
+  for (const id of ["#kpis", "#trend", "#milestones", "#reach", "#killers", "#recent", "#humancard", "#current"])
+    if ($(id)) $(id).innerHTML = `<p class=loading>Loading ${NAME(CHAR)}...</p>`;
+  header(); refresh();
+}
 const api = (p, extra = "") => fetch(`/api/${p}?char=${CHAR}${extra}`, {cache: "no-store"}).then(r => r.json());
 
 // ---------------------------------------------------------------- routing
@@ -240,13 +256,29 @@ function journey(floor, actBeat = 0) {
 // ---------------------------------------------------------------- header
 async function header() {
   const d = await fetch("/api/characters", {cache: "no-store"}).then(r => r.json());
-  $("#chars").innerHTML = d.characters.map(c => `<span class="chip ${c.name === CHAR ? "on" : ""}" data-c="${c.name}">${c.name[0].toUpperCase() + c.name.slice(1)} <span class=small>${c.runs}</span>${c.live ? "<span class=dot></span>" : ""}</span>`).join("");
-  document.querySelectorAll(".chip").forEach(c => c.onclick = () => { CHAR = c.dataset.c; try { localStorage.setItem("spire-char", CHAR); } catch (e) {} RUNS = []; SUM = null; lastWins = null; header(); refresh(); });
+  const live = d.characters.find(c => c.live);
+  LIVECHAR = live ? live.name : null;
+  if (!PICKED && LIVECHAR && LIVECHAR !== CHAR) return setChar(LIVECHAR, false);   // follow the bot
+  document.body.dataset.char = CHAR; $("#who").textContent = "\u00b7 " + NAME(CHAR);
+  $("#chars").innerHTML = d.characters.map(c => `<span class="chip ${c.name === CHAR ? "on" : ""}" data-c="${c.name}">${NAME(c.name)} <span class=small>${c.runs}</span>${c.live ? "<span class=dot title='the bot is playing this character'></span>" : ""}</span>`).join("");
+  document.querySelectorAll(".chip").forEach(c => c.onclick = () => setChar(c.dataset.c, true));
+  status();
 }
 function status() {
   const fresh = LIVE && LIVE.updated && (Date.now() / 1000 - LIVE.updated) < 60;
-  $("#status").className = "pill" + (fresh ? " live" : "");
-  $("#status").textContent = fresh ? `Playing run ${LIVE.run ?? "?"} · floor ${LIVE.floor} · act ${LIVE.act} · HP ${LIVE.hp}/${LIVE.max_hp}` : "Bot idle";
+  const el = $("#status");
+  el.onclick = null;
+  if (fresh) {
+    el.className = "pill live";
+    el.textContent = `Playing ${NAME(CHAR)} · run ${LIVE.run ?? "?"} · floor ${LIVE.floor} · act ${LIVE.act} · HP ${LIVE.hp}/${LIVE.max_hp}`;
+  } else if (LIVECHAR && LIVECHAR !== CHAR) {
+    el.className = "pill other";
+    el.textContent = `Bot is playing ${NAME(LIVECHAR)} →`;
+    el.onclick = () => setChar(LIVECHAR, true);
+  } else {
+    el.className = "pill";
+    el.textContent = `${NAME(CHAR)}: bot idle`;
+  }
 }
 
 // ---------------------------------------------------------------- overview
@@ -457,8 +489,20 @@ $("#save").onclick = async () => {
 // ---------------------------------------------------------------- refresh loop
 async function refresh() {
   try {
-    if (["overview", "live"].includes(TAB)) { LIVE = await api("live"); status(); }
-    if (TAB === "overview") { if (!SUM || Date.now() - (SUM._t || 0) > 20000) { SUM = await api("summary"); SUM._t = Date.now(); overview(SUM); humanCard(await api("human")); } currentRun(); }
+    const want = CHAR;   // a slow answer for a character no longer on screen is dropped
+    if (["overview", "live"].includes(TAB)) { const l = await api("live"); if (want !== CHAR) return; LIVE = l; status(); }
+    if (TAB === "overview") {
+      if ((!SUM || Date.now() - (SUM._t || 0) > 20000) && !loadingSum) {
+        if (!SUM) $("#kpis").innerHTML = `<div class=card><p class=loading>Loading ${NAME(CHAR)} runs...</p></div>`;
+        loadingSum = true;
+        try {
+          const s = await api("summary"), h = await api("human");
+          if (want !== CHAR) return;
+          SUM = s; SUM._t = Date.now(); overview(SUM); humanCard(h);
+        } finally { loadingSum = false; }
+      }
+      if (SUM) currentRun();
+    }
     if (TAB === "live") liveTab();
     if (TAB === "runs" && !location.hash.startsWith("#run=")) { RUNS = await api("runs"); runTable(); }
     if (TAB === "insights") { SUM = await api("summary"); SUM._t = Date.now(); insights(SUM); }

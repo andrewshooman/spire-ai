@@ -34,6 +34,7 @@ CARDS = {
     "Corruption": ("Corruption", "POWER", 3, False), "Second Wind": ("Second Wind", "SKILL", 1, False),
     "Wild Strike": ("Wild Strike", "ATTACK", 1, True), "Power Through": ("Power Through", "SKILL", 1, False),
     "Bludgeon": ("Bludgeon", "ATTACK", 3, True), "Heavy Blade": ("Heavy Blade", "ATTACK", 2, True),
+    "Blade Dance": ("Blade Dance", "SKILL", 1, False), "Survivor": ("Survivor", "SKILL", 1, False),
 }
 
 
@@ -449,6 +450,21 @@ def main() -> None:
     bark = policy.boss_relic_rule("Sacred Bark", gs)
     check("Sacred Bark ruled out with Sozu", bark[0] <= -2.0 and "Sozu" in bark[1], str(bark))
     check("Sozu penalized when it kills a Sacred Bark", R.conflict("Sozu", {"Sacred Bark"})[0] < 0)
+    # Silent: Blade Dance's Shivs are damage (they used to count as nothing)
+    msg = state(["Blade Dance", "Defend"], [monster("Louse", 11, 6)], energy=1)
+    plan = planner.plan_turn(msg, P, [])
+    check("Shivs count: Blade Dance kills an 11 HP Louse", names(plan, msg) == ["Blade Dance"] and plan.summary["kills"] == 1,
+          plan.describe(msg.game_state.combat_state.hand, msg.game_state.combat_state.monsters))
+    # act 1 rest site at 21% HP: rest, never smith (early Silent run 2)
+    policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P), temperature=0.05)
+    gm = NS(screen=NS(has_rested=False), choice_list=["rest", "smith"], current_hp=15, max_hp=70, floor=10,
+            act=1, act_boss="Hexaghost")
+    check("act 1: rests at 21% HP", policy.PolicyAgent()._rest(NS(game_state=gm), None)[0].choice_index == 0)
+    # weak starters stay out of act 1 elites until the deck has damage
+    early = NS(act=1, floor=5, current_hp=70, max_hp=70, gold=99, relics=[], deck=real_deck, character="THE_SILENT")
+    iron = NS(act=1, floor=5, current_hp=70, max_hp=70, gold=99, relics=[], deck=real_deck, character="IRONCLAD")
+    check("Silent starter deck avoids act 1 elites; Ironclad still takes them",
+          policy.PolicyAgent()._map_rules(early).get("E", 0) < 0 < policy.PolicyAgent()._map_rules(iron).get("E", 0))
     print("PLANNER OK")
 
 

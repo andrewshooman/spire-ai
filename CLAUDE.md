@@ -169,6 +169,12 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     the next), game reticle on the target, USE on potions, END TURN marker. publish.ps1 [-Upload] fills
     workshop\config.json (title/description incl. "The AI behind the decisions") + content; art\make_preview.py
     draws workshop\image.jpg + badge. Not yet: poison/orbs/stances, out-of-combat, hand-select screens.
+25. Other characters (Silent first): evolve.warm_start() gives a young non-Ironclad model (<50 runs) the
+    Ironclad's TRANSFER weights (node/nodeact/rest/smith/restx/shop/skip/relic/shoprelic/relicctx/relicfit/ev)
+    + combat params once, temp_offset 30; card weights stay its own. cards.TIERS['THE_SILENT'] priors;
+    Effects.shivs ('Add N Shivs') -> planner hits the priority target for 4+Str each; rest under 45% HP in
+    any act; act 1 elites for non-Ironclad only with HP >= 60% and 2+ damage cards. Web app follows the
+    character the bot is playing (unless you picked one in the tab), per-character accent, global status pill.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

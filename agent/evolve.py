@@ -630,7 +630,38 @@ def open_workspace(args) -> Workspace:
     """Load evolve/<character> and apply one-time model migrations."""
     ws = Workspace(Path(args.workdir), args.character.upper(), Path(args.strategy_baseline))
     migrate(ws)
+    warm_start(ws, args.character)
     return ws
+
+
+# choices that mean the same for every character: learned on the Ironclad, reused by the others
+TRANSFER = ("node:", "nodeact:", "rest:", "smith:", "restx:", "shop:", "skip:", "relic:", "shoprelic:",
+            "relicctx:", "relicfit:", "ev:")
+
+
+def warm_start(ws: Workspace, character: str, src: Path | None = None) -> None:
+    """A young non-Ironclad model starts from the Ironclad's learned path/rest/shop/skip/relic/event weights
+    and combat weights instead of from nothing (the first Silent runs rested and pathed at random)."""
+    if character == "ironclad" or ws.model.meta.get("warm_start") or ws.model.meta.get("runs_trained", 0) > 50:
+        return
+    src = src or HERE.parent / "evolve" / "ironclad" / "model.json"
+    if not src.exists():
+        return
+    try:
+        iron = json.loads(src.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    n = 0
+    for k, v in iron.get("weights", {}).items():
+        if k.startswith(TRANSFER):
+            ws.model.weights[k] = v
+            n += 1
+    ws.model.params.update(iron.get("params", {}))
+    ws.model.meta["temp_offset"] = 30   # less random than a blank model; card choices still explore
+    ws.model.meta["warm_start"] = {"from": "ironclad", "weights": n,
+                                   "ironclad_runs": iron.get("meta", {}).get("runs_trained")}
+    ws.model.save()
+    say(f"warm start: {n} path/rest/shop/relic/event weights + combat weights from the Ironclad")
 
 
 def migrate(ws: Workspace) -> None:
