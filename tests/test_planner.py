@@ -31,6 +31,9 @@ CARDS = {
     "Flex": ("Flex", "SKILL", 0, False), "Pommel Strike": ("Pommel Strike", "ATTACK", 1, True),
     "Inflame": ("Inflame", "POWER", 1, False), "Combust": ("Combust", "POWER", 1, False),
     "Shrug It Off": ("Shrug It Off", "SKILL", 1, False), "Cleave": ("Cleave", "ATTACK", 1, False),
+    "Corruption": ("Corruption", "POWER", 3, False), "Second Wind": ("Second Wind", "SKILL", 1, False),
+    "Wild Strike": ("Wild Strike", "ATTACK", 1, True), "Power Through": ("Power Through", "SKILL", 1, False),
+    "Bludgeon": ("Bludgeon", "ATTACK", 3, True), "Heavy Blade": ("Heavy Blade", "ATTACK", 2, True),
 }
 
 
@@ -392,6 +395,21 @@ def main() -> None:
 
     check("act 2: rests at 45% HP", rest_choice(25, 36) == 0)
     check("act 2 pre-boss: rests at 78% HP", rest_choice(32, 62) == 0)
+    # boss relics judged against the deck: Runic Pyramid needs outlets, energy relics need energy-hungry decks
+    def deck_g(cards):
+        g = state(["Strike"], [monster("Jaw Worm", 40, 0)]).game_state
+        g.deck = state(cards, [monster("Jaw Worm", 40, 0)]).game_state.combat_state.hand
+        return g
+    starter = ["Strike"] * 5 + ["Defend"] * 4 + ["Bash"]
+    clog = deck_g(starter + ["Wild Strike", "Power Through", "Wild Strike"])
+    outlets = deck_g(starter + ["Corruption", "Second Wind", "Shrug It Off"])
+    pyr = lambda g: policy.boss_relic_rule("Runic Pyramid", g)[0]
+    check("Runic Pyramid: good with exhaust outlets, bad with clog", pyr(outlets) > 0 > pyr(clog),
+          f"{pyr(outlets):+.2f} vs {pyr(clog):+.2f}")
+    cheap = deck_g(starter + ["Shrug It Off", "Cleave", "Pommel Strike"])
+    pricey = deck_g(starter + ["Bludgeon", "Heavy Blade", "Bludgeon", "Corruption"])
+    key = lambda g: policy.boss_relic_rule("Cursed Key", g)[0]
+    check("energy relics worth more to expensive decks", key(pricey) > key(cheap), f"{key(pricey):+.2f} vs {key(cheap):+.2f}")
     print("PLANNER OK")
 
 

@@ -37,6 +37,7 @@ import evidence
 import synergy
 import gamedata
 import planner
+import relics as relics_mod
 from model import Model, hp_bucket
 
 TIP_ONLY = {"key", "click", "wait", "state"}
@@ -371,16 +372,27 @@ class PolicyAgent:
     def _deck_names(self, g) -> list[str]:
         return [d.name for d in g.deck]
 
-    def _relic_features(self, name: str, g, commit: dict, kind: str) -> dict[str, float]:
+    def _relic_features(self, name: str, g, commit: dict, kind: str, prof: dict | None = None) -> dict[str, float]:
         """Relic choice features (boss relics: kind 'relic', shop relics: 'shoprelic'): the relic, the relic in
-        this build and act, and the deck-fit score per synergy tag so the bot learns which fits pay off."""
+        this build / act / kind of deck (cost, draw, exhaust, clog, HP, gold buckets), and the deck-fit score,
+        so the bot learns which relics pay off in which decks."""
+        prof = prof or relics_mod.profile(g)
         f = {f"{kind}:{name}": 1.0, f"relicctx:{name}:a{min(g.act, 3)}": 1.0}
+        for b in relics_mod.buckets(prof):
+            f[f"relicctx:{name}|{b}"] = 1.0
         lean = (CONFIG.tracker.plan or {}).get("lean")
         if lean and commit.get(lean, 0.0) >= 0.35:
             f[f"relicctx:{name}|{lean}"] = 1.0
         if len(g.deck) >= 28:
             f[f"relicctx:{name}:big"] = 1.0
+        if kind == "relic":
+            fit = relics_mod.boss_fit(name, prof)[0]
+            if fit:
+                f["relicfit:boss"] = fit   # how much the deck-fit judgment counts is learned too (prior 1.0)
+            return f
         fit, _ = synergy.relic_fit(name, [d.name for d in g.deck])
+        if name in ("Lantern", "Happy Flower", "Ice Cream", "Sundial"):
+            fit += 0.5 * relics_mod.energy_value(prof)[0]
         if fit:
             tags = sorted(synergy.RELIC_TAGS.get(name, {"special"}))
             for t in tags:
@@ -1022,17 +1034,18 @@ class PolicyAgent:
         relics = g.screen.relics
         commit = self._update_plan(g)
         # learned like cards: the relic itself, the relic in this build / act, and how much its synergy fit counts
-        options = [self._relic_features(r.name, g, commit, "relic") for r in relics]
-        rules = []
+        prof = relics_mod.profile(g)
+        options = [self._relic_features(r.name, g, commit, "relic", prof) for r in relics]
+        rules = [boss_relic_rule(r.name, g) for r in relics]   # full judgment: guard + reasons for the LLM
+        bonus = []
         for r in relics:
-            b, why = boss_relic_rule(r.name, g)
-            _, fwhy = synergy.relic_fit(r.name, [d.name for d in g.deck])
+            # the deck fit is in the features (relicfit:boss); the bonus carries the guide tier
+            b = C.GUIDE_BOSS_RELIC.get(r.name, (0.0, ""))[0]
             if CONFIG.learn:
                 # training runs: relics this bot has rarely taken get a try (the LLM kept picking the same few)
                 n = len((CONFIG.evidence or {}).get("relic", {}).get((r.name, g.act), []))
                 b += 0.5 / (1 + n) ** 0.5
-            rules.append((b, "; ".join(x for x in (why, fwhy) if x)))
-        bonus = [b for b, _ in rules]
+            bonus.append(b)
         can_skip = validate(ReturnBack(), message).ok
         if can_skip:
             options.append({"relic:skip": 1.0})
@@ -1042,10 +1055,14 @@ class PolicyAgent:
         # bench runs always ask the LLM; training runs only llm_share of the time so the learned weights get tried
         if CONFIG.llm_events and (not CONFIG.learn or CONFIG.rng.random() < CONFIG.llm_share):
             ranked = sorted(range(len(relics)), key=lambda k: -probs[k])
-            labels = [f"{gamedata.with_relic(relics[k].name)} [policy {probs[k]:.0%}{'; ' + rules[k][1] if rules[k][1] else ''}] "
+            labels = [f"{gamedata.with_relic(relics[k].name)} [policy {probs[k]:.0%}; fit for this deck "
+                      f"{rules[k][0]:+.1f}{': ' + rules[k][1] if rules[k][1] else ''}] "
                       f"{evidence.boss_relic(CONFIG.evidence, relics[k].name, g.act)}".rstrip()
                       for k in range(len(relics))]
-            pick = self._ask_option(message, labels, "Choose a boss relic. Policy ranking: " +
+            pick = self._ask_option(message, labels, "Choose a boss relic. " + relics_mod.describe(prof) +
+                                    " Judge each relic against THESE numbers, not its general reputation: energy "
+                                    "relics pay off when the deck wants more energy than it has; Runic Pyramid only "
+                                    "with ways to spend or exhaust a full hand. Policy ranking: " +
                                     ", ".join(relics[k].name for k in ranked), topic="boss_relic")
             if pick is not None:
                 idx, by = pick, "llm"
@@ -1416,35 +1433,8 @@ def event_rule(event: str, text: str, g) -> float:
 
 
 def boss_relic_rule(name: str, g) -> tuple[float, str]:
-    """Playbook judgment of a boss relic for THIS deck: (bonus, reason)."""
-    deck = list(g.deck)
-    costs = [d.cost for d in deck if d.cost >= 0]
-    avg_cost = sum(costs) / max(1, len(costs))
-    basics = sum(1 for d in deck if C.base_name(d.name) in C.BASIC)
-    relics = {r.name for r in g.relics}
-    healing = bool(relics & {"Burning Blood", "Black Blood", "Meat on the Bone", "Bloody Idol"}) or \
-        any(C.base_name(d.name) in ("Reaper", "Feed", "Self Repair") for d in deck)
-    unupgraded = sum(1 for d in deck if not d.upgrades and C.base_name(d.name) not in C.BASIC)
-    weak_tools = sum(1 for d in deck if C.effects(d).weak or C.effects(d).enemy_str_down
-                     or C.effects(d).enemy_str_down_temp)
-    guide = C.GUIDE_BOSS_RELIC.get(name, (0.0, ""))
-    if name in ("Snecko Eye", "Velvet Choker", "Runic Pyramid"):
-        return guide  # plus synergy.relic_fit against this deck
-    if name == "Astrolabe":
-        return (0.4, f"{basics} starter cards to transform") if basics >= 6 else (-0.2, "few starters left")
-    if name == "Pandora's Box":
-        return (0.3, f"{basics} Strikes/Defends to transform") if basics >= 7 else (-0.3, "few starters left")
-    if name == "Calling Bell":
-        return (1.2, "Omamori eats the curses") if "Omamori" in relics else (0.0, "")
-    if name == "Coffee Dripper":
-        # 10 of 14 Coffee Dripper runs that reached the act 2 boss lost it, arriving at ~25% HP
-        # (Burning Blood's 6 HP per fight does not count as healing here)
-        real_heal = bool(relics & {"Black Blood", "Meat on the Bone", "Bloody Idol"}) or \
-            any(C.base_name(d.name) in ("Reaper", "Feed") for d in deck)
-        return (-0.8, "no resting: arrives at the boss low") if real_heal else \
-            (-2.5, "no resting and no real healing: these runs reach the next boss at ~25% HP and lose")
-    if name == "Fusion Hammer":
-        return (-0.5, f"{unupgraded} key cards unupgraded") if unupgraded >= 4 else (0.3, "deck mostly upgraded")
-    if name == "Philosopher's Stone":
-        return (0.4, "has Weak/Strength-down to answer it") if weak_tools else (0.0, "")
-    return guide
+    """Judgment of a boss relic for THIS run: (guide tier + deck fit, deck-specific reasons).
+    The fit (relics.boss_fit) looks at energy demand, draw, exhaust outlets, clog risk, gold, HP, potions."""
+    tier = C.GUIDE_BOSS_RELIC.get(name, (0.0, ""))[0]
+    fit, why = relics_mod.boss_fit(name, relics_mod.profile(g))
+    return round(tier + fit, 2), "; ".join(why)

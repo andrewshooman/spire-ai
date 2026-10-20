@@ -125,6 +125,13 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     Skips: the LLM had never skipped (0 of 2269) and skip:a2 ran to -5.5 -> bound skip:* to +-1.5, skip bonus
     by deck size, LLM skip test with the deck's weakest cards, 28+ cards: only engine/synergy/boss-need cards
     (_earns_slot); A/B switch skip_rules.
+19. relics.py: boss relics judged against the run (profile: avg cost, 2+/0/X-cost cards, energy demand vs supply,
+    draw, exhaust outlets, clog makers, self-damage, unupgraded, healing, HP, gold, potions). boss_fit per relic
+    (energy relics by energy gap, Pyramid by outlets vs clog, Snecko by cost curve, Ectoplasm by act/gold...);
+    policy.boss_relic_rule = guide tier + fit (deck-specific reasons in the LLM label + profile line in the
+    prompt). Learnable: relicfit:boss (prior 1) and relicctx:<relic>|cost_hi/cost_lo/draw_hi/exhaust/
+    energy_gen/clog/hp_lo/gold_hi for boss and shop relics. Runic Pyramid had won ~50% of offers via a
+    generic 'great with exhaust/energy' blurb the LLM repeated for every deck.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.
