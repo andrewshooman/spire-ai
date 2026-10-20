@@ -318,6 +318,14 @@ def main() -> None:
     check("LLM failure: cooldown + health check", call1[0] is None and call2 == (None, 0) and pings == [1])
     policy.ask_llm, policy.ON_LLM_FAILURE, policy._LLM_DOWN_UNTIL[0] = real_ask, None, 0.0
 
+    # HP budget before the act 2 boss: low HP avoids fights/elites and favors rest/events
+    real_deck = state(["Strike"], [monster("Jaw Worm", 40, 0)]).game_state.deck
+    gm = NS(act=2, floor=28, current_hp=30, max_hp=80, gold=50, relics=[], deck=real_deck)
+    policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P))
+    rules = policy.PolicyAgent()._map_rules(gm)
+    check("pre-boss HP budget: avoid fights, favor rest", rules.get("M", 0) < 0 and rules.get("E", 0) < -1 and rules.get("R", 0) > 0,
+          str(rules))
+
     # per-act credit: an act-2 choice in a run that died early in act 2 is judged against act-2 runs
     m = Model(Path(tempfile.mkdtemp()) / "m.json")
     ev = lambda a, key: {"options": [{key: 1.0}, {"other": 1.0}], "chosen": 0, "probs": [0.5, 0.5], "temp": 1.0, "act": a}

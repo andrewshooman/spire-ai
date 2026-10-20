@@ -174,7 +174,7 @@ def cardctx_prior(key: str) -> float:
 # Boss relic judgment from the guide (A0-adjusted): rule bonus on top of learned relic weights.
 GUIDE_BOSS_RELIC = {
     "Snecko Eye": (0.6, "S tier: draw 2, great with 2-3 cost cards"),
-    "Coffee Dripper": (0.3, "A tier: energy, path around rest sites"), "Cursed Key": (0.3, "A tier: skip chests you don't want"),
+    "Coffee Dripper": (0.0, "energy, but no resting: 10 of 34 act 2 boss losses had it"), "Cursed Key": (0.3, "A tier: skip chests you don't want"),
     "Philosopher's Stone": (0.1, "B tier"), "Velvet Choker": (0.1, "B tier"), "Astrolabe": (0.0, "C tier"),
     "Pandora's Box": (0.0, "C tier"), "Fusion Hammer": (0.1, "energy; lose smithing"), "Runic Pyramid": (0.1, "great with exhaust/energy"),
     "Slaver's Collar": (-0.4, "energy only in elite/boss fights"), "Mark of Pain": (-0.4, "wounds cost draw"),

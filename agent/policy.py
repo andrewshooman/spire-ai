@@ -608,6 +608,18 @@ class PolicyAgent:
             out["E"] += CONFIG.risk if hp_frac >= 0.5 else 0.0
         elif hp_frac < 0.7:
             out["E"] = -1.0                  # act 3 elites end shaky runs
+        # Budget HP for the boss. Act 2 boss losses entered at ~48% HP vs ~86% for wins: runs chained
+        # 4-5 hallway fights (12-18 HP each) before the boss and one rest (30% heal) couldn't fix it.
+        boss_floor = {1: 16, 2: 33, 3: 50}.get(g.act, 99)
+        coffee = any(r.name == "Coffee Dripper" for r in g.relics)  # no resting: protect HP harder
+        if g.act >= 2 and boss_floor - g.floor <= 8:
+            low, mid = (0.6, 0.8) if coffee else (0.5, 0.7)
+            if hp_frac < low:
+                for sym, b in (("M", -1.2), ("E", -2.0), ("?", 0.6), ("R", 0.8 if not coffee else 0.0), ("$", 0.4)):
+                    out[sym] = out.get(sym, 0.0) + b
+            elif hp_frac < mid:
+                for sym, b in (("M", -0.6), ("E", -1.0), ("?", 0.3), ("R", 0.4 if not coffee else 0.0)):
+                    out[sym] = out.get(sym, 0.0) + b
         return out
 
     def _chest(self, message, decision):
@@ -1319,7 +1331,7 @@ def boss_relic_rule(name: str, g) -> tuple[float, str]:
     if name == "Calling Bell":
         return (1.2, "Omamori eats the curses") if "Omamori" in relics else (0.0, "")
     if name == "Coffee Dripper":
-        return (0.4, "A tier; has healing") if healing else (0.0, "A tier, but no healing besides resting")
+        return (0.1, "energy; plan HP without rests") if healing else (-0.3, "no resting and no healing")
     if name == "Fusion Hammer":
         return (-0.5, f"{unupgraded} key cards unupgraded") if unupgraded >= 4 else (0.3, "deck mostly upgraded")
     if name == "Philosopher's Stone":
