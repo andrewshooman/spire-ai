@@ -158,6 +158,13 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     while it is above 55%, burst potions (damage/buff/tempo) below, Block/heal kept for Execute; planner --
     phase 2 damage on it x1.5, crossing half penalized (0.6 x Execute) when two Executes would kill,
     lifted by the stall guard after one turn.
+24. modutospire: AutoSpire Workshop-style Java mod (ModTheSpire + BaseMod), F7 Off/Suggest/Auto, F8 pause.
+    brain\ = game-free Java port of the planner core (Sim model, Effects text parser, Planner DFS; params =
+    the bot's learned combat weights); GameBridge reads live combat (game-computed card damage per target,
+    intents via getIntentDmg + ReflectionHacks intentMultiAmt) and plays via cardQueue/CardQueueItem, end turn
+    via endTurnButton.disable(true) (same calls as CommunicationMod). Never AUTO at launch, off in Daily
+    Climbs, waits on choice screens. build.ps1 [-Install] (JDK 21 --release 8; tests PlannerTest first).
+    Not yet: potions, out-of-combat automation, hand-select screens, Workshop upload.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.
