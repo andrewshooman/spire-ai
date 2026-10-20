@@ -101,6 +101,12 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     after 20 runs; states from policy._state_features); context card features cardctx:<card>:a<act>,
     cardctx:<card>|<archetype>, cardctx:<card>:big. Explore runs also sample a build "flavor" (analyze.bat shows
     depth by flavor); card picks get boss-need bonuses (cards.BOSS_NEEDS).
+15. synergy.py: Ironclad role tags for cards/relics, engine->payoff RULES and NEEDS (dead payoffs) as learnable
+    features synrule:<rule> / synneed:<tag> (priors from the rules), reasons in card/shop prompts, relic_fit for
+    boss/shop relics. Guide (Panacea A20 Ironclad, applied at A0): cards.cardctx_prior (act-1 vs late picks),
+    GUIDE_BOSS_RELIC tiers, GUIDE_SHOP_RELIC values, Neow ranking, policy.EVENT_RULES per event, shops at 170+
+    gold, Strikes removed before Defends unless block-heavy with no exhaust use; playbook sections rewritten.
+    Ascension tuning comes later.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.
