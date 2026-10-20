@@ -53,14 +53,15 @@ def _clean(parts: list[str]) -> str:
 
 
 def _extract(jar: Path) -> dict:
-    out: dict[str, dict[str, str]] = {"relics": {}, "potions": {}}
+    out: dict[str, dict[str, str]] = {"relics": {}, "potions": {}, "relic_ids": {}, "potion_ids": {}}
     with zipfile.ZipFile(jar) as z:
         for kind in ("relics", "potions"):
             data = json.loads(z.read(f"localization/eng/{kind}.json").decode("utf-8"))
-            for entry in data.values():
+            for rid, entry in data.items():
                 name = entry.get("NAME")
                 if name:
                     out[kind][name] = _clean(entry.get("DESCRIPTIONS") or [])
+                    out[kind[:-1] + "_ids"][rid] = name   # run history files use ids ("SlaversCollar")
     return out
 
 
@@ -68,20 +69,37 @@ def _extract(jar: Path) -> dict:
 def data() -> dict:
     try:
         if CACHE.exists():
-            return json.loads(CACHE.read_text(encoding="utf-8"))
+            cached = json.loads(CACHE.read_text(encoding="utf-8"))
+            if "relic_ids" in cached:
+                return cached
         jar = find_jar()
         if jar is None:
-            return {"relics": {}, "potions": {}}
+            return {"relics": {}, "potions": {}, "relic_ids": {}, "potion_ids": {}}
         out = _extract(jar)
         CACHE.parent.mkdir(parents=True, exist_ok=True)
         CACHE.write_text(json.dumps(out, indent=0), encoding="utf-8")
         return out
     except Exception:
-        return {"relics": {}, "potions": {}}
+        return {"relics": {}, "potions": {}, "relic_ids": {}, "potion_ids": {}}
 
 
 def relic(name: str) -> str:
     return data()["relics"].get(name, "")
+
+
+def relic_name(rid: str) -> str | None:
+    """Display name for a relic id from run history files; None when it is not a relic."""
+    d = data()
+    if rid in d.get("relic_ids", {}):
+        return d["relic_ids"][rid]
+    return rid if rid in d["relics"] else None
+
+
+def potion_name(pid: str) -> str | None:
+    d = data()
+    if pid in d.get("potion_ids", {}):
+        return d["potion_ids"][pid]
+    return pid if pid in d["potions"] else None
 
 
 def potion(name: str) -> str:

@@ -112,6 +112,7 @@ class Config:
     risk: float = 0.0            # explore runs sample a risk appetite: extra pull toward elites in acts 1-2
     flavor: str | None = None    # explore runs sample a build flavor (an archetype) to try early in act 1
     evidence: dict | None = None # this bot's track record (evidence.build), shown to the LLM
+    human_evidence: dict | None = None  # the same from runs the player played (human.py)
     ab: dict = field(default_factory=dict)  # per-run A/B switches (explore runs); missing = on
 
 
@@ -576,7 +577,8 @@ class PolicyAgent:
                 text = (card_text(card) or "").replace("\n", " ")
                 described.append(f"{card.name} ({card.type.value.lower()}, cost {card.cost}): {text} "
                                  f"[policy {probs[k]:.0%}] {self._syn_note(card.name, g)} "
-                                 f"{evidence.card(CONFIG.evidence, card.name, g.act)}".strip())
+                                 f"{evidence.card(CONFIG.evidence, card.name, g.act)} "
+                                 f"{evidence.mine(evidence.card(CONFIG.human_evidence, card.name, g.act))}".strip())
             if can_skip:
                 described.append(f"Skip this reward: keep the {len(g.deck)}-card deck lean [policy {probs[-1]:.0%}]")
             deck = ", ".join(f"{n} x{k}" if k > 1 else n for n, k in
@@ -1063,7 +1065,8 @@ class PolicyAgent:
             ranked = sorted(range(len(relics)), key=lambda k: -probs[k])
             labels = [f"{gamedata.with_relic(relics[k].name)} [policy {probs[k]:.0%}; fit for this deck "
                       f"{rules[k][0]:+.1f}{': ' + rules[k][1] if rules[k][1] else ''}] "
-                      f"{evidence.boss_relic(CONFIG.evidence, relics[k].name, g.act)}".rstrip()
+                      f"{evidence.boss_relic(CONFIG.evidence, relics[k].name, g.act)} "
+                      f"{evidence.mine(evidence.boss_relic(CONFIG.human_evidence, relics[k].name, g.act))}".rstrip()
                       for k in range(len(relics))]
             pick = self._ask_option(message, labels, "Choose a boss relic. " + relics_mod.describe(prof) +
                                     " Judge each relic against THESE numbers, not its general reputation: energy "
@@ -1123,7 +1126,9 @@ class PolicyAgent:
         by = "policy"
         if CONFIG.llm_events and close:
             labels = [f"{o.label} {o.text}".strip() + f" (score {v:+.1f}) "
-                      f"{evidence.event(CONFIG.evidence, s.event_name, o.label)}".rstrip() for o, v in zip(live, values)]
+                      f"{evidence.event(CONFIG.evidence, s.event_name, o.label)} "
+                      f"{evidence.mine(evidence.event(CONFIG.human_evidence, s.event_name, o.label))}".rstrip()
+                      for o, v in zip(live, values)]
             key = "|".join(["event", s.event_name, *sorted(o.label for o in live),
                             f"h{hp_bucket(g.current_hp, g.max_hp)}", f"a{g.act}"])
             k = self._ask_option(message, labels, f"Event: {s.event_name}. {(s.body_text or '')[:300]}",

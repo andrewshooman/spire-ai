@@ -54,6 +54,7 @@ import cards as cards_mod  # noqa: E402
 import evidence  # noqa: E402
 import live  # noqa: E402
 import webapp  # noqa: E402
+import human  # noqa: E402
 import policy  # noqa: E402
 from model import Model  # noqa: E402
 
@@ -596,7 +597,55 @@ def open_workspace(args) -> Workspace:
 
 
 # settings the web page may change (evolve/settings.json), applied before each run
-WEB_SETTINGS = ("ascension", "llm_events", "llm_cards", "llm_shop", "llm_share", "coach_every", "ab")
+WEB_SETTINGS = ("ascension", "llm_events", "llm_cards", "llm_shop", "llm_share", "coach_every", "ab",
+                "human_learn", "human_lr")
+
+
+def game_slot() -> str | None:
+    """The save slot (profile) the game has open, from preferences/STSSaveSlots."""
+    try:
+        import gamedata
+        jar = gamedata.find_jar()
+        p = jar.parent / "preferences" / "STSSaveSlots" if jar else None
+        return str(json.loads(p.read_text(encoding="utf-8")).get("DEFAULT_SLOT")) if p and p.exists() else None
+    except (OSError, ValueError):
+        return None
+
+
+def wait_for_bot_slot() -> None:
+    """Never play on the player's own profile: wait while the game has another save slot open."""
+    want, warned = str(human.bot_slot()), False
+    while (s := game_slot()) not in (None, want):
+        if not warned:
+            say(f"the game is on save slot {s} (your profile); the bot waits until it's back on slot {want} "
+                "(main menu -> profile, or restart the game with start.bat)")
+            warned = True
+        time.sleep(10)
+    if warned:
+        say(f"game is back on the bot's save slot {want}")
+
+
+def learn_human_runs(ws, args) -> dict | None:
+    """Import runs you played (other save slots / human_inbox) and learn from them at a lower weight.
+    Returns their track record for the LLM prompts."""
+    if not getattr(args, "human_learn", True):
+        return None
+    try:
+        c = human.sync(args.character, ws.model, say=say)
+        if c["new"]:
+            say(f"imported {c['new']} of your runs ({c['total']} in total)")
+        items = human.take_pending(args.character)
+        for it in items:
+            ws.model.learn(it["events"], it["reward"], lr=args.lr * getattr(args, "human_lr", 0.25), replay=True)
+        if items:
+            ws.model.meta["human_runs_learned"] = ws.model.meta.get("human_runs_learned", 0) + len(items)
+            ws.save()
+            say(f"learned from {len(items)} of your runs (weight {getattr(args, 'human_lr', 0.25):.2f})")
+        runs = human.runs(args.character)
+        return evidence.build(runs[-400:]) if runs else None
+    except Exception as exc:  # your runs are a bonus; never stop the bot over them
+        say(f"importing your runs failed: {type(exc).__name__}: {exc}")
+        return None
 
 
 def apply_web_settings(args) -> dict:
@@ -647,6 +696,8 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
     try:
         say(f"listening on port {server.port}: launch the game with mods (it connects by itself)")
         env, router = connect(server, getattr(args, 'step_timeout', None))
+        if web:
+            wait_for_bot_slot()
         if env.state.get("in_game"):
             play_leftover(env, router)
             if env.state.get("in_game"):
@@ -675,6 +726,10 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                     if viewer is not None:
                         viewer = live.LiveView(ws.root / "live.json")
                     continue  # re-check max_runs against the new workspace
+                wait_for_bot_slot()
+                human_ev = learn_human_runs(ws, args)
+            else:
+                human_ev = None
             index = ws.state["run"]
             kind, seed = plan_run(index, args)
             explore = kind == "explore"
@@ -700,7 +755,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                 llm_cards=args.llm_cards and ab.get("llm_cards", True), llm_share=args.llm_share, ab=ab,
                 risk=rng.choice([-0.5, 0.0, 0.5, 1.0, 1.5]) if explore else 0.0,
                 flavor=rng.choice([None] + sorted(cards_mod.archetypes(args.character.upper()))) if explore else None,
-                evidence=evidence.build(ws.runs()[-400:]),
+                evidence=evidence.build(ws.runs()[-400:]), human_evidence=human_ev,
                 llm_cache=llm_cache if args.llm_cache else None)
             if viewer is not None:
                 done = ws.runs()[-10:]
@@ -868,6 +923,9 @@ def main() -> None:
     p.add_argument("--port", type=int, default=9999)
     p.add_argument("--workdir", default=None, help="default: evolve/<character> next to agent/")
     p.add_argument("--strategy-baseline", default=str(HERE / "strategy_baseline.md"))
+    p.add_argument("--human-learn", action=argparse.BooleanOptionalAction, default=True,
+                   help="learn from runs you played on another save slot / evolve/human_inbox")
+    p.add_argument("--human-lr", type=float, default=0.25, help="weight of your runs vs the bot's own")
     p.add_argument("--web-settings", action=argparse.BooleanOptionalAction, default=True,
                    help="apply evolve/settings.json (the web page's Settings tab) before each run")
     args = p.parse_args()

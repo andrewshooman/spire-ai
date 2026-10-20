@@ -38,3 +38,8 @@ set OPEN_LIVE_VIEW=yes
 @rem Super Fast Mode animation speed (applied when the game is launched by Spire start).
 @rem 2 was the old setting; higher = more runs per hour. If the game starts hanging, lower it.
 set GAME_SPEED=5
+
+@rem Save slot (profile) the bot plays on: 0 = the first profile. Play on another profile yourself;
+@rem those runs stay out of the bot's stats and it learns from them. The bot waits if the game is on
+@rem your profile.
+set BOT_SLOT=0

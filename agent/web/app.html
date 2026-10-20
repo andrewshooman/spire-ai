@@ -91,6 +91,7 @@ select,input{font:inherit;background:#1a1612;color:var(--ink);border:1px solid v
 <section id=t-overview>
  <div class=kpis id=kpis></div>
  <div class="card" id=current></div>
+ <div class="card" id=humancard></div>
  <div class="grid g2">
   <div class=card><h2>Floor reached, every run</h2><div id=trend></div>
    <div class="small muted">dots: grey training, gold bench, green win &middot; line: 20-run average &middot; dashed: act bosses</div></div>
@@ -277,6 +278,23 @@ function overview(s) {
   if (lastWins !== null && s.wins > lastWins) celebrate(`Victory! Win #${s.wins}`);
   lastWins = s.wins;
 }
+function humanCard(h) {
+  const el = $("#humancard");
+  if (!h.runs) {
+    el.innerHTML = `<h2>You vs the bot</h2><p class=muted>Play on your own profile (main menu → profile) and finished runs
+      are imported before the bot's next run; it learns your card picks, boss relics and rest choices.
+      Steam Deck: copy its <code>runs</code> folder over and run <code>import_runs.bat &lt;folder&gt;</code>.</p>`;
+    return;
+  }
+  const row = (label, a, b, f = pct) => `<tr><td>${label}</td><td><b>${f(a)}</b></td><td>${f(b)}</td></tr>`;
+  el.innerHTML = `<h2>You vs the bot <span class=muted>${h.runs} of your runs · ${h.learned} learned from</span></h2>
+   <div class="grid g2"><div><table><tr><th></th><th>You</th><th>Bot (last ${h.bot_runs})</th></tr>
+    ${row("Win rate", h.you.win, h.bot.win)}${row("Beat act 1 boss", h.you.act1, h.bot.act1)}${row("Beat act 2 boss", h.you.act2, h.bot.act2)}
+    ${row("Avg floor", h.you.avg_floor, h.bot.avg_floor, v => fmt(v))}${row("Card rewards skipped", h.skip_rate, h.bot_skip_rate)}</table></div>
+   <div><div class=small><b>Your favorite picks:</b> ${h.top_picks.map(([c, n]) => `<span class=tag>${esc(c)} ×${n}</span>`).join(" ")}</div>
+    <div class=small style="margin-top:6px"><b>Your boss relics:</b> ${h.boss_relics.map(([c, n]) => `<span class=tag>${esc(c)} ×${n}</span>`).join(" ")}</div>
+    <div class=small style="margin-top:6px"><b>Recent:</b> ${h.recent.map(r => `<span class=tag style="${r.victory ? "color:var(--green)" : ""}">${r.victory ? "WIN" : "F" + r.floor}${r.ascension ? " A" + r.ascension : ""}</span>`).join(" ")}</div></div></div>`;
+}
 function currentRun() {
   const el = $("#current");
   if (!LIVE || !LIVE.updated || Date.now() / 1000 - LIVE.updated > 90) { el.innerHTML = "<h2>Current run</h2><p class=muted>The bot isn't playing right now.</p>"; return; }
@@ -440,7 +458,7 @@ $("#save").onclick = async () => {
 async function refresh() {
   try {
     if (["overview", "live"].includes(TAB)) { LIVE = await api("live"); status(); }
-    if (TAB === "overview") { if (!SUM || Date.now() - (SUM._t || 0) > 20000) { SUM = await api("summary"); SUM._t = Date.now(); overview(SUM); } currentRun(); }
+    if (TAB === "overview") { if (!SUM || Date.now() - (SUM._t || 0) > 20000) { SUM = await api("summary"); SUM._t = Date.now(); overview(SUM); humanCard(await api("human")); } currentRun(); }
     if (TAB === "live") liveTab();
     if (TAB === "runs" && !location.hash.startsWith("#run=")) { RUNS = await api("runs"); runTable(); }
     if (TAB === "insights") { SUM = await api("summary"); SUM._t = Date.now(); insights(SUM); }

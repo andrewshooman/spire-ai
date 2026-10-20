@@ -48,6 +48,11 @@ SETTINGS_SCHEMA = {
     "coach_every": {"type": "int", "min": 0, "max": 50, "default": 5, "label": "Coach review every N training runs (0 = off)"},
     "ab": {"type": "bool", "default": True, "label": "A/B experiments in training runs",
            "help": "Randomly switches HP-budget pathing, LLM card advice and synergy notes per run."},
+    "human_learn": {"type": "bool", "default": True, "label": "Learn from your own runs",
+                    "help": "Runs you play on another profile (save slot) or drop into evolve/human_inbox "
+                            "(import_runs.bat <folder>, e.g. from the Steam Deck). Teaches picks, relics and rests."},
+    "human_lr": {"type": "float", "min": 0.0, "max": 1.0, "default": 0.25,
+                 "label": "Weight of your runs vs the bot's own"},
     "pause": {"type": "bool", "default": False, "label": "Pause after the current run",
               "help": "The bot waits at the main menu until this is turned off."},
 }
@@ -127,6 +132,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if url.path == "/api/live":
                 p = EVOLVE / char / "live.json"
                 return self._send(200, p.read_bytes() if p.exists() else b"{}", "application/json")
+            if url.path == "/api/human":
+                return self._json(stats.human_summary(char))
             if url.path == "/api/sim":
                 return self._json(stats.sim_data(char))
             if url.path == "/api/settings":

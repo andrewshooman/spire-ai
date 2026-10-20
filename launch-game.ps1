@@ -28,6 +28,19 @@ if (-not $lib) { Fail "Couldn't find Slay the Spire in your Steam libraries." }
 $game = "$lib\steamapps\common\SlayTheSpire"
 $mts = Get-ChildItem "$lib\steamapps\workshop\content\646570" -Recurse -Filter ModTheSpire.jar -ErrorAction SilentlyContinue | Select-Object -First 1
 if (-not $mts) { Fail "Couldn't find ModTheSpire. Subscribe to it in the Steam Workshop." }
+# The bot always plays on its own save slot (BOT_SLOT, default 0 = the first profile), so your own
+# profile's stats and run history stay separate. The game opens whichever slot DEFAULT_SLOT names.
+$slot = if ($env:BOT_SLOT) { $env:BOT_SLOT } else { "0" }
+$slots = "$game\preferences\STSSaveSlots"
+if (Test-Path $slots) {
+    $txt = [IO.File]::ReadAllText($slots)
+    $new = $txt -replace '"DEFAULT_SLOT":\s*"-?\d+"', "`"DEFAULT_SLOT`": `"$slot`""
+    if ($new -ne $txt) {
+        [IO.File]::WriteAllText($slots, $new)
+        [IO.File]::WriteAllText("$slots.backUp", $new)
+        Write-Host "Save slot set to $slot for the bot (switch back to your profile from the main menu when you play)."
+    }
+}
 $java = "$game\jre\bin\javaw.exe"
 if (-not (Test-Path $java)) { $java = "$game\jre\bin\java.exe" }
 Start-Process $java -ArgumentList @("-jar", "`"$($mts.FullName)`"", "--skip-launcher") -WorkingDirectory $game

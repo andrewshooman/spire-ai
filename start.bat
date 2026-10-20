@@ -7,6 +7,7 @@ rem defaults for settings added after your settings.bat was made
 if "%GAME_SPEED%"=="" set GAME_SPEED=5
 if "%LLM_CARDS%"=="" set LLM_CARDS=on
 if "%LLM_SHOP%"=="" set LLM_SHOP=on
+if "%BOT_SLOT%"=="" set BOT_SLOT=0
 set PYTHONUTF8=1
 set PY=%~dp0sts-bench\.venv\Scripts\python.exe
 set FLAGS=--character %CHARACTER% --model %MODEL% --coach-every %COACH_EVERY%

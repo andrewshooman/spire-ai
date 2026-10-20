@@ -35,6 +35,19 @@ playbook body in `evolve\<character>\strategy.md` is refreshed from `agent\strat
 start while the coach's "Learned from runs" bullets are kept. Rerun `install.ps1` only if an update
 says the dependency pin changed.
 
+## Your own runs (separate profile, Steam Deck)
+
+- Play on your own profile (main menu -> profile; the bot uses the first one, `BOT_SLOT=0` in settings.bat).
+  Your stats stay separate, `launch-game.ps1` switches the game back to the bot's profile when the bot starts
+  it, and the bot waits instead of playing while the game is on your profile.
+- Finished runs on your profile are imported before the bot's next run. It learns your card picks and skips,
+  boss relics and rest/smith choices (weight 0.25 vs its own runs; Settings tab), and the LLM sees how your
+  picks did ("human player's runs"). Combat isn't in the game's run history, so combat isn't learned.
+- Steam Deck: copy its run history folder (`~/.local/share/Steam/steamapps/common/SlayTheSpire/runs`, or
+  `1_runs` for the second profile) to the PC, then `import_runs.bat <that folder>`. Runs the bot played are
+  recognized by seed and skipped.
+- The Overview tab shows "You vs the bot".
+
 ## Files
 - `start.bat` - Ollama on GPU + bot + game. Settings in `settings.bat`.
 - `dashboard.bat` - the web app at http://127.0.0.1:8765/ (served by the bot while it runs, otherwise by

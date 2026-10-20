@@ -219,6 +219,40 @@ def summary(char: str, since: int = 0) -> dict:
     }
 
 
+def human_summary(char: str) -> dict:
+    """Runs the player played (human.py imports), next to the bot's numbers."""
+    import human
+    rs = human.runs(char)
+    bot = [r for r in load_runs(char) if not r.get("aborted")][-100:]
+
+    def reach(xs):
+        n = max(1, len(xs))
+        return {"act1": _r(sum(r["floor"] > 16 for r in xs) / n, 2), "act2": _r(sum(r["floor"] > 33 for r in xs) / n, 2),
+                "win": _r(sum(r.get("victory", False) for r in xs) / n, 2), "avg_floor": _r(mean(r["floor"] for r in xs)) if xs else None}
+    out = {"runs": len(rs), "bot": reach(bot), "bot_runs": len(bot)}
+    mp = EVOLVE / char / "model.json"
+    try:
+        out["learned"] = json.loads(mp.read_text(encoding="utf-8"))["meta"].get("human_runs_learned", 0)
+    except Exception:
+        out["learned"] = 0
+    if not rs:
+        return out
+    picks = Counter(re.sub(r"[+]+$", "", p["chosen"]) for r in rs for p in r.get("picks", []))
+    total = sum(picks.values())
+    out.update({
+        "you": reach(rs), "wins": sum(r.get("victory", False) for r in rs),
+        "skip_rate": _r(picks.get("(skip)", 0) / max(1, total), 2),
+        "bot_skip_rate": _r(sum(p["chosen"] == "(skip)" for r in bot for p in r.get("picks", []))
+                            / max(1, sum(len(r.get("picks", [])) for r in bot)), 2),
+        "top_picks": [[k, v] for k, v in picks.most_common(12) if k != "(skip)"][:10],
+        "boss_relics": Counter(b["relic"] for r in rs for b in r.get("boss_relics", [])).most_common(8),
+        "killers": Counter(r.get("killer") for r in rs if not r.get("victory")).most_common(5),
+        "recent": [{"floor": r["floor"], "victory": r.get("victory"), "killer": r.get("killer"),
+                    "started": r.get("started"), "ascension": r.get("ascension", 0)} for r in rs[-10:]][::-1],
+    })
+    return out
+
+
 def runs_list(char: str) -> list[dict]:
     return [run_row(r) for r in load_runs(char)][::-1]
 

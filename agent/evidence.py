@@ -77,6 +77,11 @@ def card(e: dict | None, name: str, act: int) -> str:
     return f"[history act {act}: taken {_fmt(t)} | passed {_fmt(p)}]"
 
 
+def mine(text: str) -> str:
+    """Relabel a track-record note as coming from the player's own runs (human.py)."""
+    return text.replace("[history", "[human player's runs", 1) if text else ""
+
+
 def event(e: dict | None, name: str, choice: str) -> str:
     if not e:
         return ""
@@ -104,4 +109,6 @@ def shop(e: dict | None, name: str) -> str:
 
 
 NOTE = ("History numbers are this bot's own earlier runs (average final floor; a win counts as 70): "
-        "prefer options with a clearly better record when the samples are decent, but small samples are noisy.")
+        "prefer options with a clearly better record when the samples are decent, but small samples are noisy. "
+        "'human player's runs' numbers come from an experienced human playing the same character: what they "
+        "take often is a good example to follow.")
