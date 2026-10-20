@@ -1,9 +1,0 @@
-{
-    "title":  "AutoSpire - combat suggestions and auto-battle",
-    "description":  "Shows the best play for your turn, or plays it for you.\n\n[b]F7[/b] cycles Off / Suggest / Auto, [b]F8[/b] pauses Auto.\n\n[list]\n[*][b]Suggest[/b]: the cards to play are numbered in order (the first one glows green), the target gets the targeting reticle, and a line explains the turn: damage dealt, block, damage you\u0027ll take. Potions it would drink are marked USE with the reason; END TURN is marked when nothing is worth playing.\n[*][b]Auto[/b]: plays the turn at a watchable pace, drinks potions by the same rules, ends the turn (each switchable in Mods \u003e AutoSpire \u003e Config).\n[*]Safe by default: every launch starts in Off or Suggest, Auto is off in Daily Climbs, it never acts while you drag or target a card, and choice screens (Armaments, Headbutt, rewards, map, shops) stay yours.\n[/list]\n\nHow it decides: a whole-turn search tries the orders of the cards in your hand within your energy, using the game\u0027s own computed damage and block for every card and target. It simulates Vulnerable, Weak, Strength, Thorns, kills and the enemies\u0027 intents, scores where the turn leaves you, and keeps the best order. Its weights were learned by a self-learning bot over hundreds of runs. Potion rules: never die holding one, Block/heal on big boss hits, burst potions saved for The Champ\u0027s second half.\n\nWorks with modded cards that use standard card wording. Requires BaseMod.",
-    "visibility":  "private",
-    "changeNote":  "First release: combat suggestions, auto-battle, potion advice.",
-    "tags":  [
-
-             ]
-}

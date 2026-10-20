@@ -1,4 +1,4 @@
-package autospire.brain;
+package spireseer.brain;
 
 import java.util.ArrayList;
 import java.util.HashSet;

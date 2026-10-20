@@ -1,9 +1,9 @@
-package autospire;
+package spireseer;
 
-import autospire.brain.Effects;
-import autospire.brain.Planner;
-import autospire.brain.PotionAdvisor;
-import autospire.brain.Sim;
+import spireseer.brain.Effects;
+import spireseer.brain.Planner;
+import spireseer.brain.PotionAdvisor;
+import spireseer.brain.Sim;
 import basemod.ReflectionHacks;
 import com.megacrit.cardcrawl.actions.GameActionManager;
 import com.megacrit.cardcrawl.cards.AbstractCard;

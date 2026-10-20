@@ -1,0 +1,15 @@
+{
+  "modid": "spireseer",
+  "name": "Spireseer",
+  "author_list": [
+    "Andrew"
+  ],
+  "description": "See the best turn, or let it play. Numbers the cards to play, marks the target and potions, or plays the turn for you. F7: Off / Suggest / Auto, F8: pause.",
+  "version": "0.1.0",
+  "sts_version": "12-18-2022",
+  "mts_version": "3.18.0",
+  "dependencies": [
+    "basemod"
+  ],
+  "update_json": ""
+}

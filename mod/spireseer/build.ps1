@@ -1,7 +1,7 @@
 param([switch]$Install)
-# Builds AutoSpire.jar: tests the combat brain, compiles against the game + ModTheSpire + BaseMod
+# Builds Spireseer.jar: tests the combat brain, compiles against the game + ModTheSpire + BaseMod
 # (found in your Steam library, never bundled), packages the jar. -Install copies it into the game's
-# mods folder; then tick "AutoSpire" once in the ModTheSpire launcher.
+# mods folder; then tick "Spireseer" once in the ModTheSpire launcher.
 $ErrorActionPreference = "Stop"
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $jdk = Get-ChildItem "C:\Program Files\Java", "C:\Program Files\Eclipse Adoptium", "C:\Program Files\Microsoft" -Directory -ErrorAction SilentlyContinue |
@@ -26,10 +26,10 @@ Remove-Item -Recurse -Force $build -ErrorAction SilentlyContinue
 New-Item -ItemType Directory -Force "$build\test", "$build\classes" | Out-Null
 
 Write-Host "1/3 testing the combat brain"
-$brain = Get-ChildItem "$here\src\autospire\brain\*.java" | ForEach-Object { $_.FullName }
-& $javac --release 8 -Xlint:-options -encoding UTF-8 -d "$build\test" @brain "$here\test\autospire\PlannerTest.java"
+$brain = Get-ChildItem "$here\src\spireseer\brain\*.java" | ForEach-Object { $_.FullName }
+& $javac --release 8 -Xlint:-options -encoding UTF-8 -d "$build\test" @brain "$here\test\spireseer\PlannerTest.java"
 if ($LASTEXITCODE) { throw "test compile failed" }
-& $java -cp "$build\test" autospire.PlannerTest
+& $java -cp "$build\test" spireseer.PlannerTest
 if ($LASTEXITCODE) { throw "brain tests failed" }
 
 Write-Host "2/3 compiling the mod"
@@ -40,11 +40,16 @@ if ($LASTEXITCODE) { throw "compile failed" }
 Copy-Item -Recurse "$here\resources\*" "$build\classes\"
 
 Write-Host "3/3 packaging"
-& $jar cf "$build\AutoSpire.jar" -C "$build\classes" .
+& $jar cf "$build\Spireseer.jar" -C "$build\classes" .
 if ($LASTEXITCODE) { throw "jar failed" }
-Write-Host "Built $build\AutoSpire.jar"
+Write-Host "Built $build\Spireseer.jar"
 if ($Install) {
     New-Item -ItemType Directory -Force "$game\mods" | Out-Null
-    Copy-Item "$build\AutoSpire.jar" "$game\mods\AutoSpire.jar" -Force
-    Write-Host "Installed to $game\mods. Open the ModTheSpire launcher once and tick AutoSpire."
+    Copy-Item "$build\Spireseer.jar" "$game\mods\Spireseer.jar" -Force
+    $old = "$game\mods\AutoSpire.jar"   # the mod's earlier name: never load two copies
+    if (Test-Path $old) {
+        try { Remove-Item $old -Force -ErrorAction Stop; Write-Host "Removed the old AutoSpire.jar" }
+        catch { Write-Host "Close the game, then delete $old (it is the old copy of this mod)" -ForegroundColor Yellow }
+    }
+    Write-Host "Installed to $game\mods. Open the ModTheSpire launcher once and tick Spireseer."
 }

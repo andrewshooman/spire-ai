@@ -1,4 +1,4 @@
-package autospire.brain;
+package spireseer.brain;
 
 import java.util.Locale;
 import java.util.regex.Matcher;

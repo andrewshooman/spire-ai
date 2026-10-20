@@ -1,4 +1,4 @@
-# AutoSpire (Slay the Spire mod)
+# Spireseer (Slay the Spire mod)
 
 Combat suggestions or auto-battle, in the game, with no Python or LLM needed.
 
@@ -12,7 +12,7 @@ Combat suggestions or auto-battle, in the game, with no Python or LLM needed.
   ("Suggested: Bash > Jaw Worm, Strike > Jaw Worm (deal 20, block 0, take 5)"). A potion worth drinking is
   marked USE with the reason; END TURN is marked when nothing is worth playing. You still play every card.
 - **Auto** plays the turn for you, one card at a time at a watchable pace, drinks potions by the same rules and
-  ends the turn (each switchable in Mods -> AutoSpire -> Config).
+  ends the turn (each switchable in Mods -> Spireseer -> Config).
 - Safety: every launch starts in Off or Suggest (never Auto), Auto is off in Daily Climbs, it never acts while
   you drag or target a card, and choice screens (Armaments, Headbutt, rewards, map, shops) are left to you.
 
@@ -24,13 +24,13 @@ draw/energy/debuffs, so cards from other mods work when they use standard wordin
 ## Build and install
 
 ```
-powershell -ExecutionPolicy Bypass -File mod\autospire\build.ps1 -Install
+powershell -ExecutionPolicy Bypass -File mod\spireseer\build.ps1 -Install
 ```
 
 Needs a JDK 11+ (compiles for the game's Java 8) and ModTheSpire + BaseMod from the Workshop. Then open the
-ModTheSpire launcher once and tick **AutoSpire** (the bot's `launch-game.ps1` reuses the last mod list).
+ModTheSpire launcher once and tick **Spireseer** (the bot's `launch-game.ps1` reuses the last mod list).
 
-`build.ps1` runs the brain tests first (`test/autospire/PlannerTest.java`, no game needed).
+`build.ps1` runs the brain tests first (`test/spireseer/PlannerTest.java`, no game needed).
 
 ## How a play is chosen
 
@@ -54,9 +54,9 @@ ones when HP is low.
 ## Publish to the Steam Workshop
 
 ```
-powershell -ExecutionPolicy Bypass -File modutospire\publish.ps1            # build + prepare only
-powershell -ExecutionPolicy Bypass -File modutospire\publish.ps1 -Upload    # upload as a private item
-powershell -ExecutionPolicy Bypass -File modutospire\publish.ps1 -Upload -Visibility public -ChangeNote "..."
+powershell -ExecutionPolicy Bypass -File mod\spireseer\publish.ps1            # build + prepare only
+powershell -ExecutionPolicy Bypass -File mod\spireseer\publish.ps1 -Upload    # upload as a private item
+powershell -ExecutionPolicy Bypass -File mod\spireseer\publish.ps1 -Upload -Visibility public -ChangeNote "..."
 ```
 
 Steam must be running. The first upload creates the Workshop item (its id is saved in workshop\config.json);

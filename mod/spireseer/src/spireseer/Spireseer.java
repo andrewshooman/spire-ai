@@ -1,9 +1,9 @@
-package autospire;
+package spireseer;
 
-import autospire.brain.Planner;
-import autospire.brain.PotionAdvisor;
+import spireseer.brain.Planner;
+import spireseer.brain.PotionAdvisor;
 import basemod.ReflectionHacks;
-import autospire.brain.Sim;
+import spireseer.brain.Sim;
 import basemod.BaseMod;
 import basemod.ModLabel;
 import basemod.ModLabeledToggleButton;
@@ -34,7 +34,7 @@ import org.apache.logging.log4j.Logger;
 import java.util.Properties;
 
 /**
- * AutoSpire: combat suggestions or auto-battle for Slay the Spire.
+ * Spireseer: combat suggestions or auto-battle for Slay the Spire.
  *
  *   F7  cycle mode: OFF -> SUGGEST (highlights the best play) -> AUTO (plays the turn for you)
  *   F8  pause / resume AUTO
@@ -44,9 +44,9 @@ import java.util.Properties;
  * card rewards...) are left to you.
  */
 @SpireInitializer
-public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber, PostRenderSubscriber {
+public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber, PostRenderSubscriber {
 
-    public static final Logger log = LogManager.getLogger("AutoSpire");
+    public static final Logger log = LogManager.getLogger("Spireseer");
 
     enum Mode { OFF, SUGGEST, AUTO }
 
@@ -74,7 +74,7 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
     private static AbstractCard glowed;     // the card we tinted, restored when the suggestion moves
 
     public static void initialize() {
-        BaseMod.subscribe(new AutoSpire());
+        BaseMod.subscribe(new Spireseer());
         try {
             Properties d = new Properties();
             d.setProperty("mode", "SUGGEST");
@@ -82,14 +82,14 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
             d.setProperty("showInAuto", "true");
             d.setProperty("delayMs", "350");
             d.setProperty("autoPotions", "true");
-            config = new SpireConfig("AutoSpire", "config", d);
+            config = new SpireConfig("Spireseer", "config", d);
             mode = "OFF".equals(config.getString("mode")) ? Mode.OFF : Mode.SUGGEST;   // never AUTO at launch
             autoEndTurn = config.getBool("autoEndTurn");
             showInAuto = config.getBool("showInAuto");
             delayMs = Math.max(0, config.getInt("delayMs"));
             autoPotions = config.getBool("autoPotions");
         } catch (Exception e) {
-            log.warn("AutoSpire config not loaded: " + e);
+            log.warn("Spireseer config not loaded: " + e);
         }
     }
 
@@ -103,7 +103,7 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
             config.setBool("autoPotions", autoPotions);
             config.save();
         } catch (Exception e) {
-            log.warn("AutoSpire config not saved: " + e);
+            log.warn("Spireseer config not saved: " + e);
         }
     }
 
@@ -111,7 +111,7 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
     public void receivePostInitialize() {
         ModPanel panel = new ModPanel();
         float x = 380f, y = 720f;
-        panel.addUIElement(new ModLabel("AutoSpire  -  F7: Off / Suggest / Auto,  F8: pause auto", x, y,
+        panel.addUIElement(new ModLabel("Spireseer  -  F7: Off / Suggest / Auto,  F8: pause auto", x, y,
                 Settings.CREAM_COLOR, FontHelper.charDescFont, panel, l -> {}));
         panel.addUIElement(new ModLabeledToggleButton("Auto mode ends the turn by itself", x, y - 60f,
                 Settings.CREAM_COLOR, FontHelper.charDescFont, autoEndTurn, panel, l -> {}, b -> {
@@ -133,8 +133,8 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
                     autoPotions = b.enabled;
                     save();
                 }));
-        Texture badge = ImageMaster.loadImage("autospireResources/badge.png");
-        BaseMod.registerModBadge(badge, "AutoSpire", "Andrew",
+        Texture badge = ImageMaster.loadImage("spireseerResources/badge.png");
+        BaseMod.registerModBadge(badge, "Spireseer", "Andrew",
                 "Combat suggestions or auto-battle. F7 cycles Off / Suggest / Auto, F8 pauses.", panel);
     }
 
@@ -143,7 +143,7 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
         try {
             update();
         } catch (Exception e) {   // a view/helper must never crash the game
-            log.warn("AutoSpire update failed: " + e);
+            log.warn("Spireseer update failed: " + e);
             lastPlan = null;
             lastSig = null;
             glow(null);
@@ -208,7 +208,7 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
         } else if (lastPlan.endTurn(params)) {
             if (autoEndTurn) GameBridge.endTurn();
         } else if (!GameBridge.play(lastPlan.steps.get(0))) {
-            log.info("AutoSpire: planned card no longer playable; replanning");
+            log.info("Spireseer: planned card no longer playable; replanning");
         }
         lastSig = null;   // re-read the game after every action
         nextActionAt = System.currentTimeMillis() + delayMs;
@@ -231,7 +231,7 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
         try {
             render(sb);
         } catch (Exception e) {
-            log.warn("AutoSpire render failed: " + e);
+            log.warn("Spireseer render failed: " + e);
         }
     }
 
@@ -243,7 +243,7 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
     private static void render(SpriteBatch sb) {
         if (CardCrawlGame.mode != CardCrawlGame.GameMode.GAMEPLAY || !AbstractDungeon.isPlayerInDungeon()) return;
         float s = Settings.scale;
-        String head = "AutoSpire: " + mode + (status.isEmpty() ? "" : " - " + status) + "   (F7 mode, F8 pause)";
+        String head = "Spireseer: " + mode + (status.isEmpty() ? "" : " - " + status) + "   (F7 mode, F8 pause)";
         FontHelper.renderFontLeftTopAligned(sb, FontHelper.tipBodyFont, head, 24f * s, Settings.HEIGHT - 70f * s, DIM);
         if (mode == Mode.OFF || lastPlan == null || lastSim == null || !inCombat()) return;
         if (mode == Mode.AUTO && !showInAuto) return;

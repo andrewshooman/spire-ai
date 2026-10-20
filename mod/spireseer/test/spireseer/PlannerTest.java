@@ -1,9 +1,9 @@
-package autospire;
+package spireseer;
 
-import autospire.brain.Effects;
-import autospire.brain.Planner;
-import autospire.brain.PotionAdvisor;
-import autospire.brain.Sim;
+import spireseer.brain.Effects;
+import spireseer.brain.Planner;
+import spireseer.brain.PotionAdvisor;
+import spireseer.brain.Sim;
 
 /** Plain-Java checks for the combat brain (no game needed). Mirrors cases from Spire AI's tests/test_planner.py. */
 public final class PlannerTest {
@@ -186,6 +186,6 @@ public final class PlannerTest {
             System.out.println(failed + " FAILED");
             System.exit(1);
         }
-        System.out.println("AUTOSPIRE BRAIN OK");
+        System.out.println("SPIRESEER BRAIN OK");
     }
 }

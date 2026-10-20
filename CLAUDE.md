@@ -158,13 +158,17 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     while it is above 55%, burst potions (damage/buff/tempo) below, Block/heal kept for Execute; planner --
     phase 2 damage on it x1.5, crossing half penalized (0.6 x Execute) when two Executes would kill,
     lifted by the stall guard after one turn.
-24. modutospire: AutoSpire Workshop-style Java mod (ModTheSpire + BaseMod), F7 Off/Suggest/Auto, F8 pause.
+24. mod\spireseer: Spireseer (renamed from AutoSpire: the Workshop already has 'Auto-Spire' mods), Java mod
+    (ModTheSpire + BaseMod), F7 Off/Suggest/Auto, F8 pause.
     brain\ = game-free Java port of the planner core (Sim model, Effects text parser, Planner DFS; params =
     the bot's learned combat weights); GameBridge reads live combat (game-computed card damage per target,
     intents via getIntentDmg + ReflectionHacks intentMultiAmt) and plays via cardQueue/CardQueueItem, end turn
     via endTurnButton.disable(true) (same calls as CommunicationMod). Never AUTO at launch, off in Daily
     Climbs, waits on choice screens. build.ps1 [-Install] (JDK 21 --release 8; tests PlannerTest first).
-    Not yet: potions, out-of-combat automation, hand-select screens, Workshop upload.
+    PotionAdvisor (policy._potion rules) + auto potions; Suggest overlay numbers the cards 1-2-3 (green glow on
+    the next), game reticle on the target, USE on potions, END TURN marker. publish.ps1 [-Upload] fills
+    workshop\config.json (title/description incl. "The AI behind the decisions") + content; art\make_preview.py
+    draws workshop\image.jpg + badge. Not yet: poison/orbs/stances, out-of-combat, hand-select screens.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.
