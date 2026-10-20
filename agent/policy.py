@@ -171,6 +171,8 @@ class PolicyAgent:
         self._last_shop: tuple | None = None
         self._last_line = ""
         self._potions_used: dict[tuple, int] = {}
+        self._stall = None          # (state signature, turns ended in a row without change)
+        self._stall_turn = None
         self._shop_list: dict[int, list[str]] = {}
         self._mk: dict = {}           # Match and Keep! memory: floor, index -> card name, picks
         self._skull: dict[int, int] = {}  # Knowing Skull asks per floor
@@ -270,13 +272,22 @@ class PolicyAgent:
                                  "max_hp": c.player.max_hp, "deck": self._deck_names(g),
                                  "enemies": [m.name for m in c.monsters],
                                  "relics": [r.name for r in g.relics]})
-        plan = planner.plan_turn(message, P, self._deck_names(g))
-        note = plan.describe(c.hand, c.monsters)
+        # stall guard: the same hand and enemy HP turn after turn with nothing played (Runic Pyramid
+        # holding a full hand of attacks against Thorns) means waiting is the worst option
+        sig = (g.floor, tuple(h.name for h in c.hand), tuple(m.current_hp for m in c.monsters))
+        stall = self._stall[1] if self._stall and self._stall[0] == sig else 0
+        plan = planner.plan_turn(message, P, self._deck_names(g), stall=stall)
+        note = plan.describe(c.hand, c.monsters) + (f" | stalled {stall} turns" if stall else "")
         potion = self._potion(message, plan)
         if potion is not None:
             return potion[0], potion[1] + " | " + note
-        if not plan.steps or plan.value - plan.base < P["end_threshold"]:
+        threshold = P["end_threshold"] if stall < 2 else 0.0
+        if not plan.steps or plan.value - plan.base < threshold:
+            if c.turn != self._stall_turn:
+                self._stall_turn = c.turn
+                self._stall = (sig, stall + 1)
             return EndTurn(), note + " -> end turn"
+        self._stall = None
         i, t = plan.steps[0]
         return PlayCard(card_index=i, target_index=t), note
 

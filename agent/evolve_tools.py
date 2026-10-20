@@ -94,7 +94,7 @@ def emit(line: str, keep) -> None:
 
 
 def cmd_dashboard(args) -> None:
-    """The live page when the bot is running (it serves it), otherwise the page from disk."""
+    """Open the web app: the bot serves it while running; otherwise serve it from here."""
     try:
         socket.create_connection(("127.0.0.1", LIVE_PORT), timeout=0.5).close()
         print(f"Opening http://127.0.0.1:{LIVE_PORT}/")
@@ -102,7 +102,10 @@ def cmd_dashboard(args) -> None:
         return
     except OSError:
         pass
-    open_page(dashboard.render(workspace(args.character)))
+    # bot not running: serve the web app here until Ctrl-C
+    import webapp
+    sys.argv = [sys.argv[0], str(LIVE_PORT)]
+    webapp.main()
 
 
 def cmd_stats(args) -> None:

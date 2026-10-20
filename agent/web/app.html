@@ -1,0 +1,453 @@
+<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spire AI</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Kreon:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#13110e;--stone:#201c17;--stone2:#2b261f;--edge:#4c4233;--edge2:#6b5b42;--ink:#ebe2cc;--muted:#a69c86;
+--gold:#e2b653;--gold2:#a8802c;--red:#d2473a;--blue:#5ea8db;--green:#7fb85f;--purple:#b088d8;--line:#3a3329;color-scheme:dark}
+*{box-sizing:border-box}
+body{margin:0;color:var(--ink);font:15px/1.45 Kreon,Georgia,serif;background:radial-gradient(ellipse at 50% -10%,#2f281f 0,#1a1713 45%,#100e0b 100%) fixed var(--bg)}
+a{color:var(--gold)} button{font:inherit}
+main{max-width:1400px;margin:0 auto;padding:10px 16px 60px}
+.top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:8px 0}
+h1{font-size:24px;margin:0;color:var(--gold);letter-spacing:.04em;text-shadow:0 2px 0 #000}
+h2{font-size:13px;margin:0 0 10px;color:var(--gold);text-transform:uppercase;letter-spacing:.12em;font-weight:600}
+.chars{display:flex;gap:6px;flex-wrap:wrap}
+.chip{border:1px solid var(--edge);background:var(--stone);color:var(--muted);border-radius:16px;padding:3px 12px;cursor:pointer;font-size:13px}
+.chip.on{color:#1a1006;background:var(--gold);border-color:var(--gold)} .chip .dot{display:inline-block;width:7px;height:7px;border-radius:50%;background:var(--green);margin-left:6px;animation:pulse 1.4s infinite}
+@keyframes pulse{50%{opacity:.25}}
+.pill{margin-left:auto;font-size:13px;padding:4px 12px;border-radius:14px;background:#1a1612;border:1px solid var(--edge);color:var(--muted)}
+.pill.live{color:#d9f2c8;border-color:#4f7a3a}
+nav.tabs{display:flex;gap:4px;border-bottom:1px solid var(--edge);margin:6px 0 12px;overflow-x:auto}
+nav.tabs a{padding:7px 14px;color:var(--muted);text-decoration:none;border:1px solid transparent;border-bottom:none;border-radius:8px 8px 0 0;white-space:nowrap}
+nav.tabs a.on{color:var(--gold);background:var(--stone2);border-color:var(--edge2)}
+.card{background:linear-gradient(180deg,#25211b,#1c1915);border:1px solid var(--edge);border-radius:10px;padding:14px;margin:0 0 12px;box-shadow:0 3px 12px rgba(0,0,0,.45)}
+.grid{display:grid;gap:12px} .g2{grid-template-columns:repeat(auto-fit,minmax(360px,1fr))} .g3{grid-template-columns:repeat(auto-fit,minmax(300px,1fr))}
+@media (max-width:500px){.g2,.g3{grid-template-columns:minmax(0,1fr)}}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:12px}
+.kpi{background:linear-gradient(180deg,#2c261e,#1e1a15);border:1px solid var(--edge);border-radius:10px;padding:10px 12px}
+.kpi>span{display:block;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.09em}
+.kpi b{display:block;font-size:30px;color:var(--gold);line-height:1.15} .kpi small{color:var(--muted)}
+.up{color:var(--green)} .down{color:var(--red)} .muted{color:var(--muted)}
+.bar{height:10px;border-radius:6px;background:#3a3125;overflow:hidden;margin-top:6px} .bar i{display:block;height:100%;background:linear-gradient(90deg,var(--gold2),var(--gold));transition:width 1s}
+.badges{display:flex;flex-wrap:wrap;gap:8px}
+.badge{border:1px dashed var(--edge);border-radius:10px;padding:6px 10px;opacity:.45;font-size:13px}
+.badge.got{opacity:1;border-style:solid;border-color:var(--gold);box-shadow:0 0 12px rgba(226,182,83,.25)} .badge span{color:var(--muted);font-size:11px;display:block}
+/* journey bar */
+.journey{position:relative;height:46px;margin:6px 0 4px}
+.journey .seg{position:absolute;top:16px;height:14px;border-radius:3px;background:#3a3125}
+.journey .done{background:linear-gradient(90deg,#7a5a24,var(--gold))}
+.journey .boss{position:absolute;top:8px;width:30px;height:30px;margin-left:-15px;border-radius:50%;background:#2b1a16;border:2px solid var(--red);display:grid;place-items:center;font-size:15px}
+.journey .boss.beat{border-color:var(--green);background:#1c2a16}
+.journey .me{position:absolute;top:2px;width:14px;height:42px;margin-left:-7px;border-radius:7px;border:2px solid #fff3c4;animation:pulse 1.2s infinite}
+.journey .lbl{position:absolute;top:32px;font-size:11px;color:var(--muted);transform:translateX(-50%)}
+.hud{display:flex;flex-wrap:wrap;gap:8px 20px;align-items:center;font-size:17px}
+.hud b{color:var(--gold)}
+.heart{color:var(--red)}
+.why{font-size:13px;color:#f1d99a;background:#2a2216;border-left:3px solid var(--gold);padding:6px 10px;border-radius:4px;margin-top:8px}
+svg{max-width:100%} .chart{width:100%;height:auto;display:block}
+.chart text{fill:var(--muted);font-size:10px;font-family:Kreon,Georgia,serif}
+table{width:100%;border-collapse:collapse;font-size:14px} td,th{padding:5px 8px;border-bottom:1px solid var(--line);text-align:left;vertical-align:top}
+th{color:var(--gold);font-weight:600;cursor:pointer;white-space:nowrap} tr.click{cursor:pointer} tr.click:hover td{background:#2a241c}
+tr.win td{color:var(--green)}
+.scroll{overflow-x:auto}
+.hbar{display:grid;grid-template-columns:minmax(0,1.2fr) minmax(0,2fr) 48px;gap:8px;align-items:center;font-size:13px;padding:3px 0}
+.hbar .t{height:12px;border-radius:6px;background:#3a3125;overflow:hidden} .hbar .t i{display:block;height:100%;background:var(--red)}
+.hbar .t i.g{background:var(--gold)} .hbar .t i.b{background:var(--blue)}
+.deck{display:flex;flex-wrap:wrap;gap:5px}
+.dchip{font-size:12px;padding:2px 7px;border-radius:6px;border:1px solid var(--edge)}
+.dchip.ATTACK{border-color:#8e3a30;background:#2e1612}.dchip.SKILL{border-color:#3d6f91;background:#132331}.dchip.POWER{border-color:var(--gold2);background:#2c2410}.dchip.CURSE,.dchip.STATUS{border-color:#666;background:#222}
+.call{border:1px solid var(--line);border-left:3px solid var(--gold2);border-radius:6px;padding:7px 10px;margin-bottom:7px;background:#1a1612;font-size:13px}
+.call.fail{border-left-color:var(--red)} .call .c{color:var(--gold);font-weight:600}
+.topic{display:inline-block;padding:0 7px;border-radius:9px;font-size:11px;text-transform:uppercase;background:#3b2f1d;color:#f1d99a;margin-right:4px}
+.filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px}
+select,input{font:inherit;background:#1a1612;color:var(--ink);border:1px solid var(--edge);border-radius:6px;padding:4px 8px}
+.btn{background:var(--gold);color:#1a1006;border:none;border-radius:8px;padding:7px 16px;cursor:pointer;font-weight:700}
+.btn.ghost{background:transparent;color:var(--gold);border:1px solid var(--gold2)}
+.form{display:grid;grid-template-columns:minmax(0,1fr) 220px;gap:10px 16px;align-items:center}
+@media (max-width:600px){.form{grid-template-columns:minmax(0,1fr)}}
+.form .help{font-size:12px;color:var(--muted)}
+.toast{position:fixed;left:50%;top:18px;transform:translateX(-50%);background:linear-gradient(180deg,#5c4a1c,#33280c);border:2px solid var(--gold);color:#fff3c4;padding:12px 26px;border-radius:12px;font-size:20px;z-index:9;box-shadow:0 0 40px rgba(226,182,83,.5);animation:pop .6s ease-out}
+@keyframes pop{from{transform:translateX(-50%) scale(.5);opacity:0}}
+.spark{position:fixed;width:8px;height:8px;border-radius:2px;z-index:8;pointer-events:none;animation:fall 1.8s ease-in forwards}
+@keyframes fall{to{transform:translateY(80vh) rotate(540deg);opacity:0}}
+.hide{display:none!important}
+.small{font-size:12px}
+.tag{display:inline-block;font-size:11px;padding:0 6px;border-radius:8px;border:1px solid var(--edge);color:var(--muted);margin-right:3px}
+.map svg{width:100%;max-width:320px;display:block;margin:0 auto}
+.enemy{display:inline-block;min-width:150px;margin:0 8px 8px 0;padding:8px;border:1px solid var(--edge);border-radius:8px;background:#1a1612;vertical-align:top}
+</style></head><body><main>
+<div class=top>
+ <h1>Spire AI</h1>
+ <div class=chars id=chars></div>
+ <span class=pill id=status>connecting...</span>
+</div>
+<nav class=tabs id=tabs>
+ <a data-t=overview>Overview</a><a data-t=live>Live run</a><a data-t=runs>Runs</a><a data-t=insights>Insights</a>
+ <a data-t=sim>Simulator</a><a data-t=settings>Settings</a>
+</nav>
+
+<section id=t-overview>
+ <div class=kpis id=kpis></div>
+ <div class="card" id=current></div>
+ <div class="grid g2">
+  <div class=card><h2>Floor reached, every run</h2><div id=trend></div>
+   <div class="small muted">dots: grey training, gold bench, green win &middot; line: 20-run average &middot; dashed: act bosses</div></div>
+  <div class=card><h2>Milestones</h2><div class=badges id=milestones></div>
+   <h2 style="margin-top:14px">Act reach, last 50 runs</h2><div id=reach></div></div>
+ </div>
+ <div class="grid g2">
+  <div class=card><h2>What ends runs</h2><div id=killers></div></div>
+  <div class=card><h2>Recent runs</h2><div class=scroll><table id=recent></table></div></div>
+ </div>
+</section>
+
+<section id=t-live class=hide>
+ <div class=card><div id=livehud class=hud>Waiting for the bot...</div><div id=livejourney></div></div>
+ <div class="grid g3">
+  <div class=card><h2>HP this run</h2><div id=livehp></div><div id=livestats class=small></div></div>
+  <div class=card><h2>LLM decisions (newest first)</h2><div id=livellm style="max-height:520px;overflow:auto"></div></div>
+  <div class=card><h2 id=livedecktitle>Deck</h2><div id=livedeck class=deck></div><h2 style="margin-top:12px">Plan</h2><div id=liveplan class=small></div></div>
+ </div>
+ <div class="grid g2">
+  <div class="card map"><h2>Act map</h2><div id=livemap></div></div>
+  <div class=card><h2 id=livescreen>Now</h2><div id=livenow class=small></div><h2 style="margin-top:12px">Last decisions</h2><div id=livelog class=small style="max-height:360px;overflow:auto"></div></div>
+ </div>
+</section>
+
+<section id=t-runs class=hide>
+ <div class=card id=runlist>
+  <div class=filters>
+   <select id=fkind><option value="">all runs</option><option>explore</option><option>bench</option></select>
+   <select id=fout><option value="">any outcome</option><option value=win>wins</option><option value=a2>reached act 2+</option><option value=a3>reached act 3+</option><option value=a1d>died in act 1</option><option value=a2d>died in act 2</option></select>
+   <input id=fq placeholder="killer, flavor, relic...">
+   <span class="small muted" id=fcount></span>
+  </div>
+  <div class=scroll><table id=runtable></table></div>
+ </div>
+ <div id=rundetail class=hide></div>
+</section>
+
+<section id=t-insights class=hide>
+ <div class="grid g2">
+  <div class=card><h2>Progress in blocks of 25 runs</h2><div id=blocks></div></div>
+  <div class=card><h2>Killers (entry HP = HP when the fatal fight began)</h2><div class=scroll><table id=killtable></table></div></div>
+ </div>
+ <div class="grid g3">
+  <div class=card><h2>A/B experiments</h2><div id=ab class=small></div></div>
+  <div class=card><h2>Risk level</h2><div id=risk class=small></div></div>
+  <div class=card><h2>Build flavor</h2><div id=flavor class=small></div></div>
+ </div>
+ <div class="grid g3">
+  <div class=card><h2>Card picks that paid off</h2><div id=cardsbest class=small></div></div>
+  <div class=card><h2>Card picks that didn't</h2><div id=cardsworst class=small></div></div>
+  <div class=card><h2>Boss relics</h2><div id=relics class=small></div></div>
+ </div>
+ <div class=card><h2>Model</h2><div id=model class=small></div></div>
+</section>
+
+<section id=t-sim class=hide>
+ <div class="grid g2">
+  <div class=card><h2>Win rate by enemy (last bench)</h2><div id=simbench></div></div>
+  <div class=card><h2>Training: holdout fitness</h2><div id=simtrain></div></div>
+ </div>
+ <div class=card><h2>Calibration: real vs simulated</h2><div class=scroll><table id=simcal></table></div>
+  <p class="small muted">Run <code>sim.bat bench | train | calibrate</code>; results appear here. Simulator stats never mix with live runs.</p></div>
+</section>
+
+<section id=t-settings class=hide>
+ <div class=card><h2>Run settings</h2>
+  <p class="small muted">Saved to evolve/settings.json and applied at the start of the next run.</p>
+  <div class=form id=form></div>
+  <p><button class=btn id=save>Save</button> <span id=saved class="small muted"></span></p></div>
+</section>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const pct = x => x == null ? "-" : Math.round(100 * x) + "%";
+const fmt = (x, d = 1) => x == null ? "-" : (+x).toFixed(d);
+let CHAR = "ironclad", TAB = "overview", SUM = null, RUNS = [], LIVE = null, lastWins = null;
+try { CHAR = localStorage.getItem("spire-char") || CHAR; } catch (e) {}
+const api = (p, extra = "") => fetch(`/api/${p}?char=${CHAR}${extra}`, {cache: "no-store"}).then(r => r.json());
+
+// ---------------------------------------------------------------- routing
+function route() {
+  const h = location.hash.slice(1) || "overview";
+  const [t, arg] = h.split("=");
+  TAB = t === "run" ? "runs" : t;
+  document.querySelectorAll("nav.tabs a").forEach(a => a.classList.toggle("on", a.dataset.t === TAB));
+  document.querySelectorAll("main > section").forEach(s => s.classList.toggle("hide", s.id !== "t-" + TAB));
+  if (t === "run") showRun(+arg); else { $("#rundetail").classList.add("hide"); $("#runlist").classList.remove("hide"); }
+  refresh();
+}
+document.querySelectorAll("nav.tabs a").forEach(a => a.onclick = () => { location.hash = a.dataset.t; });
+window.onhashchange = route;
+
+// ---------------------------------------------------------------- small charts
+function lineChart(points, {w = 640, h = 200, ymax = null, marks = [], dots = null, color = "var(--gold)", yl = ""} = {}) {
+  if (!points.length) return "<p class=muted>No data yet.</p>";
+  const L = 30, B = 20, T = 8, R = 8;
+  const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs, x0 + 1), y1 = ymax ?? Math.max(...ys, 1);
+  const X = x => L + (w - L - R) * (x - x0) / (x1 - x0), Y = y => h - B - (h - B - T) * y / y1;
+  let s = `<svg class=chart viewBox="0 0 ${w} ${h}">`;
+  for (const m of marks) s += `<line x1=${L} x2=${w - R} y1=${Y(m[0])} y2=${Y(m[0])} stroke="var(--gold2)" stroke-dasharray="4 4" opacity=.6 /><text x=${w - R} y=${Y(m[0]) - 3} text-anchor=end>${m[1]}</text>`;
+  if (dots) for (const d of dots) s += `<circle cx=${X(d[0])} cy=${Y(d[1])} r=2.6 fill="${d[2]}" opacity=.85><title>${esc(d[3] || "")}</title></circle>`;
+  s += `<polyline fill=none stroke="${color}" stroke-width=2.5 points="${points.map(p => X(p[0]).toFixed(1) + "," + Y(p[1]).toFixed(1)).join(" ")}" />`;
+  s += `<text x=2 y=${Y(y1) + 8}>${Math.round(y1)}${yl}</text><text x=2 y=${h - B}>0</text><text x=${L} y=${h - 4}>${x0}</text><text x=${w - R} y=${h - 4} text-anchor=end>${x1}</text></svg>`;
+  return s;
+}
+function hbars(rows, {max = null, cls = "", fmtv = v => v} = {}) {
+  if (!rows.length) return "<p class=muted>Nothing yet.</p>";
+  const m = max ?? Math.max(...rows.map(r => r[1]), 1);
+  return rows.map(r => `<div class=hbar title="${esc(r[3] || "")}"><span>${esc(r[0])}</span><span class=t><i class="${cls}" style="width:${Math.max(2, 100 * r[1] / m)}%"></i></span><b>${fmtv(r[1])}</b></div>`).join("");
+}
+function countUp(el, to, d = 0) {
+  const from = +(el.dataset.v || 0); el.dataset.v = to;
+  const t0 = performance.now();
+  const step = t => { const k = Math.min(1, (t - t0) / 700); el.textContent = (from + (to - from) * k).toFixed(d); if (k < 1) requestAnimationFrame(step); };
+  requestAnimationFrame(step);
+}
+function celebrate(text) {
+  const t = document.createElement("div"); t.className = "toast"; t.textContent = text; document.body.append(t);
+  for (let i = 0; i < 60; i++) {
+    const s = document.createElement("div"); s.className = "spark";
+    s.style.left = Math.random() * 100 + "vw"; s.style.top = "-10px";
+    s.style.background = ["#e2b653", "#d2473a", "#7fb85f", "#5ea8db"][i % 4]; s.style.animationDelay = Math.random() * .6 + "s";
+    document.body.append(s); setTimeout(() => s.remove(), 2600);
+  }
+  setTimeout(() => t.remove(), 3500);
+}
+
+// ---------------------------------------------------------------- journey bar (51 floors)
+function journey(floor, actBeat = 0) {
+  const W = f => (100 * f / 51);
+  let s = `<div class=journey>`;
+  for (const [a, b] of [[0, 16], [17, 33], [34, 50]]) {
+    s += `<div class=seg style="left:${W(a)}%;width:${W(b - a)}%"></div>`;
+    const done = Math.max(0, Math.min(floor, b) - a);
+    if (done > 0) s += `<div class="seg done" style="left:${W(a)}%;width:${W(done)}%"></div>`;
+  }
+  [[16, 1], [33, 2], [50, 3]].forEach(([f, a]) => s += `<div class="boss ${floor > f ? "beat" : ""}" style="left:${W(f)}%" title="Act ${a} boss">${floor > f ? "✔" : "♛"}</div>`);
+  if (floor > 0 && floor < 51) s += `<div class=me style="left:${W(floor)}%" title="floor ${floor}"></div>`;
+  s += `<span class=lbl style="left:${W(8)}%">Act 1</span><span class=lbl style="left:${W(25)}%">Act 2</span><span class=lbl style="left:${W(42)}%">Act 3</span></div>`;
+  return s;
+}
+
+// ---------------------------------------------------------------- header
+async function header() {
+  const d = await fetch("/api/characters", {cache: "no-store"}).then(r => r.json());
+  $("#chars").innerHTML = d.characters.map(c => `<span class="chip ${c.name === CHAR ? "on" : ""}" data-c="${c.name}">${c.name[0].toUpperCase() + c.name.slice(1)} <span class=small>${c.runs}</span>${c.live ? "<span class=dot></span>" : ""}</span>`).join("");
+  document.querySelectorAll(".chip").forEach(c => c.onclick = () => { CHAR = c.dataset.c; try { localStorage.setItem("spire-char", CHAR); } catch (e) {} RUNS = []; SUM = null; lastWins = null; header(); refresh(); });
+}
+function status() {
+  const fresh = LIVE && LIVE.updated && (Date.now() / 1000 - LIVE.updated) < 60;
+  $("#status").className = "pill" + (fresh ? " live" : "");
+  $("#status").textContent = fresh ? `Playing run ${LIVE.run ?? "?"} · floor ${LIVE.floor} · act ${LIVE.act} · HP ${LIVE.hp}/${LIVE.max_hp}` : "Bot idle";
+}
+
+// ---------------------------------------------------------------- overview
+function kpis(s) {
+  const prev = s.series.slice(-100, -50).map(x => x.floor), lastAvg = s.avg_floor_last50;
+  const trend = prev.length ? lastAvg - prev.reduce((a, b) => a + b, 0) / prev.length : 0;
+  const cards = [
+    ["Wins", s.wins, 0, `${pct(s.win_rate)} of ${s.runs} runs`],
+    ["Avg floor, last 50", lastAvg, 1, prev.length ? `<span class="${trend >= 0 ? "up" : "down"}">${trend >= 0 ? "▲" : "▼"} ${fmt(Math.abs(trend))}</span> vs previous 50` : ""],
+    ["Act 2 cleared, last 50", Math.round(100 * s.reach_last50.act2), 0, `<div class=bar><i style="width:${100 * s.reach_last50.act2}%"></i></div>`, "%"],
+    ["Act 1 cleared, last 50", Math.round(100 * s.reach_last50.act1), 0, `<div class=bar><i style="width:${100 * s.reach_last50.act1}%"></i></div>`, "%"],
+    ["Best floor", s.best_floor, 0, s.best_floor >= 51 ? "won" : "of 51"],
+    ["Runs / hour", s.runs_per_hr ?? 0, 1, `${fmt(s.median_minutes)} min per run`],
+  ];
+  $("#kpis").innerHTML = cards.map((c, i) => `<div class=kpi><span>${c[0]}</span><b><span id=k${i}>0</span>${c[4] || ""}</b><small>${c[3]}</small></div>`).join("");
+  cards.forEach((c, i) => countUp($("#k" + i), c[1], c[2]));
+}
+function overview(s) {
+  if (!s.runs) { $("#kpis").innerHTML = "<div class=card>No runs for this character yet. Pick it in Settings to start one.</div>"; return; }
+  kpis(s);
+  const dots = s.series.map(x => [x.run, x.floor, x.win ? "#7fb85f" : x.kind === "bench" ? "#e2b653" : "#8a8070", `run ${x.run}: floor ${x.floor}`]);
+  const roll = s.series.map((x, i) => [x.run, s.rolling[i]]);
+  $("#trend").innerHTML = lineChart(roll, {ymax: 55, dots, marks: [[16, "Act 1 boss"], [33, "Act 2 boss"], [50, "Act 3 boss"]], color: "var(--blue)"});
+  $("#milestones").innerHTML = s.milestones.map(m => `<div class="badge ${m.run ? "got" : ""}">${esc(m.name)}<span>${m.run ? "run " + m.run : "locked"}</span></div>`).join("");
+  $("#reach").innerHTML = hbars([["Act 1 boss", 100 * s.reach_last50.act1], ["Act 2 boss", 100 * s.reach_last50.act2], ["Won (Act 3 boss)", 100 * s.reach_last50.act3]], {max: 100, cls: "g", fmtv: v => Math.round(v) + "%"});
+  $("#killers").innerHTML = hbars(s.killers.slice(0, 8).map(k => [`${k.killer} (act ${k.act})`, k.deaths, 0, k.entry_hp != null ? `entered at ${k.entry_hp}% HP on average` : ""]));
+  $("#recent").innerHTML = "<tr><th>#</th><th>Floor</th><th>Ended by</th><th>Build</th><th>Min</th></tr>" + s.recent.map(r =>
+    `<tr class="click ${r.victory ? "win" : ""}" onclick="location.hash='run=${r.run}'"><td>${r.run}</td><td><div class=bar style="width:110px;display:inline-block;vertical-align:middle"><i style="width:${100 * r.floor / 51}%"></i></div> ${r.floor}</td><td>${esc(r.victory ? "WIN" : r.killer)}</td><td>${esc(r.flavor || r.archetype || "")}</td><td>${r.minutes}</td></tr>`).join("");
+  if (lastWins !== null && s.wins > lastWins) celebrate(`Victory! Win #${s.wins}`);
+  lastWins = s.wins;
+}
+function currentRun() {
+  const el = $("#current");
+  if (!LIVE || !LIVE.updated || Date.now() / 1000 - LIVE.updated > 90) { el.innerHTML = "<h2>Current run</h2><p class=muted>The bot isn't playing right now.</p>"; return; }
+  const d = LIVE, last = (d.llm || [])[0], s = d.stats || {};
+  el.innerHTML = `<h2>Current run &middot; #${d.run ?? "?"} <span class=muted>${esc(d.kind || "")}${d.flavor ? " &middot; testing " + esc(d.flavor) : ""}</span></h2>
+    ${journey(d.floor)}
+    <div class=hud><span><span class=heart>❤</span> <b>${d.hp}</b>/${d.max_hp}</span><span>● <b>${d.gold}</b> gold</span>
+     <span>Floor <b>${d.floor}</b> &middot; Act ${d.act}</span><span>Boss: <b>${esc(d.act_boss)}</b></span>
+     <span>Deck <b>${(d.deck || []).length}</b></span><span>Relics <b>${(d.relics || []).length}</b></span>
+     <span class=muted>${Math.floor((s.elapsed || 0) / 60)}:${String((s.elapsed || 0) % 60).padStart(2, "0")} elapsed</span>
+     <a href="#live">Watch live →</a></div>
+    ${last ? `<div class=why><span class=topic>${esc(last.topic)}</span> ${esc(last.choice ?? "(policy decided)")} &mdash; ${esc((last.answer || "").split("|").slice(1).join("|").trim() || last.q)}</div>` : ""}`;
+}
+
+// ---------------------------------------------------------------- live tab
+const ICON = {M: "⚔", E: "☠", R: "♨", "$": "$", "?": "?", T: "▣"};
+function liveTab() {
+  const d = LIVE;
+  if (!d || !d.updated) { $("#livehud").textContent = "Waiting for the bot..."; return; }
+  $("#livehud").innerHTML = `<span><span class=heart>❤</span> <b>${d.hp}</b>/${d.max_hp}</span><span><b>${d.gold}</b> gold</span><span>Floor <b>${d.floor}</b> &middot; Act ${d.act} &middot; boss ${esc(d.act_boss)}</span>
+    <span>Run ${d.run ?? "?"} &middot; ${esc(d.kind || "")} &middot; seed ${esc(d.seed || "")}</span>
+    <span class=small>${(d.relics || []).map(r => `<span class=tag>${esc(r[0])}</span>`).join("")}</span>
+    <span class=small>Potions: ${esc((d.potions || []).filter(p => p !== "Potion Slot").join(", ") || "none")}</span>`;
+  $("#livejourney").innerHTML = journey(d.floor);
+  const tr = d.hp_track || [];
+  $("#livehp").innerHTML = lineChart(tr.map(t => [t[0], t[1]]), {w: 420, h: 150, ymax: Math.max(...tr.map(t => t[2]), 1), color: "var(--red)"});
+  const s = d.stats || {};
+  $("#livestats").innerHTML = `Decisions ${s.decisions ?? 0} &middot; LLM calls ${s.llm_calls ?? 0} (${s.llm_s ?? 0} s) &middot; potions used ${s.potions_used ?? 0} &middot; picks ${(s.picks ?? 0) - (s.skips ?? 0)}/${s.picks ?? 0}${(s.bought || []).length ? " &middot; bought " + esc(s.bought.join(", ")) : ""}`;
+  $("#livellm").innerHTML = (d.llm || []).map(c => `<div class="call ${c.choice == null ? "fail" : ""}"><span class=topic>${esc(c.topic)}</span><span class=muted>F${c.floor} &middot; ${c.ms ? (c.ms / 1000).toFixed(1) + "s" : ""}</span><div>${esc(c.q)}</div><div class=c>→ ${esc(c.choice ?? "policy decided")}</div><div class=muted>${esc(c.answer || "")}</div></div>`).join("") || "<p class=muted>No LLM calls yet.</p>";
+  const counts = {};
+  for (const c of d.deck || []) { const k = c.name + "|" + c.type; counts[k] = (counts[k] || 0) + 1; }
+  $("#livedecktitle").textContent = `Deck (${(d.deck || []).length})`;
+  $("#livedeck").innerHTML = Object.entries(counts).sort().map(([k, n]) => { const [nm, t] = k.split("|"); return `<span class="dchip ${esc(t)}">${esc(nm)}${n > 1 ? " ×" + n : ""}</span>`; }).join("");
+  const p = d.plan || {};
+  $("#liveplan").innerHTML = `<b>${esc(p.archetype || "Undecided")}</b>${d.flavor ? ` &middot; testing ${esc(d.flavor)}` : ""}<br>Core: ${esc((p.core || []).join(", ") || "-")}<br>Wanted: ${esc((p.wanted || []).join(", ") || "-")}`;
+  // map
+  const nodes = (d.map && d.map.nodes) || [];
+  if (nodes.length) {
+    const maxY = Math.max(...nodes.map(n => n[1])), W = 300, H = 60 + (maxY + 1) * 34, X = x => 30 + x * 40, Y = y => H - 22 - y * 34;
+    const key = (x, y) => x + "," + y, has = new Set(nodes.map(n => key(n[0], n[1]))), route = d.map.route || [], on = new Set(route.map(r => key(r[0], r[1])));
+    let s = `<svg viewBox="0 0 ${W} ${H}">`;
+    for (const [x, y, sy, ch] of nodes) for (const [cx, cy] of ch) s += `<line x1=${X(x)} y1=${Y(y)} x2=${has.has(key(cx, cy)) ? X(cx) : W / 2} y2=${has.has(key(cx, cy)) ? Y(cy) : 26} stroke="#5a4d3a" stroke-dasharray="3 4" />`;
+    for (let i = 1; i < route.length; i++) s += `<line x1=${X(route[i - 1][0])} y1=${Y(route[i - 1][1])} x2=${X(route[i][0])} y2=${Y(route[i][1])} stroke="var(--gold)" stroke-width=3 />`;
+    for (const [x, y, sy] of nodes) s += `<g><circle cx=${X(x)} cy=${Y(y)} r=12 fill="${on.has(key(x, y)) ? "#5a4520" : "#2b251d"}" stroke="${on.has(key(x, y)) ? "var(--gold)" : "#6b5b42"}" /><text x=${X(x)} y=${Y(y) + 4} text-anchor=middle fill="${sy === "E" ? "#ff8c7a" : "#ebe2cc"}" font-size=13>${ICON[sy] || sy}</text></g>`;
+    s += `<circle cx=${W / 2} cy=26 r=17 fill="#2b1a16" stroke="var(--red)" /><text x=${W / 2} y=31 text-anchor=middle fill="var(--red)" font-size=17>♛</text></svg>`;
+    $("#livemap").innerHTML = s;
+  }
+  const c = d.combat;
+  if (c && d.screen === "COMBAT") {
+    $("#livescreen").textContent = `Combat · turn ${c.turn} · energy ${c.energy} · block ${c.block}`;
+    $("#livenow").innerHTML = c.monsters.filter(m => !m.gone).map(m => `<div class=enemy><b>${esc(m.name)}</b><div class=bar><i style="width:${100 * m.hp / Math.max(1, m.max_hp)}%;background:var(--red)"></i></div>${m.hp}/${m.max_hp}${m.block ? " ⛨" + m.block : ""}<br><span class=muted>${esc(m.intent)}${m.dmg > 0 ? " " + m.dmg + (m.hits > 1 ? "×" + m.hits : "") : ""}</span></div>`).join("") +
+      `<div class=deck style="margin-top:6px">${c.hand.map(h => `<span class="dchip ${esc(h.type)}">${esc(h.name)} (${h.cost < 0 ? "X" : h.cost})</span>`).join("")}</div>`;
+  } else { $("#livescreen").textContent = (d.screen || "").replace(/_/g, " ").toLowerCase(); $("#livenow").innerHTML = ""; }
+  $("#livelog").innerHTML = (d.decisions || []).map(x => `<div><span class=muted>F${x.floor} ${esc(x.screen.toLowerCase())}</span> <b>${esc(x.action)}</b>${x.why ? `<div class=muted>${esc(x.why)}</div>` : ""}</div>`).join("");
+}
+
+// ---------------------------------------------------------------- runs tab
+function runTable() {
+  const k = $("#fkind").value, o = $("#fout").value, q = $("#fq").value.toLowerCase();
+  const rows = RUNS.filter(r => (!k || r.kind === k) &&
+    (!o || (o === "win" && r.victory) || (o === "a2" && r.floor > 16) || (o === "a3" && r.floor > 33) || (o === "a1d" && !r.victory && r.floor <= 16) || (o === "a2d" && !r.victory && r.floor > 16 && r.floor <= 33)) &&
+    (!q || JSON.stringify(r).toLowerCase().includes(q)));
+  $("#fcount").textContent = `${rows.length} runs`;
+  $("#runtable").innerHTML = "<tr><th>#</th><th>Kind</th><th>Floor</th><th>Ended by</th><th>Build</th><th>Boss relics</th><th>Elites</th><th>Deck</th><th>Experiments</th><th>Min</th></tr>" +
+    rows.slice(0, 400).map(r => `<tr class="click ${r.victory ? "win" : ""}" onclick="location.hash='run=${r.run}'"><td>${r.run}</td><td>${r.kind}</td>
+    <td><div class=bar style="width:90px;display:inline-block;vertical-align:middle"><i style="width:${100 * r.floor / 51}%"></i></div> ${r.floor}</td>
+    <td>${esc(r.victory ? "WIN" : r.killer)}</td><td>${esc(r.flavor ? "test: " + r.flavor : r.archetype)}</td><td class=small>${esc(r.boss_relics.join(", "))}</td>
+    <td>${r.elites}</td><td>${r.deck}</td><td class=small>${r.risk != null ? "risk " + r.risk + " " : ""}${Object.entries(r.ab || {}).map(([a, b]) => `<span class=tag>${a}:${b ? "on" : "off"}</span>`).join("")}</td><td>${r.minutes}</td></tr>`).join("");
+}
+["#fkind", "#fout"].forEach(s => $(s).onchange = runTable); $("#fq").oninput = runTable;
+
+async function showRun(n) {
+  $("#runlist").classList.add("hide");
+  const el = $("#rundetail"); el.classList.remove("hide"); el.innerHTML = "<div class=card>Loading run " + n + "...</div>";
+  const r = await api("run", "&n=" + n);
+  if (r.error) { el.innerHTML = `<div class=card>${esc(r.error)}</div>`; return; }
+  const hp = (r.hp || []).map(h => [h[0], h[1]]);
+  const roomIcon = {fight: "⚔", elite: "☠", boss: "♛", rest: "♨", shop: "$", event: "?", chest: "▣", neow: "★"};
+  const rooms = (r.rooms || []).map((rm, i) => `<span title="floor ${i}: ${rm}" style="color:${rm === "elite" ? "#ff8c7a" : rm === "boss" ? "var(--red)" : "var(--muted)"}">${roomIcon[rm] || "·"}</span>`).join(" ");
+  const deck = {}; (r.deck || []).forEach(c => deck[c] = (deck[c] || 0) + 1);
+  const fights = (r.fights_detail || []).map(f => `<tr><td>${f.floor}</td><td>${esc(f.room || "")}</td><td>${esc(f.enemies.join(", "))}</td><td>${f.hp_in}/${f.max_hp}</td><td class="${(f.hp_delta || 0) < -15 ? "down" : ""}">${f.hp_delta ?? ""}</td></tr>`).join("");
+  const picks = (r.picks || []).map(p => `<tr><td>${p.floor}</td><td>${p.offered.map(o => o === p.chosen ? `<b style="color:var(--gold)">${esc(o)}</b>` : esc(o)).join(", ")}</td></tr>`).join("");
+  const list = (arr, f) => (arr || []).map(f).join("") || "<li class=muted>none</li>";
+  el.innerHTML = `<p><a href="#runs">← all runs</a></p>
+   <div class=card><h2>Run ${r.run} &middot; ${esc(r.kind)} &middot; seed ${esc(r.seed)}</h2>
+    <div class=hud><b style="font-size:22px">${r.victory ? "VICTORY" : "Died on floor " + r.floor}</b><span>${r.victory ? "" : "to " + esc(r.killer || "?")}</span>
+     <span>Elites ${r.elites_killed || 0} &middot; bosses ${r.bosses_killed || 0}</span><span>${(r.duration_s / 60).toFixed(1)} min</span>
+     <span>${r.flavor ? "testing <b>" + esc(r.flavor) + "</b>" : ""} ${r.risk != null ? "&middot; risk " + r.risk : ""}</span>
+     <span class=small>${Object.entries(r.ab || {}).map(([a, b]) => `<span class=tag>${a}:${b ? "on" : "off"}</span>`).join("")}</span></div>
+    ${journey(r.floor)}<div class=small style="letter-spacing:2px">${rooms}</div></div>
+   <div class="grid g2">
+    <div class=card><h2>HP by floor</h2>${lineChart(hp, {h: 170, color: "var(--red)", marks: [[0, ""]]})}</div>
+    <div class=card><h2>Deck at the end (${(r.deck || []).length})</h2><div class=deck>${Object.entries(deck).sort().map(([c, n]) => `<span class=dchip>${esc(c)}${n > 1 ? " ×" + n : ""}</span>`).join("")}</div>
+     <h2 style="margin-top:12px">Relics</h2><div class=small>${(r.relics || []).map(x => `<span class=tag>${esc(x)}</span>`).join("")}</div></div>
+   </div>
+   <div class="grid g2">
+    <div class=card><h2>Fights</h2><div class=scroll><table><tr><th>Floor</th><th>Room</th><th>Enemies</th><th>HP in</th><th>HP change</th></tr>${fights}</table></div></div>
+    <div class=card><h2>Card picks</h2><div class=scroll style="max-height:380px"><table>${picks}</table></div></div>
+   </div>
+   <div class="grid g3">
+    <div class=card><h2>Shops</h2><ul class=small>${list(r.shops, s => `<li>F${s.floor}: ${esc(s.bought)} <span class=muted>(${s.gold} gold, ${esc(s.by || "")})</span></li>`)}</ul></div>
+    <div class=card><h2>Events</h2><ul class=small>${list(r.events, e => `<li>F${e.floor} ${esc(e.event)}: <b>${esc(e.choice)}</b> <span class=muted>${esc(e.by)}</span></li>`)}</ul>
+     <h2>Rest sites</h2><ul class=small>${list(r.rests, x => `<li>F${x.floor}: ${esc(x.choice)} at ${x.hp}/${x.max_hp}</li>`)}</ul></div>
+    <div class=card><h2>Boss relics &amp; potions</h2><ul class=small>${list(r.boss_relics, b => `<li>F${b.floor}: <b>${esc(b.relic)}</b> <span class=muted>${esc(b.by)}</span></li>`)}${list(r.potions, p => `<li>F${p.floor}: drank ${esc(p.potion)} <span class=muted>(${esc(p.why)})</span></li>`)}</ul></div>
+   </div>
+   <div class=card><h2>LLM decisions</h2>${(r.llm_log || []).slice().reverse().map(c => `<div class="call ${c.choice == null ? "fail" : ""}"><span class=topic>${esc(c.topic)}</span>F${c.floor} <span class=muted>${c.ms ? (c.ms / 1000).toFixed(1) + "s" : ""}</span> ${esc(c.q)}<div class=c>→ ${esc(c.choice ?? "policy decided")}</div><div class=muted>${esc(c.answer || "")}</div></div>`).join("") || "<p class=muted>None recorded.</p>"}</div>`;
+}
+
+// ---------------------------------------------------------------- insights
+function expTable(rows) {
+  if (!rows.length) return "<p class=muted>No data yet.</p>";
+  return `<table><tr><th></th><th>Runs</th><th>Avg floor</th><th>Act 2</th><th>Wins</th></tr>${rows.map(r => `<tr><td>${esc(r.label === r.value ? r.value : r.label + " " + r.value)}</td><td>${r.runs}</td><td>${r.avg_floor}</td><td>${pct(r.act2)}</td><td>${r.wins}</td></tr>`).join("")}</table>
+   <p class=muted>Small groups are noisy: trust gaps that hold with 60+ runs per group.</p>`;
+}
+function insights(s) {
+  if (!s.runs) return;
+  $("#blocks").innerHTML = `<table><tr><th>Runs</th><th>Avg floor</th><th>Act 1</th><th>Act 2</th><th>Wins</th></tr>${s.blocks.map(b => `<tr><td>${b.from}-${b.to}</td><td>${b.avg_floor}</td><td>${pct(b.act1)}</td><td>${pct(b.act2)}</td><td>${b.wins}</td></tr>`).join("")}</table>`;
+  $("#killtable").innerHTML = `<tr><th>Killer</th><th>Deaths</th><th>Act</th><th>Avg floor</th><th>Entry HP</th></tr>${s.killers.map(k => `<tr><td>${esc(k.killer)}</td><td>${k.deaths}</td><td>${k.act}</td><td>${k.avg_floor}</td><td class="${(k.entry_hp ?? 100) < 55 ? "down" : ""}">${k.entry_hp ?? "-"}%</td></tr>`).join("")}`;
+  $("#ab").innerHTML = expTable(s.experiments.ab); $("#risk").innerHTML = expTable(s.experiments.risk); $("#flavor").innerHTML = expTable(s.experiments.flavor);
+  const crd = rows => rows.length ? `<table><tr><th>Card</th><th>Act</th><th>Taken</th><th>Passed</th><th>Lift</th></tr>${rows.map(c => `<tr><td>${esc(c.card)}</td><td>${c.act}</td><td>${c.taken}→${c.taken_floor}</td><td>${c.passed}→${c.passed_floor}</td><td class="${c.lift >= 0 ? "up" : "down"}">${c.lift > 0 ? "+" : ""}${c.lift}</td></tr>`).join("")}</table>` : "<p class=muted>Needs more runs.</p>";
+  $("#cardsbest").innerHTML = crd(s.cards_best) + "<p class=muted>Average final floor of runs that took vs passed the card when offered in that act (a win counts as 70).</p>";
+  $("#cardsworst").innerHTML = crd(s.cards_worst);
+  $("#relics").innerHTML = hbars(s.boss_relics.map(r => [`${r.relic} (${r.taken}×)`, r.avg_floor]), {cls: "b", fmtv: v => fmt(v)}) + "<p class=muted>Average final floor after taking it.</p>";
+  const m = s.model || {};
+  $("#model").innerHTML = `Runs trained ${m.runs_trained ?? "-"} &middot; value estimate fitted on ${m.value_runs ?? 0} runs &middot; champion ${s.champion ? "bench avg " + s.champion.bench_mean + " (cycle " + s.champion.cycle + ")" : "-"} &middot; LLM time ${s.llm_s_per_run} s/run &middot; shops (last 50): ${s.shops_last50.removals} removals, ${s.shops_last50.buys} buys<br>
+   Combat weights: ${Object.entries(m.params || {}).map(([k, v]) => `<span class=tag>${k} ${v}</span>`).join("")}`;
+}
+
+// ---------------------------------------------------------------- simulator
+async function sim() {
+  const d = await api("sim");
+  const b = d.last_bench;
+  $("#simbench").innerHTML = b ? hbars(Object.entries(b.by).map(([k, v]) => [`${k} (${v.n})`, 100 * v.win]), {max: 100, cls: "g", fmtv: v => Math.round(v) + "%"}) + `<p class=muted>${b.fights} fights &middot; win ${pct(b.win)} &middot; HP lost ${b.hp_lost}</p>` : "<p class=muted>Run <code>sim.bat bench</code>.</p>";
+  const t = d.train || [];
+  $("#simtrain").innerHTML = t.length ? lineChart(t.map(r => [+r.iter, +r.holdout_fit * 100]), {h: 180, ymax: 150}) : "<p class=muted>Run <code>sim.bat train</code>.</p>";
+  const c = d.calibration || {};
+  $("#simcal").innerHTML = "<tr><th>Enemy</th><th>Fights</th><th>Real win</th><th>Sim win</th><th>Real HP lost</th><th>Sim HP lost</th></tr>" + Object.entries(c).map(([k, v]) => `<tr><td>${esc(k)}</td><td>${v.n}</td><td>${pct(v.real_win)}</td><td>${pct(v.sim_win)}</td><td>${fmt(v.real_hp)}</td><td>${fmt(v.sim_hp)}</td></tr>`).join("");
+}
+
+// ---------------------------------------------------------------- settings
+async function settings() {
+  const d = await fetch("/api/settings", {cache: "no-store"}).then(r => r.json());
+  $("#form").innerHTML = Object.entries(d.schema).map(([k, s]) => {
+    const v = d.values[k] ?? s.default;
+    let input;
+    if (s.type === "bool") input = `<input type=checkbox data-k=${k} ${v ? "checked" : ""}>`;
+    else if (s.type === "choice") input = `<select data-k=${k}>${s.options.map(o => `<option ${o === v ? "selected" : ""}>${o}</option>`).join("")}</select>`;
+    else input = `<input data-k=${k} type=number min=${s.min} max=${s.max} step=${s.type === "float" ? 0.05 : 1} value=${v}>`;
+    return `<div><b>${esc(s.label)}</b>${s.help ? `<div class=help>${esc(s.help)}</div>` : ""}</div><div>${input}</div>`;
+  }).join("");
+}
+$("#save").onclick = async () => {
+  const body = {};
+  document.querySelectorAll("#form [data-k]").forEach(el => body[el.dataset.k] = el.type === "checkbox" ? el.checked : el.type === "number" ? +el.value : el.value);
+  const r = await fetch("/api/settings", {method: "POST", body: JSON.stringify(body)}).then(r => r.json());
+  $("#saved").textContent = r.error ? r.error : "Saved. " + r.note;
+};
+
+// ---------------------------------------------------------------- refresh loop
+async function refresh() {
+  try {
+    if (["overview", "live"].includes(TAB)) { LIVE = await api("live"); status(); }
+    if (TAB === "overview") { if (!SUM || Date.now() - (SUM._t || 0) > 20000) { SUM = await api("summary"); SUM._t = Date.now(); overview(SUM); } currentRun(); }
+    if (TAB === "live") liveTab();
+    if (TAB === "runs" && !location.hash.startsWith("#run=")) { RUNS = await api("runs"); runTable(); }
+    if (TAB === "insights") { SUM = await api("summary"); SUM._t = Date.now(); insights(SUM); }
+    if (TAB === "sim") sim();
+    if (TAB === "settings") settings();
+  } catch (e) { $("#status").textContent = "Can't reach the bot's web server"; }
+}
+header(); route();
+setInterval(() => { if (["overview", "live"].includes(TAB)) refresh(); }, 2000);
+setInterval(header, 30000);
+</script></body></html>

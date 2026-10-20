@@ -110,6 +110,14 @@ def main() -> None:
                 [monster("Spiker", 40, 0, powers=[("Thorns", 4)]), monster("Exploder", 12, 9)])
     plan = planner.plan_turn(msg, P, [])
     check("avoids the thorns target", all(t == 1 for _, t in plan.steps), str(plan.steps))
+    # run 199: a lone Spiker with big Thorns -- the bot ended 60 turns in a row instead of killing it
+    msg = state(["Strike", "Defend"], [monster("Spiker", 6, 7, powers=[("Thorns", 15)])])
+    plan = planner.plan_turn(msg, P, [])
+    check("finishes a lone Thorns enemy", "Strike" in names(plan, msg), plan.describe(
+        msg.game_state.combat_state.hand, msg.game_state.combat_state.monsters))
+    msg = state(["Strike"], [monster("Spiker", 30, 7, powers=[("Thorns", 9)])])
+    p0, p3 = planner.plan_turn(msg, P, []), planner.plan_turn(msg, P, [], stall=3)
+    check("a stalled fight discounts Thorns", p3.value - p3.base > p0.value - p0.base)
 
     # lethal incoming: block first
     msg = state(["Strike", "Defend", "Defend"], [monster("Jaw Worm", 40, 12)], hp=8)

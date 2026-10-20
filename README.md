@@ -37,7 +37,10 @@ says the dependency pin changed.
 
 ## Files
 - `start.bat` - Ollama on GPU + bot + game. Settings in `settings.bat`.
-- `dashboard.bat` - dashboard (`evolve\<character>\dashboard.html`).
+- `dashboard.bat` - the web app at http://127.0.0.1:8765/ (served by the bot while it runs, otherwise by
+  dashboard.bat itself): Overview, Live run, Runs (click a run for the full story), Insights, Simulator and
+  Settings (character, ascension, LLM switches, coach, A/B, pause; saved to `evolve\settings.json` and applied
+  at the start of the next run).
 - `watch`, `stats`, `weights`, `notes`, `report [N]`, `campaign`, `baseline`, `reset` - tools.
 - `analyze.bat [--since N | --last N]` - one report on the live runs: runs/hr, act reach rates, killers,
   depth by risk level, shop spending, boss relics, card picks, LLM use, aborted runs.

@@ -107,6 +107,8 @@ class Ctx:
     curiosity_amt: int
     playable0: list
     energy0: int
+    stall: int = 0        # turns in a row the bot ended without changing anything
+    inc0: float = 0.0     # incoming damage before this turn's plays
 
 
 @dataclass
@@ -422,7 +424,11 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
     v -= P["block"] * taken
     v += P["surplus_block"] * max(0.0, sim.block - inc) * (6 if ctx.barricade else 1)
     hp_frac = ctx.hp / max(1, ctx.max_hp)
-    v -= P["block"] * sim.self_loss
+    # self-inflicted damage (Thorns, Sharp Hide...); a stalled fight discounts it, since waiting costs more
+    v -= P["block"] * sim.self_loss / (1 + ctx.stall)
+    if all(m.dead for m in sim.mons):
+        # the fight is over: no more enemy turns (ending the turn instead keeps taking hits)
+        v += P["block"] * max(ctx.inc0, 5.0) * 1.5
     v -= P["hp_cost"] * sim.card_loss * (2.0 if hp_frac < 0.3 else 1.0)
     if taken + sim.self_loss + sim.card_loss >= ctx.hp:
         v -= 500.0
@@ -457,8 +463,10 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
 
 # ---------------------------------------------------------------- search
 
-def plan_turn(message, P: dict, deck_names: list[str], max_nodes: int = MAX_NODES) -> Plan:
+def plan_turn(message, P: dict, deck_names: list[str], max_nodes: int = MAX_NODES, stall: int = 0) -> Plan:
     sim, ctx = build(message, deck_names)
+    ctx.stall = stall
+    ctx.inc0 = incoming(sim.copy())[0]
     base, base_sum = evaluate(sim.copy(), ctx, P)
     best = Plan(steps=[], value=base, base=base, summary=base_sum)
     seen: set = set()

@@ -53,6 +53,7 @@ import dashboard  # noqa: E402
 import cards as cards_mod  # noqa: E402
 import evidence  # noqa: E402
 import live  # noqa: E402
+import webapp  # noqa: E402
 import policy  # noqa: E402
 from model import Model  # noqa: E402
 
@@ -568,15 +569,9 @@ def save_cache(ws: Workspace, cache: dict) -> None:
         pass
 
 
-def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = None) -> int:
+def open_workspace(args) -> Workspace:
+    """Load evolve/<character> and apply one-time model migrations."""
     ws = Workspace(Path(args.workdir), args.character.upper(), Path(args.strategy_baseline))
-    provider = PROVIDERS["chat"].from_env(model=args.model, base_url=args.base_url)
-    own = server is None
-    server = server or HarnessServer(port=args.port)
-    aborted_streak = 0
-    coach_job = None
-    policy.ON_LLM_FAILURE = lambda: ollama_health(args.base_url)
-    llm_cache = load_cache(ws)
     if not ws.model.meta.get("arch_bounds_v1"):
         # one-time: shrink the snowballed archetype weights into the new bounds
         from model import WEIGHT_BOUNDS
@@ -592,8 +587,39 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                               "es_baseline": None, "es_var": 0.01, "act_baseline": {}})
         ws.state["es_pair"] = None
         say(f"reward v{Model.REWARD_VERSION}: convex depth + elites, per-act credit; baselines reset")
+    return ws
+
+
+# settings the web page may change (evolve/settings.json), applied before each run
+WEB_SETTINGS = ("ascension", "llm_events", "llm_cards", "llm_shop", "llm_share", "coach_every", "ab")
+
+
+def apply_web_settings(args) -> dict:
+    """Copy the page's settings onto args; returns them (with 'character' and 'pause')."""
+    s = webapp.load_settings()
+    for k in WEB_SETTINGS:
+        if k in s and getattr(args, k, None) != s[k]:
+            say(f"setting from the web page: {k} = {s[k]}")
+            setattr(args, k, s[k])
+    return s
+
+
+def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = None) -> int:
+    web = getattr(args, "web_settings", False)
+    if web:
+        args.character = webapp.load_settings().get("character", args.character)
+        args.workdir = str(HERE.parent / "evolve" / args.character)
+    ws = open_workspace(args)
+    provider = PROVIDERS["chat"].from_env(model=args.model, base_url=args.base_url)
+    own = server is None
+    server = server or HarnessServer(port=args.port)
+    aborted_streak = 0
+    coach_job = None
+    policy.ON_LLM_FAILURE = lambda: ollama_health(args.base_url)
+    llm_cache = load_cache(ws)
     live_port = getattr(args, "live_port", 0)
-    httpd = live.serve(ws.root, live_port) if live_port else None
+    # the web app reads every character's workspace under evolve/; tests with a temp workdir use the plain server
+    httpd = (webapp.serve(live_port) if web else live.serve(ws.root, live_port)) if live_port else None
     if live_port:
         try:
             dashboard.render(ws.root)
@@ -624,6 +650,26 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
         say(f"connected; resuming at run {ws.state['run'] + 1} "
             f"({ws.model.meta['runs_trained']} runs trained, temperature {ws.model.temperature():.2f})")
         while args.max_runs <= 0 or ws.state["run"] < args.max_runs:
+            if web:
+                s = apply_web_settings(args)
+                if s.get("pause"):
+                    say("paused from the web page; waiting at the main menu")
+                    while webapp.load_settings().get("pause"):
+                        time.sleep(3)
+                    say("resumed")
+                    s = apply_web_settings(args)
+                want = s.get("character", args.character)
+                if want != args.character:
+                    save_cache(ws, llm_cache)
+                    ws.save()
+                    say(f"switching character: {args.character} -> {want}")
+                    args.character, args.workdir = want, str(HERE.parent / "evolve" / want)
+                    ws = open_workspace(args)
+                    llm_cache = load_cache(ws)
+                    coach_job = None  # its answer belongs to the old character
+                    if viewer is not None:
+                        viewer = live.LiveView(ws.root / "live.json")
+                    continue  # re-check max_runs against the new workspace
             index = ws.state["run"]
             kind, seed = plan_run(index, args)
             explore = kind == "explore"
@@ -817,11 +863,15 @@ def main() -> None:
     p.add_argument("--port", type=int, default=9999)
     p.add_argument("--workdir", default=None, help="default: evolve/<character> next to agent/")
     p.add_argument("--strategy-baseline", default=str(HERE / "strategy_baseline.md"))
+    p.add_argument("--web-settings", action=argparse.BooleanOptionalAction, default=True,
+                   help="apply evolve/settings.json (the web page's Settings tab) before each run")
     args = p.parse_args()
     args.bench_seeds = [s.strip().upper() for s in args.bench_seeds.split(",") if s.strip()]
     if len(args.bench_seeds) >= args.cycle:
         p.error("--cycle must be larger than the number of bench seeds")
     args.reflect_model = args.reflect_model or args.model
+    # the web page's settings (character, LLM switches, pause) apply only to the standard workspace layout
+    args.web_settings = args.workdir is None and args.web_settings
     args.workdir = args.workdir or str(HERE.parent / "evolve" / args.character)
     try:
         raise SystemExit(run_loop(args))

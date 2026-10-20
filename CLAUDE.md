@@ -107,6 +107,12 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     GUIDE_BOSS_RELIC tiers, GUIDE_SHOP_RELIC values, Neow ranking, policy.EVENT_RULES per event, shops at 170+
     gold, Strikes removed before Defends unless block-heavy with no exhaust use; playbook sections rewritten.
     Ascension tuning comes later.
+16. Web app (agent\webapp.py + agent\webpp.html + agent\stats.py): JSON API over run files/live.json/sim,
+    tabs Overview (KPIs, journey bar, trend, milestones, killers) / Live run / Runs (filters + run detail) /
+    Insights (blocks, killers with entry HP, A/B, risk, flavor, card lifts, boss relics) / Simulator / Settings.
+    Settings -> evolve\settings.json, applied by evolve.py before each run (--web-settings, only with the default
+    workdir): character switch (own workspace), ascension, LLM switches, coach_every, ab, pause. Character chips
+    read every evolve\<char>. Planner: fight-over bonus + stall guard (run 199 ended 60 turns vs Thorns).
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.
