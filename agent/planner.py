@@ -18,8 +18,8 @@ Enemy mechanics it models (from the monsters' powers and names):
   Artifact                      a debuff only strips a stack
   Lagavulin asleep              set up instead of waking it
 plus kill priorities from the playbook: Red Slaver, Donu, Reptomancer's
-daggers, the Awakened One's cultists, Bronze Orbs holding a card, Mystic,
-Gremlin Wizard first; Collector's Torch Heads and Darklings last.
+daggers, the Awakened One's cultists, Mystic, Gremlin Wizard first; Bronze Orbs
+(they die with the Automaton), Collector's Torch Heads and Darklings last.
 
 The weights (P) are the evolution-strategy combat parameters in model.py.
 """
@@ -33,7 +33,7 @@ import cards as C
 MAX_NODES = 3000
 
 PRIORITY = {"Red Slaver": 1.5, "Donu": 1.6, "Dagger": 1.5, "Mystic": 1.4, "Gremlin Wizard": 1.3,
-            "Orb": 1.25, "Bronze Orb": 1.25, "Sentry": 1.1, "Torch Head": 0.6, "Darkling": 0.8,
+            "Orb": 0.55, "Bronze Orb": 0.55, "Sentry": 1.1, "Torch Head": 0.6, "Darkling": 0.8,
             "Repulsor": 0.9, "Spiker": 0.7, "Gremlin Leader": 1.1, "Cultist": 1.0,
             "Orb Walker": 1.3, "Exploder": 1.3, "Transient": 0.3, "Bronze Automaton": 1.0}
 
@@ -179,8 +179,8 @@ def build(message, deck_names: list[str]) -> tuple[Sim, Ctx]:
         x.prio = PRIORITY.get(m.name, 1.0)
         if m.name == "Cultist" and awakened:
             x.prio = 1.6
-        if m.name == "Orb" and pw(m.powers, "Stasis"):
-            x.prio = 1.35
+        if m.name in ("Orb", "Bronze Orb") and pw(m.powers, "Stasis"):
+            x.prio = 0.85  # holds a card, but every Orb dies with the Automaton: hit the boss
         x.asleep = m.name == "Lagavulin" and m.intent.value == "SLEEP"
         x.nob = pw(m.powers, "Anger", "Enrage")
         x.shifting = pw(m.powers, "Shifting") != 0 or any(p.id == "Shifting" for p in m.powers)

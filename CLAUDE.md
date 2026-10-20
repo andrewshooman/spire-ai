@@ -118,6 +118,13 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     and shop relics. Boss relics: training runs ask the LLM only --llm-share of the time (it had made 100% of
     picks: Runic Pyramid/Astrolabe/Coffee Dripper) + novelty bonus 0.5/sqrt(1+times taken); run files record
     'offered' so evidence compares taken vs passed. Shop relics are rarely affordable (150-250 gold).
+18. Act 2 boss + lean decks (75 runs reached the act 2 boss, 44% won; entry HP <50% -> 10%, 85%+ -> 83%):
+    rest rule (act 2 rest under 60% HP, pre-boss rest under 85%); Coffee Dripper -2.5 without real healing
+    (Burning Blood doesn't count) and overrides the LLM; boss potions: no Flex/Steroid without attacks, no
+    Snecko Oil into 8+ cards, keep the last potion, Block/heal on big hits; Bronze Orbs priority 0.55.
+    Skips: the LLM had never skipped (0 of 2269) and skip:a2 ran to -5.5 -> bound skip:* to +-1.5, skip bonus
+    by deck size, LLM skip test with the deck's weakest cards, 28+ cards: only engine/synergy/boss-need cards
+    (_earns_slot); A/B switch skip_rules.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

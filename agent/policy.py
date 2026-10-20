@@ -58,6 +58,7 @@ POTION_KINDS = {
     "never": ("Fairy in a Bottle",),
 }
 _POTION_INDEX = {n.lower(): k for k, names in POTION_KINDS.items() for n in names}
+PERMANENT_POTIONS = {"Strength Potion", "Cultist Potion", "Ancient Potion", "Fruit Juice", "Potion of Capacity"}
 
 
 def potion_kind(name: str) -> str:
@@ -309,9 +310,23 @@ class PolicyAgent:
         key = (g.floor, c.turn)
         used_now = self._potions_used.get(key, 0)
 
-        def pick(kinds):
+        attacks_now = any(c.hand[i].type.value == "ATTACK" for i, _ in plan.steps)
+
+        def wasted(p) -> bool:
+            n = p.name
+            if n in ("Flex Potion", "Steroid Potion") and not attacks_now:
+                return True   # temporary Strength on a turn without attacks
+            if n == "Snecko Oil" and len(c.hand) >= 8:
+                return True   # draws into a full hand and randomizes costs
+            return False
+
+        def pick(kinds, keep_one: bool = False):
+            pool = [(s, p) for s, p in usable if not wasted(p)]
+            if keep_one:
+                # keep one potion for a lethal turn, unless it is permanent power
+                pool = [(s, p) for s, p in pool if len(usable) >= 2 or p.name in PERMANENT_POTIONS]
             for kind in kinds:
-                for slot, p in usable:
+                for slot, p in pool:
                     if potion_kind(p.name) == kind and not (kind == "escape" and boss):
                         return slot, p
             return None
@@ -323,8 +338,11 @@ class PolicyAgent:
             choice, why = pick(["brew"]), "Entropic Brew refills empty slots"
         elif taken >= hp:
             choice, why = pick(["defense", "heal", "damage", "buff", "tempo", "escape"]), "lethal incoming"
+        elif boss and taken >= max(20, 0.35 * hp):
+            # the big turns: Champ's Execute, Automaton's Hyper Beam, Collector's spike
+            choice, why = pick(["defense", "heal"]), "boss big hit"
         elif boss and c.turn <= 2:
-            choice, why = pick(["buff", "tempo", "damage"]), "boss fight: potions are free power"
+            choice, why = pick(["buff", "tempo", "damage"], keep_one=True), "boss fight: potions are free power"
         elif boss and hp_frac < 0.5:
             choice, why = pick(["heal", "defense", "buff", "damage", "tempo"]), "boss fight, HP low"
         elif elite and c.turn == 1 and used_now == 0 and (len(usable) >= 2 or hp_frac < 0.6) \
@@ -454,11 +472,39 @@ class PolicyAgent:
     @staticmethod
     def _skip_bonus(g) -> float:
         n = len(g.deck)
+        if CONFIG.ab.get("skip_rules", True):
+            # data: act 2 boss win rate 56% with 21-25 cards, 43% with 26-30, 31% with 31+
+            if n >= 28:
+                return 2.0
+            if n >= 24 or (g.act >= 2 and n >= 22):
+                return 1.0
+            return 0.0
         if g.act >= 2 and n >= 32:
             return 1.0
         if g.act >= 2 and n >= 25:
             return 0.6
         return 0.0
+
+    def _earns_slot(self, card, g, commit: dict) -> tuple[bool, str]:
+        """In a big deck a card must bring something specific: an engine, real synergy with cards already
+        in the deck, the act boss's need, or a key card of the build the deck is committed to."""
+        name = C.base_name(card.name)
+        if name in C.ENGINE_CARDS:
+            return True, "engine card"
+        sf, _ = synergy.explain(card.name, [d.name for d in g.deck], [r.name for r in g.relics])
+        if sum(v for k, v in sf.items() if k.startswith("synrule:")) >= 2.0:
+            return True, "synergy with the deck"
+        if any(r in C.roles(card) for r in self._boss_needs_now(g)):
+            return True, "covers the boss's need"
+        lean = (CONFIG.tracker.plan or {}).get("lean")
+        if lean and commit.get(lean, 0) >= 0.5 and C.archetypes(g.character).get(lean, {}).get(name, 0) >= 0.8:
+            return True, f"key {lean} card"
+        return False, "no engine, synergy or boss need"
+
+    def _weakest(self, g, n: int = 3) -> list[str]:
+        pool = {d.name: self._card_worth(d, g) for d in g.deck
+                if C.base_name(d.name) not in C.BASIC and d.type.value not in ("CURSE", "STATUS")}
+        return [k for k, _ in sorted(pool.items(), key=lambda kv: kv[1])[:n]]
 
     def _pick_guidance(self, g, commit: dict) -> str:
         syn = ", ".join(f"{a} {v:.0%}" for a, v in sorted(commit.items(), key=lambda kv: -kv[1]) if v > 0)
@@ -477,8 +523,15 @@ class PolicyAgent:
                      "guide skips Heavy Blade, Limit Break, Sword Boomerang, Flex, Wild Strike, Body Slam, Havoc, "
                      "Exhume, Sentinel, Warcry, Clash this early. Synergy notes only count real engine cards, never "
                      "starter Strikes/Defends.")
-        if g.act >= 2 and len(g.deck) >= 25:
-            text += f" The deck already has {len(g.deck)} cards: skip unless the card is clearly better than the deck's average card."
+        n = len(g.deck)
+        if CONFIG.ab.get("skip_rules", True) and (g.act >= 2 or n >= 22):
+            weak = ", ".join(self._weakest(g)) or "-"
+            text += (f" Deck size {n}: every extra card makes the best cards come up less often (winning decks reach "
+                     "the act 2 boss with about 25 cards). Take a card only if it is (a) an engine or a payoff for "
+                     "synergies the deck already has, (b) an answer to the boss need above, or (c) clearly stronger "
+                     f"than the deck's weakest cards ({weak}). Otherwise choose Skip; skipping is often right.")
+        elif g.act >= 2 and n >= 25:
+            text += f" The deck already has {n} cards: skip unless the card is clearly better than the deck's average card."
         return text
 
     @staticmethod
@@ -513,7 +566,7 @@ class PolicyAgent:
                                  f"[policy {probs[k]:.0%}] {self._syn_note(card.name, g)} "
                                  f"{evidence.card(CONFIG.evidence, card.name, g.act)}".strip())
             if can_skip:
-                described.append(f"Skip this reward [policy {probs[-1]:.0%}]")
+                described.append(f"Skip this reward: keep the {len(g.deck)}-card deck lean [policy {probs[-1]:.0%}]")
             deck = ", ".join(f"{n} x{k}" if k > 1 else n for n, k in
                              sorted(collections.Counter(d.name for d in g.deck).items()))
             k = self._ask_option(message, described,
@@ -523,6 +576,10 @@ class PolicyAgent:
                                  topic="card", act=g.act)
             if k is not None:
                 idx, by = k, self._llm_source
+        if can_skip and idx < len(offered) and len(g.deck) >= 28 and CONFIG.ab.get("skip_rules", True):
+            ok, why = self._earns_slot(offered[idx], g, commit)
+            if not ok:
+                idx, by = len(offered), f"rule: deck {len(g.deck)} cards, {offered[idx].name} has {why}"
         tr.events.append({"kind": "card", "options": options, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
         tr.picks.append({"floor": g.floor, "offered": labels, "chosen": labels[idx],
@@ -667,9 +724,15 @@ class PolicyAgent:
         static = {"dig": 1.5, "lift": 0.8 if hb > 0 else -1.0, "toke": 0.3}
         hp_frac = g.current_hp / max(1, g.max_hp)
         pre_boss = g.floor in (15, 32, 49)
-        need = 0.55 if g.act_boss == "Hexaghost" else (0.75 if g.act >= 2 else 0.65)
-        rule = {"rest": 4.0 if pre_boss and hp_frac < need else 0.0,
-                "smith": 1.0 if pre_boss and hp_frac >= 0.8 else (0.8 if not pre_boss and hp_frac >= 0.5 else 0.0)}
+        # data: act 2 boss win rate 10% entering under 50% HP, 83% entering at 85%+
+        need = 0.55 if g.act_boss == "Hexaghost" else (0.85 if g.act >= 2 else 0.65)
+        if pre_boss:
+            rule = {"rest": 4.0 if hp_frac < need else 0.0, "smith": 1.0 if hp_frac >= max(0.8, need) else 0.0}
+        elif g.act >= 2 and hp_frac < 0.6:
+            # act 2 hallways wear runs down: losses smithed under 60% HP three times as often as wins
+            rule = {"rest": 2.5, "smith": 0.0}
+        else:
+            rule = {"rest": 0.0, "smith": 0.8 if hp_frac >= (0.6 if g.act >= 2 else 0.5) else 0.0}
         for i, opt in enumerate(g.choice_list):
             if opt in ("rest", "smith"):
                 options.append({f"{opt}:h{hb}": 1.0}); bonus.append(rule[opt])
@@ -986,6 +1049,11 @@ class PolicyAgent:
                                     ", ".join(relics[k].name for k in ranked), topic="boss_relic")
             if pick is not None:
                 idx, by = pick, "llm"
+                if pick < len(relics) and rules[pick][0] <= -2.0:
+                    # a relic the playbook rules out for this deck: take the policy's best acceptable option
+                    ok = [k for k in range(len(relics)) if rules[k][0] > -2.0]
+                    if ok:
+                        idx, by = max(ok, key=lambda k: probs[k]), f"rule over llm: {rules[pick][1]}"
         # learn from the outcome whoever chose: the LLM's picks train the relic weights too
         tr.events.append({"kind": "boss_relic", "options": options, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
@@ -1369,7 +1437,12 @@ def boss_relic_rule(name: str, g) -> tuple[float, str]:
     if name == "Calling Bell":
         return (1.2, "Omamori eats the curses") if "Omamori" in relics else (0.0, "")
     if name == "Coffee Dripper":
-        return (0.1, "energy; plan HP without rests") if healing else (-0.3, "no resting and no healing")
+        # 10 of 14 Coffee Dripper runs that reached the act 2 boss lost it, arriving at ~25% HP
+        # (Burning Blood's 6 HP per fight does not count as healing here)
+        real_heal = bool(relics & {"Black Blood", "Meat on the Bone", "Bloody Idol"}) or \
+            any(C.base_name(d.name) in ("Reaper", "Feed") for d in deck)
+        return (-0.8, "no resting: arrives at the boss low") if real_heal else \
+            (-2.5, "no resting and no real healing: these runs reach the next boss at ~25% HP and lose")
     if name == "Fusion Hammer":
         return (-0.5, f"{unupgraded} key cards unupgraded") if unupgraded >= 4 else (0.3, "deck mostly upgraded")
     if name == "Philosopher's Stone":

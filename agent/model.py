@@ -69,7 +69,8 @@ FEATURE_PRIORS = {
 # Archetype-wide weights apply to every card of an archetype at once; unbounded they snowballed
 # (tag:Strength reached +3.8) until nearly every run drafted Strength. Keep them small so the
 # individual card weights, synergy rules and the LLM decide.
-WEIGHT_BOUNDS = {"tag": (-1.0, 1.0), "syn": (-1.0, 1.5), "relicctx": (-1.0, 1.0), "relicfit": (-0.5, 2.5)}
+WEIGHT_BOUNDS = {"tag": (-1.0, 1.0), "syn": (-1.0, 1.5), "relicctx": (-1.0, 1.0), "relicfit": (-0.5, 2.5),
+                 "skip": (-1.5, 1.5)}  # skip:a2 had run away to -5.5 (the LLM never skipped; training followed it)
 
 
 def hp_bucket(hp: int, max_hp: int) -> int:

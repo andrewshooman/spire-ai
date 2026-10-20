@@ -572,6 +572,11 @@ def save_cache(ws: Workspace, cache: dict) -> None:
 def open_workspace(args) -> Workspace:
     """Load evolve/<character> and apply one-time model migrations."""
     ws = Workspace(Path(args.workdir), args.character.upper(), Path(args.strategy_baseline))
+    if not ws.model.meta.get("skip_bounds_v1"):
+        # one-time: pull the runaway skip weights back into their bounds so deck size counts again
+        for k in [k for k in ws.model.weights if k.startswith("skip:")]:
+            ws.model.weights[k] = max(-1.5, min(1.5, ws.model.weights[k]))
+        ws.model.meta["skip_bounds_v1"] = True
     if not ws.model.meta.get("arch_bounds_v1"):
         # one-time: shrink the snowballed archetype weights into the new bounds
         from model import WEIGHT_BOUNDS
@@ -676,7 +681,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
             rng = random.Random()
             # A/B switches: each explore run turns recent features on/off so analyze.bat can measure them
             ab = ({"hp_budget": rng.random() < 0.5, "llm_cards": rng.random() < 0.7,
-                   "syn_notes": rng.random() < 0.5} if explore and args.ab else {})
+                   "syn_notes": rng.random() < 0.5, "skip_rules": rng.random() < 0.5} if explore and args.ab else {})
             eps, es_sign = None, 0
             if explore:
                 pair = ws.state.get("es_pair")

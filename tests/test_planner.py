@@ -347,6 +347,51 @@ def main() -> None:
     before = m.params["block"]
     m.es_update_pair({"block": 0.1}, f_plus=0.8, f_minus=0.5)
     check("antithetic ES follows the better half", m.params["block"] > before)
+
+    # --- act 2 boss fixes (runs 1-199: entry HP, potions, Orbs, Coffee Dripper) and lean decks
+    # Bronze Orbs die with the Automaton: hit the boss
+    msg = state(["Strike", "Strike", "Strike"], [monster("Bronze Orb", 54, 8), monster("Bronze Automaton", 300, 7, 2)],
+                room="MonsterRoomBoss")
+    plan = planner.plan_turn(msg, P, [])
+    check("Automaton over its Orbs", all(t == 1 for _, t in plan.steps), str(plan.steps))
+    # boss potions: no Flex on a turn without attacks, keep the last potion, defense on the big hit
+    msg = state(["Defend", "Defend"], [monster("The Champ", 420, 0)], potions=["Flex Potion", "Fire Potion"],
+                room="MonsterRoomBoss")
+    action, note = first(msg)
+    check("no Flex Potion on a turn without attacks", "Flex" not in note, note)
+    msg = state(["Strike"], [monster("The Champ", 420, 5)], potions=["Fire Potion"], room="MonsterRoomBoss")
+    action, note = first(msg)
+    check("keeps its only potion for a lethal turn", not isinstance(action, UsePotion), note)
+    msg = state(["Strike"], [monster("The Champ", 200, 27, 2)], hp=60, potions=["Block Potion", "Fire Potion"],
+                room="MonsterRoomBoss")
+    action, note = first(msg)
+    check("Block Potion on the Execute turn", isinstance(action, UsePotion) and "Block Potion" in note, note)
+    # Coffee Dripper: Burning Blood alone is not healing enough
+    g = state(["Strike"], [monster("Jaw Worm", 40, 0)]).game_state
+    check("Coffee Dripper ruled out without real healing", policy.boss_relic_rule("Coffee Dripper", g)[0] <= -2.0)
+    # big decks: only engines / synergy / boss answers earn a slot
+    policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P))
+    agent = policy.PolicyAgent()
+    hand = state(["Inflame", "Cleave"], [monster("Jaw Worm", 40, 0)]).game_state.combat_state.hand
+    g.act_boss = "Hexaghost"
+    check("engine card earns a slot", agent._earns_slot(hand[0], g, {})[0])
+    big = NS(act=2, deck=[None] * 30)
+    check("skip favored at 30 cards", agent._skip_bonus(big) >= 2.0 and agent._skip_bonus(NS(act=1, deck=[None] * 15)) == 0)
+    m = Model(Path(tempfile.mkdtemp()) / "m.json")
+    for _ in range(300):
+        m.learn([{"options": [{"card:X": 1.0}, {"skip:a2": 1.0}], "chosen": 0, "probs": [0.5, 0.5], "temp": 1.0,
+                  "act": 2}], Model.outcome(45, False))
+    check("skip weight stays bounded", m.w("skip:a2") >= -1.5, f"{m.w('skip:a2'):+.2f}")
+    # act 2 rest sites: rest under 60% HP; before the boss rest under 85%
+    policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P), temperature=0.05)
+
+    def rest_choice(floor, hp):
+        gm = NS(screen=NS(has_rested=False), choice_list=["rest", "smith"], current_hp=hp, max_hp=80, floor=floor,
+                act=2, act_boss="The Champ")
+        return policy.PolicyAgent()._rest(NS(game_state=gm), None)[0].choice_index
+
+    check("act 2: rests at 45% HP", rest_choice(25, 36) == 0)
+    check("act 2 pre-boss: rests at 78% HP", rest_choice(32, 62) == 0)
     print("PLANNER OK")
 
 
