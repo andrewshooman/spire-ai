@@ -205,6 +205,54 @@ def main() -> None:
     action, note = policy.PolicyAgent()._grid(up, None)
     check("LLM sees upgraded text and decides", "upgraded:" in seen.get("user", "") and "(llm)" in note, note)
 
+    # events: Knowing Skull asks once then leaves; never pay (nearly) all remaining HP
+    ev = json.loads((FIX / "event-1.json").read_text())
+    eg = ev["game_state"]
+    eg.update({"class": "IRONCLAD", "current_hp": 70, "max_hp": 80, "floor": 27, "act": 2})
+    opts = ["[Riches?] Gain 90 Gold. Lose 8 HP.", "[Success?] Obtain a potion. Lose 6 HP.",
+            "[How do I leave?] Lose 6 HP."]
+    eg["screen_state"].update(event_name="Knowing Skull", event_id="Knowing Skull", body_text="",
+                              options=[{"choice_index": i, "text": t, "label": t.split("]")[0][1:],
+                                        "disabled": False} for i, t in enumerate(opts)])
+    eg["choice_list"] = ["riches?", "success?", "how do i leave?"]
+    skull = parse_message(ev)
+    policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P), llm_events=False)
+    agent = policy.PolicyAgent()
+    agent._event(skull, None)
+    a, note = agent._event(skull, None)
+    check("Knowing Skull: second visit leaves", a.choice_index == 2, note)
+    eg["current_hp"] = 20
+    eg["screen_state"].update(event_name="Forgotten Altar", event_id="Forgotten Altar",
+                              options=[{"choice_index": 0, "text": "Gain 5 Max HP. Lose 25 HP.", "label": "Sacrifice",
+                                        "disabled": False},
+                                       {"choice_index": 1, "text": "Lose 5 HP.", "label": "Desecrate",
+                                        "disabled": False}])
+    a, note = policy.PolicyAgent()._event(parse_message(ev), None)
+    check("event HP guard: no lethal sacrifice", a.choice_index == 1, note)
+
+    # shop: the LLM list cannot skip removal while Strikes remain, nor buy a second card
+    policy.ask_llm = lambda *a, **k: "1, 2, 3"
+    policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P), llm_events=True)
+    a, note = policy.PolicyAgent()._shop(shop, None)
+    check("shop: removal before the LLM's card list", note.endswith("buy remove a card"), note)
+
+    # removal target follows the deck: Strike when attacks outnumber block cards, Defend otherwise
+    for extra, want in ((["Twin Strike", "Pommel Strike", "Cleave"], "Strike"),
+                        (["Shrug It Off", "Shrug It Off", "Shrug It Off"], "Defend")):
+        rg = json.loads((FIX / "grid-1.json").read_text())
+        d = [card(n, i) for i, n in enumerate(["Strike"] * 5 + ["Defend"] * 4 + ["Bash"] + extra)]
+        rg["game_state"].update({"class": "IRONCLAD", "act": 2, "deck": d})
+        rg["game_state"]["screen_state"].update(for_purge=True, for_upgrade=False, for_transform=False, num_cards=1,
+                                                any_number=False, confirm_up=False, selected_cards=[], cards=d)
+        policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P), llm_events=False)
+        a, note = policy.PolicyAgent()._grid(parse_message(rg), None)
+        check(f"removal picks {want} for this deck", note == f"remove {want}", note)
+    from types import SimpleNamespace as NS
+    pull = policy.PolicyAgent._shop_pull
+    check("map: shops pull with gold/curses, push when broke",
+          pull(NS(gold=40, deck=[])) < 0 < pull(NS(gold=120, deck=[])) < pull(NS(gold=300, deck=[]))
+          and pull(NS(gold=120, deck=[NS(type=NS(value="CURSE"))])) > pull(NS(gold=120, deck=[])))
+
     # per-act credit: an act-2 choice in a run that died early in act 2 is judged against act-2 runs
     m = Model(Path(tempfile.mkdtemp()) / "m.json")
     ev = lambda a, key: {"options": [{key: 1.0}, {"other": 1.0}], "chosen": 0, "probs": [0.5, 0.5], "temp": 1.0, "act": a}

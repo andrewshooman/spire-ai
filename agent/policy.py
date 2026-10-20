@@ -164,6 +164,7 @@ class PolicyAgent:
         self._potions_used: dict[tuple, int] = {}
         self._shop_list: dict[int, list[str]] = {}
         self._mk: dict = {}           # Match and Keep! memory: floor, index -> card name, picks
+        self._skull: dict[int, int] = {}  # Knowing Skull asks per floor
 
     # sts-bench calls this after every executed step
     def record(self, line: str) -> None:
@@ -450,10 +451,12 @@ class PolicyAgent:
         by_pos = {(n.x, n.y): n for n in g.map}
         memo: dict = {}
 
+        shop_pull = self._shop_pull(g)
+
         def node_score(sym: str) -> float:
             v = model.w(f"node:{sym}:h{hb}") + model.w(f"nodeact:{sym}:a{act}")
             if sym == "$":
-                v += 0.6 if g.gold >= 150 else (-0.4 if g.gold < 75 else 0.0)
+                v += shop_pull
             return v
 
         def route(x: int, y: int, depth: int = 0) -> float:
@@ -473,7 +476,7 @@ class PolicyAgent:
             options.append({f"node:{sym}:h{hb}": 1.0, f"nodeact:{sym}:a{act}": 1.0})
             full = by_pos.get((n.x, n.y))
             future = max((route(ch.x, ch.y) for ch in full.children), default=0.0) if full else 0.0
-            bonus.append(0.85 * future + (0.6 if sym == "$" and g.gold >= 150 else 0.0) + rule.get(sym, 0.0))
+            bonus.append(0.85 * future + (shop_pull if sym == "$" else 0.0) + rule.get(sym, 0.0))
             labels.append(sym)
         idx, probs = model.choose(options, CONFIG.temperature, CONFIG.rng, bonus)
         tr.events.append({"kind": "path", "options": options, "chosen": idx, "probs": probs,
@@ -486,6 +489,18 @@ class PolicyAgent:
         note = "path: " + ", ".join(f"{names.get(l, l)} {p:.0%}" for l, p in zip(labels, probs)) + \
                f" -> {names.get(labels[idx], labels[idx])}"
         return Choose(choice_index=idx), note
+
+    @staticmethod
+    def _shop_pull(g) -> float:
+        """How much a shop on the path is worth now: gold to spend and curses to remove pull,
+        too little gold for a removal (75+) pushes away."""
+        curses = sum(1 for d in g.deck if d.type.value == "CURSE")
+        if g.gold < 75:
+            return -1.2
+        pull = 1.4 if g.gold >= 250 else (0.9 if g.gold >= 150 else 0.2)
+        if curses:
+            pull += 1.2
+        return pull
 
     def _map_rules(self, g) -> dict[str, float]:
         """Playbook rules on top of the learned path weights."""
@@ -522,7 +537,7 @@ class PolicyAgent:
         static = {"dig": 1.5, "lift": 0.8 if hb > 0 else -1.0, "toke": 0.3}
         hp_frac = g.current_hp / max(1, g.max_hp)
         pre_boss = g.floor in (15, 32, 49)
-        need = 0.55 if g.act_boss == "Hexaghost" else 0.65
+        need = 0.55 if g.act_boss == "Hexaghost" else (0.75 if g.act >= 2 else 0.65)
         rule = {"rest": 4.0 if pre_boss and hp_frac < need else 0.0,
                 "smith": 1.0 if pre_boss and hp_frac >= 0.8 else 0.0}
         for i, opt in enumerate(g.choice_list):
@@ -614,13 +629,21 @@ class PolicyAgent:
             if wish is not None:
                 by = "llm list"
                 idx = len(labels) - 1  # leave unless the next wanted item is still here
-                while wish:
-                    item = wish[0]
-                    hit = next((k for k, (lab, _) in enumerate(labels) if lab == item), None)
-                    wish.pop(0)
-                    if hit is not None:
-                        idx = hit
-                        break
+                removed = any(x["floor"] == g.floor and x["bought"] in ("remove a card", "purge") for x in tr.shops)
+                purge = next((k for k, (lab, _) in enumerate(labels) if lab == "remove a card"), None)
+                card_names = {c.name for c in s.cards}
+                basics = sum(1 for d in g.deck if C.base_name(d.name) in C.BASIC)
+                if purge is not None and not removed and (curses or strikes >= 3 or basics >= 5):
+                    idx, by = purge, "rule: remove first"   # the LLM kept skipping removal
+                else:
+                    while wish:
+                        item = wish.pop(0)
+                        if item in card_names and cards_bought >= 1:
+                            continue  # at most one card per visit
+                        hit = next((k for k, (lab, _) in enumerate(labels) if lab == item), None)
+                        if hit is not None:
+                            idx = hit
+                            break
         tr.events.append({"kind": "shop", "options": options, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
         name, choice = labels[idx]
@@ -685,6 +708,22 @@ class PolicyAgent:
 
     # ------------------------------------------------------------------ selections
 
+    @staticmethod
+    def _removal_bias(card, g) -> float:
+        """Remove Strikes when the deck already has more attacks than block cards, Defends when it
+        has more block; curses always first (their worth is already -5)."""
+        name = C.base_name(card.name)
+        if name not in ("Strike", "Defend") or card.upgrades:
+            return 0.0
+        others = [d for d in g.deck if C.base_name(d.name) not in C.BASIC and d.type.value != "CURSE"]
+        attacks = sum(1 for d in others if d.type.value == "ATTACK")
+        blocks = sum(1 for d in others if "block" in C.roles(d) or C.effects(d).block)
+        if attacks > blocks:
+            return -1.0 if name == "Strike" else 0.6
+        if blocks > attacks:
+            return -1.0 if name == "Defend" else 0.6
+        return 0.0
+
     def _card_worth(self, card, g, upgrade: bool = False) -> float:
         if card.type.value in ("CURSE", "STATUS"):
             return -5.0
@@ -738,7 +777,7 @@ class PolicyAgent:
         if not pool:
             return self._advance(message), ""
         if s.for_purge or s.for_transform:
-            i, card = min(pool, key=lambda x: self._card_worth(x[1], g))
+            i, card = min(pool, key=lambda x: self._card_worth(x[1], g) + self._removal_bias(x[1], g))
             why = "remove" if s.for_purge else "transform"
         elif s.for_upgrade:
             return self._upgrade(message, pool)
@@ -811,6 +850,20 @@ class PolicyAgent:
         live = [o for o in s.options if not o.disabled and o.choice_index is not None]
         if not live:
             return self._advance(message), ""
+        if s.event_name == "Knowing Skull":
+            # every ask costs more HP and the event repeats: four runs died asking for Riches
+            asked = self._skull.get(g.floor, 0)
+            leave = [o for o in live if "leave" in f"{o.label} {o.text}".lower()]
+            if leave and (asked >= 1 or g.current_hp < 0.6 * g.max_hp):
+                return Choose(choice_index=leave[0].choice_index), "event Knowing Skull: leave (each ask costs more HP)"
+            self._skull[g.floor] = asked + 1
+
+        def hp_cost(o) -> int:
+            m = re.search(r"(?:lose|take) (\d+) (?:hp|damage)", f"{o.label} {o.text}".lower())
+            return int(m.group(1)) if m else 0
+        safe = [o for o in live if hp_cost(o) < g.current_hp - max(10, 0.25 * g.max_hp)]
+        if safe and len(safe) < len(live):
+            live = safe  # never pay (nearly) all remaining HP for an event reward
         if len(live) == 1:
             return Choose(choice_index=live[0].choice_index), f"event: {live[0].label}"
         if s.event_name == "Match and Keep!":
