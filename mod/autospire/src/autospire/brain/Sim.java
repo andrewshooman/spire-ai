@@ -1,0 +1,49 @@
+package autospire.brain;
+
+import java.util.ArrayList;
+import java.util.List;
+
+/** A combat turn as plain data: what the planner sees. Filled from the game by GameBridge, or by tests. */
+public final class Sim {
+
+    /** One card in hand, with the game's own computed numbers (damage per target, block). */
+    public static final class Card {
+        public int index;              // position in hand
+        public String id = "", name = "";
+        public String type = "ATTACK"; // ATTACK / SKILL / POWER / STATUS / CURSE
+        public int cost;               // -1 = X cost
+        public boolean playable = true;
+        public boolean targeted;       // needs an enemy target
+        public boolean aoe;            // hits every enemy
+        public boolean randomTarget;   // e.g. Sword Boomerang
+        public int[] damage = new int[0];  // damage per hit against each monster (game-computed)
+        public int hits = 1;
+        public int block;
+        public Effects fx = new Effects();
+        public boolean[] canTarget = new boolean[0];
+    }
+
+    public static final class Mon {
+        public int index;
+        public String name = "";
+        public int hp, maxHp, block;
+        public int vuln, weak;         // turns of Vulnerable / Weak already on it
+        public int intentDmg, intentHits; // per-hit damage of its intended attack (0 if not attacking)
+        public int thorns;             // Thorns / Sharp Hide
+        public int strength;
+        public boolean alive = true;
+        public double prio = 1.0;      // kill priority
+    }
+
+    public final List<Card> hand = new ArrayList<>();
+    public final List<Mon> mons = new ArrayList<>();
+    public int energy, playerBlock, hp, maxHp, strength, turn = 1;
+    public boolean playerWeak;         // our attacks deal 25% less (already in game-computed damage)
+    public boolean elite;              // elite or boss room
+    public int stall;                  // turns in a row the enemies' HP did not move
+
+    public Mon mon(int index) {
+        for (Mon m : mons) if (m.index == index) return m;
+        return null;
+    }
+}
