@@ -23,6 +23,45 @@ HEAL_RELICS = {"Black Blood", "Meat on the Bone", "Bloody Idol", "Bird-Faced Urn
 HEAL_CARDS = {"Reaper", "Feed"}
 
 
+# owned relic -> relics it makes useless (in either order: taking the owned one later kills these too)
+DEAD_WITH = {
+    "Sozu": {"Sacred Bark": "no potions to double", "Potion Belt": "no potions to hold",
+             "White Beast Statue": "no potions drop", "Toy Ornithopter": "no potions to drink",
+             "Cauldron": "its potions can't be kept"},
+    "Ectoplasm": {"Golden Idol": "no gold gain", "Maw Bank": "no gold gain", "Old Coin": "no gold gain",
+                  "Ceramic Fish": "no gold gain"},
+    "Coffee Dripper": {"Regal Pillow": "can't rest", "Dream Catcher": "can't rest"},
+}
+# pairs that work well together (either order)
+GOOD_WITH = {
+    frozenset({"Sacred Bark", "Potion Belt"}): (0.3, "more potions to double"),
+    frozenset({"Calling Bell", "Omamori"}): (0.6, "Omamori eats the curses"),
+    frozenset({"Cursed Key", "Omamori"}): (0.3, "Omamori eats the chest curses"),
+    frozenset({"Mark of Pain", "Medical Kit"}): (0.5, "Wounds become playable"),
+    frozenset({"Mark of Pain", "Dead Branch"}): (0.3, "exhausted Wounds become cards"),
+    frozenset({"Coffee Dripper", "Meat on the Bone"}): (0.2, "heals without resting"),
+    frozenset({"Runic Pyramid", "Unceasing Top"}): (-0.4, "a kept hand is never empty for Unceasing Top"),
+    frozenset({"Velvet Choker", "Unceasing Top"}): (-0.2, "card limit fights the extra draws"),
+}
+
+
+def conflict(name: str, owned) -> tuple[float, list[str]]:
+    """Relic-vs-relic judgment: (bonus, reasons). Dead on arrival -> -3."""
+    v, why = 0.0, []
+    for o in owned:
+        if name in DEAD_WITH.get(o, {}):
+            v -= 3.0
+            why.append(f"useless with {o}: {DEAD_WITH[o][name]}")
+        if o in DEAD_WITH.get(name, {}):
+            v -= 1.0
+            why.append(f"would make your {o} useless: {DEAD_WITH[name][o]}")
+        pair = GOOD_WITH.get(frozenset({name, o}))
+        if pair:
+            v += pair[0]
+            why.append(f"{'pairs with' if pair[0] > 0 else 'clashes with'} {o}: {pair[1]}")
+    return v, why
+
+
 def profile(g) -> dict:
     deck = [d for d in g.deck]
     names = [d.name for d in deck]
@@ -142,6 +181,8 @@ def boss_fit(name: str, p: dict) -> tuple[float, list[str]]:
         add(-0.2, "small bundle of rewards")
     if name == "Coffee Dripper" and not p["healing"]:
         v = min(v, -2.0)   # energy never makes up for arriving at the next boss at ~25% HP
+    cv, cw = conflict(name, p["relics"])
+    add(cv, "; ".join(cw))
     return round(v, 2), why
 
 

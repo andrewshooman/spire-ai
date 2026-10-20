@@ -132,6 +132,11 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     prompt). Learnable: relicfit:boss (prior 1) and relicctx:<relic>|cost_hi/cost_lo/draw_hi/exhaust/
     energy_gen/clog/hp_lo/gold_hi for boss and shop relics. Runic Pyramid had won ~50% of offers via a
     generic 'great with exhaust/energy' blurb the LLM repeated for every deck.
+20. Thorns stall v2 (run 211, 54 HP Spiker never attacked): when every living enemy retaliates (no safe target)
+    the planner counts Thorns/Sharp Hide at 25% (sim.retal); stall counter = turns with enemy HP unchanged,
+    whatever was played. Relic conflicts: relics.DEAD_WITH (Sozu kills Sacred Bark/Potion Belt/..., Ectoplasm
+    gold relics, Coffee Dripper rest relics) -> -3 (and -1 for killing an owned one), GOOD_WITH pairs; used in
+    boss_fit (LLM override at <= -2), shop quality, shop LLM labels and the LLM shopping list.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

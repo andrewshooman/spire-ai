@@ -76,7 +76,7 @@ class Sim:
     __slots__ = ("energy", "block", "str", "dex", "weak", "frail", "mons", "self_loss", "card_loss",
                  "perm_str", "turn_str", "turn_block", "turn_energy", "turn_dmg", "powers",
                  "draw_value", "enrage", "curiosity", "played", "junk", "self_vuln", "self_weak",
-                 "self_frail", "thorns_back", "ended")
+                 "self_frail", "thorns_back", "ended", "retal")
 
     def copy(self) -> "Sim":
         n = Sim.__new__(Sim)
@@ -107,7 +107,8 @@ class Ctx:
     curiosity_amt: int
     playable0: list
     energy0: int
-    stall: int = 0        # turns in a row the bot ended without changing anything
+    stall: int = 0        # turns in a row the enemies' HP did not move
+    no_safe_target: bool = False  # every living enemy has Thorns / Sharp Hide
     inc0: float = 0.0     # incoming damage before this turn's plays
 
 
@@ -142,7 +143,7 @@ def build(message, deck_names: list[str]) -> tuple[Sim, Ctx]:
     sim.dex = pw(p.powers, "Dexterity")
     sim.weak = pw(p.powers, "Weakened") > 0
     sim.frail = pw(p.powers, "Frail") > 0
-    sim.self_loss = sim.card_loss = 0.0
+    sim.self_loss = sim.card_loss = sim.retal = 0.0
     sim.perm_str = sim.turn_str = sim.turn_block = sim.turn_energy = sim.turn_dmg = 0
     sim.powers = 0
     sim.draw_value = 0.0
@@ -232,6 +233,7 @@ def _hit(sim: Sim, m: Mon, dmg: float) -> None:
         m.malleable += 1
     if m.thorns:
         sim.self_loss += m.thorns
+        sim.retal += m.thorns
     if m.hp <= 0:
         m.dead = True
         m.hp = 0
@@ -324,6 +326,7 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int])
         for m, share in victims:
             if m.sharp and ctype == "ATTACK":
                 sim.self_loss += m.sharp
+                sim.retal += m.sharp
             for _ in range(max(0, hits)):
                 d = per * (1.5 if m.vuln > 0 else 1.0)
                 _hit(sim, m, int(d) * share if share < 1 else int(d))
@@ -424,8 +427,13 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
     v -= P["block"] * taken
     v += P["surplus_block"] * max(0.0, sim.block - inc) * (6 if ctx.barricade else 1)
     hp_frac = ctx.hp / max(1, ctx.max_hp)
-    # self-inflicted damage (Thorns, Sharp Hide...); a stalled fight discounts it, since waiting costs more
-    v -= P["block"] * sim.self_loss / (1 + ctx.stall)
+    # self-inflicted damage (Thorns, Sharp Hide...); a stalled fight discounts it, since waiting costs more.
+    # When every enemy left retaliates there is no safe target: the hits have to land some time, and Spiker's
+    # Thorns only grow, so hitting now costs little extra (run 211 never attacked a 54 HP Spiker and died).
+    retal = sim.retal
+    if ctx.no_safe_target and taken + sim.self_loss + sim.card_loss < ctx.hp * 0.6:
+        retal *= 0.25
+    v -= P["block"] * (sim.self_loss - sim.retal + retal) / (1 + ctx.stall)
     if all(m.dead for m in sim.mons):
         # the fight is over: no more enemy turns (ending the turn instead keeps taking hits)
         v += P["block"] * max(ctx.inc0, 5.0) * 1.5
@@ -467,6 +475,8 @@ def plan_turn(message, P: dict, deck_names: list[str], max_nodes: int = MAX_NODE
     sim, ctx = build(message, deck_names)
     ctx.stall = stall
     ctx.inc0 = incoming(sim.copy())[0]
+    alive_mons = [m for m in sim.mons if not m.dead]
+    ctx.no_safe_target = bool(alive_mons) and all(m.thorns or m.sharp for m in alive_mons)
     base, base_sum = evaluate(sim.copy(), ctx, P)
     best = Plan(steps=[], value=base, base=base, summary=base_sum)
     seen: set = set()

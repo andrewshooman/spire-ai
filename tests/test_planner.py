@@ -118,6 +118,11 @@ def main() -> None:
     plan = planner.plan_turn(msg, P, [])
     check("finishes a lone Thorns enemy", "Strike" in names(plan, msg), plan.describe(
         msg.game_state.combat_state.hand, msg.game_state.combat_state.monsters))
+    # run 211: a 54 HP Spiker whose Thorns keep growing -- no safe target, so hit it (big hits first)
+    msg = state(["Heavy Blade", "Defend", "Twin Strike"], [monster("Spiker", 54, 5, powers=[("Thorns", 9)])], hp=40)
+    plan = planner.plan_turn(msg, P, [])
+    check("attacks a lone high-HP Thorns enemy", "Heavy Blade" in names(plan, msg), plan.describe(
+        msg.game_state.combat_state.hand, msg.game_state.combat_state.monsters))
     msg = state(["Strike"], [monster("Spiker", 30, 7, powers=[("Thorns", 9)])])
     p0, p3 = planner.plan_turn(msg, P, []), planner.plan_turn(msg, P, [], stall=3)
     check("a stalled fight discounts Thorns", p3.value - p3.base > p0.value - p0.base)
@@ -410,6 +415,13 @@ def main() -> None:
     pricey = deck_g(starter + ["Bludgeon", "Heavy Blade", "Bludgeon", "Corruption"])
     key = lambda g: policy.boss_relic_rule("Cursed Key", g)[0]
     check("energy relics worth more to expensive decks", key(pricey) > key(cheap), f"{key(pricey):+.2f} vs {key(cheap):+.2f}")
+    # relic vs relic: Sacred Bark after Sozu is useless (run 211), and Sozu would waste an owned Sacred Bark
+    import relics as R
+    gs = deck_g(starter)
+    gs.relics = gs.relics + [NS(name="Sozu", id="Sozu", counter=-1)]
+    bark = policy.boss_relic_rule("Sacred Bark", gs)
+    check("Sacred Bark ruled out with Sozu", bark[0] <= -2.0 and "Sozu" in bark[1], str(bark))
+    check("Sozu penalized when it kills a Sacred Bark", R.conflict("Sozu", {"Sacred Bark"})[0] < 0)
     print("PLANNER OK")
 
 

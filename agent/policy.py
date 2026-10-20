@@ -274,9 +274,13 @@ class PolicyAgent:
                                  "max_hp": c.player.max_hp, "deck": self._deck_names(g),
                                  "enemies": [m.name for m in c.monsters],
                                  "relics": [r.name for r in g.relics]})
-        # stall guard: the same hand and enemy HP turn after turn with nothing played (Runic Pyramid
-        # holding a full hand of attacks against Thorns) means waiting is the worst option
-        sig = (g.floor, tuple(h.name for h in c.hand), tuple(m.current_hp for m in c.monsters))
+        # stall guard: enemy HP unchanged from one turn to the next (Thorns enemies the bot won't hit, whatever
+        # it plays) means the fight is not progressing; each such turn discounts self-damage further
+        sig = (g.floor, tuple(m.current_hp for m in c.monsters))
+        if c.turn != self._stall_turn:
+            stalled = self._stall is not None and self._stall[0] == sig
+            self._stall = (sig, (self._stall[1] + 1) if stalled else 0)
+            self._stall_turn = c.turn
         stall = self._stall[1] if self._stall and self._stall[0] == sig else 0
         plan = planner.plan_turn(message, P, self._deck_names(g), stall=stall)
         note = plan.describe(c.hand, c.monsters) + (f" | stalled {stall} turns" if stall else "")
@@ -285,11 +289,7 @@ class PolicyAgent:
             return potion[0], potion[1] + " | " + note
         threshold = P["end_threshold"] if stall < 2 else 0.0
         if not plan.steps or plan.value - plan.base < threshold:
-            if c.turn != self._stall_turn:
-                self._stall_turn = c.turn
-                self._stall = (sig, stall + 1)
             return EndTurn(), note + " -> end turn"
-        self._stall = None
         i, t = plan.steps[0]
         return PlayCard(card_index=i, target_index=t), note
 
@@ -807,7 +807,8 @@ class PolicyAgent:
         for relic in s.relics:
             n = relic.name.lower()
             if n in choices:
-                quality = C.SHOP_RELIC_PRIOR.get(relic.name, 0.8) - 0.8
+                quality = C.SHOP_RELIC_PRIOR.get(relic.name, 0.8) - 0.8 + \
+                    relics_mod.conflict(relic.name, {r.name for r in g.relics})[0]
                 f = self._relic_features(relic.name, g, commit, "shoprelic")
                 f.update({"shop:relic": 1.0, "shop:price": (relic.price or 0) / 100})
                 add(f, relic.name, choices.index(n), relic.price or 0, quality)
@@ -846,6 +847,8 @@ class PolicyAgent:
                         item = wish.pop(0)
                         if item in card_names and cards_bought >= 1:
                             continue  # at most one card per visit
+                        if relics_mod.conflict(item, {r.name for r in g.relics})[0] <= -2.0:
+                            continue  # a relic the ones we own make useless (Sacred Bark with Sozu)
                         hit = next((k for k, (lab, _) in enumerate(labels) if lab == item), None)
                         if hit is not None:
                             idx = hit
@@ -880,6 +883,9 @@ class PolicyAgent:
             if lab == "remove a card":
                 d = "remove one card from the deck for good"
             fit = synergy.relic_fit(lab, [x.name for x in g.deck])[1] if gamedata.relic(lab) else ""
+            if gamedata.relic(lab):
+                clash = relics_mod.conflict(lab, {r.name for r in g.relics})[1]
+                fit = "; ".join(x for x in [fit] + clash if x)
             if lab in shop_cards:
                 fit = self._syn_note(lab, g)
             if fit:
