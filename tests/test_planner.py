@@ -227,6 +227,8 @@ def main() -> None:
                                         "disabled": False},
                                        {"choice_index": 1, "text": "Lose 5 HP.", "label": "Desecrate",
                                         "disabled": False}])
+    policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P),
+                                  llm_events=False, temperature=0.05)
     a, note = policy.PolicyAgent()._event(parse_message(ev), None)
     check("event HP guard: no lethal sacrifice", a.choice_index == 1, note)
 

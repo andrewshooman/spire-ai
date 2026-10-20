@@ -28,6 +28,9 @@ rem keep the model loaded between runs; flash attention + 8-bit KV cache: less V
 set OLLAMA_KEEP_ALIVE=-1
 set OLLAMA_FLASH_ATTENTION=1
 set OLLAMA_KV_CACHE_TYPE=q8_0
+rem one model and one request slot: no stray model steals VRAM, and the shared prompt stays cached
+set OLLAMA_MAX_LOADED_MODELS=1
+set OLLAMA_NUM_PARALLEL=1
 start "Ollama GPU - leave this open" /min ollama serve
 timeout /t 5 /nobreak >nul
 :run

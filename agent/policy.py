@@ -735,7 +735,6 @@ class PolicyAgent:
             return []
         deck = ", ".join(sorted(d.name for d in g.deck))
         plan = tr.plan or {}
-        book = playbook_for(CONFIG.strategy, "shop", g.character)
         shop_cards = {c.name: c for c in g.screen.cards}
 
         def described(lab: str) -> str:
@@ -755,18 +754,17 @@ class PolicyAgent:
 
         listing = "\n".join(f"{n}: {described(lab)} - {price} gold (policy {probs[k]:.0%})"
                             for n, (k, lab, price) in enumerate(items))
-        system = (f"You decide purchases in a Slay the Spire shop as the {g.character}. Use the playbook and "
-                  "the run plan. Priorities: (1) remove a curse, or a Strike while the deck still has several; "
-                  "(2) a relic that helps this deck (relics last the whole run and never clog the draw); "
-                  "(3) at most one card, and only if it is clearly better than the deck's average card and "
-                  "fills a need (damage, area damage, block, scaling); (4) potions before a boss. "
-                  "Spending everything on cards makes the deck worse. Keeping gold for a later shop is fine. "
-                  f"{evidence.NOTE} "
-                  "Reply with the numbers to buy in order of priority, comma separated, total within the "
-                  "gold, or 'none'.\n\n"
-                  f"PLAYBOOK:\n{book}\n\nRUN PLAN: archetype {plan.get('archetype', 'undecided')}; "
-                  f"wanted {', '.join(plan.get('wanted', [])) or '-'}")
-        user = (f"Act {g.act}, floor {g.floor}, boss {g.act_boss}. HP {g.current_hp}/{g.max_hp}. "
+        system = shared_system(g.character)
+        user = ("SHOP DECISION. Priorities: (1) remove a curse, or a Strike while the deck still has several; "
+                "(2) a relic that helps this deck (relics last the whole run and never clog the draw); "
+                "(3) at most one card, and only if it is clearly better than the deck's average card and "
+                "fills a need (damage, area damage, block, scaling); (4) potions before a boss. "
+                "Spending everything on cards makes the deck worse; keeping gold for a later shop is fine. "
+                "Reply with the numbers to buy in order of priority, comma separated, total within the gold, "
+                "or 'none'.\n\n"
+                f"RUN PLAN: archetype {plan.get('archetype', 'undecided')}; "
+                f"wanted {', '.join(plan.get('wanted', [])) or '-'}\n"
+                f"Act {g.act}, floor {g.floor}, boss {g.act_boss}. HP {g.current_hp}/{g.max_hp}. "
                 f"Gold {g.gold}. Potions: {', '.join(p.name for p in g.potions)}.\n"
                 f"Relics: {'; '.join(gamedata.with_relic(r.name) for r in g.relics)}.\nDeck ({len(g.deck)}): {deck}\n\n"
                 f"Shop:\n{listing}\n\nWhat do you buy?")
@@ -946,7 +944,7 @@ class PolicyAgent:
         def hp_cost(o) -> int:
             m = re.search(r"(?:lose|take) (\d+) (?:hp|damage)", f"{o.label} {o.text}".lower())
             return int(m.group(1)) if m else 0
-        safe = [o for o in live if hp_cost(o) < g.current_hp - max(10, 0.25 * g.max_hp)]
+        safe = [o for o in live if hp_cost(o) < g.current_hp - max(6, 0.1 * g.max_hp)]
         if safe and len(safe) < len(live):
             live = safe  # never pay (nearly) all remaining HP for an event reward
         if len(live) == 1:
@@ -1079,16 +1077,11 @@ class PolicyAgent:
                 self._log_llm(g, topic, header, labels, f"(cached) {hit}", hit, 0)
                 return cache_labels.index(hit)
         plan = tr.plan or {}
-        book = playbook_for(CONFIG.strategy, topic, g.character, act=act)
-        system = (f"You make the big-picture choices in a Slay the Spire run as the {g.character}. "
-                  "Use the playbook, the run plan and the scores shown with each option. "
-                  f"{evidence.NOTE} "
-                  "Reply with only the number of your choice.\n\n"
-                  f"PLAYBOOK:\n{book}\n\n"
-                  f"RUN PLAN: archetype {plan.get('archetype', 'undecided')}; "
-                  f"wanted {', '.join(plan.get('wanted', [])) or '-'}")
+        system = shared_system(g.character)
         listing = "\n".join(f"{i}: {label}" for i, label in enumerate(labels))
-        user = f"{cursory_view(message)}\n\n{header}\nOptions:\n{listing}\n\nAnswer with the option number only."
+        user = (f"{topic.replace('_', ' ').upper()} DECISION. RUN PLAN: archetype {plan.get('archetype', 'undecided')}; "
+                f"wanted {', '.join(plan.get('wanted', [])) or '-'}\n{cursory_view(message)}\n\n{header}\n"
+                f"Options:\n{listing}\n\nAnswer with the option number only.")
         answer, ms = self._call_llm(system, user)
         if answer is None:
             self._log_llm(g, topic, header, labels, "(LLM unavailable)", None, ms)
@@ -1129,6 +1122,23 @@ class PolicyAgent:
 
 
 # ---------------------------------------------------------------- playbook helpers
+
+_SHARED: dict = {}
+
+
+def shared_system(character: str) -> str:
+    """One system prompt for every in-game LLM call (the whole playbook + general rules).
+    Ollama reuses its cache for an identical prompt prefix, so only the short decision-specific
+    user message is processed per call (~0.2 s instead of ~1.5 s re-reading the playbook)."""
+    key = (character, hash(CONFIG.strategy))
+    if key not in _SHARED:
+        _SHARED.clear()
+        _SHARED[key] = (f"You make the big-picture choices in a Slay the Spire run as the {character}: "
+                        "Neow, card rewards, events, shops, upgrades and boss relics. Use the playbook, the run plan, "
+                        "the scores and the synergy notes shown with each option. "
+                        f"{evidence.NOTE} Follow the reply format each decision asks for.\n\n"
+                        f"PLAYBOOK:\n{(CONFIG.strategy or '')[:14000]}")
+    return _SHARED[key]
 
 TOPIC_SECTIONS = {
     "neow": ("Core principles", "Neow"),
