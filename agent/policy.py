@@ -169,6 +169,7 @@ class PolicyAgent:
         self._shop_list: dict[int, list[str]] = {}
         self._mk: dict = {}           # Match and Keep! memory: floor, index -> card name, picks
         self._skull: dict[int, int] = {}  # Knowing Skull asks per floor
+        self._pos: tuple | None = None    # (act, x, y) of the last map node chosen
 
     # sts-bench calls this after every executed step
     def record(self, line: str) -> None:
@@ -555,6 +556,7 @@ class PolicyAgent:
                         "max_hp": g.max_hp})
         if CONFIG.live is not None:
             CONFIG.live.chose_node(g.act, nodes[idx].x, nodes[idx].y)
+        self._pos = (g.act, nodes[idx].x, nodes[idx].y)
         names = {"M": "fight", "E": "ELITE", "R": "rest", "$": "shop", "?": "event", "T": "chest"}
         note = "path: " + ", ".join(f"{names.get(l, l)} {p:.0%}" for l, p in zip(labels, probs)) + \
                f" -> {names.get(labels[idx], labels[idx])}"
@@ -761,19 +763,20 @@ class PolicyAgent:
                 "fills a need (damage, area damage, block, scaling); (4) potions before a boss. "
                 "Spending everything on cards makes the deck worse; keeping gold for a later shop is fine. "
                 "Reply with the numbers to buy in order of priority, comma separated, total within the gold, "
-                "or 'none'.\n\n"
+                "or 'none', then ' | ' and a reason in at most 12 words.\n\n"
+                f"{self._context(g)}\n"
                 f"RUN PLAN: archetype {plan.get('archetype', 'undecided')}; "
                 f"wanted {', '.join(plan.get('wanted', [])) or '-'}\n"
                 f"Act {g.act}, floor {g.floor}, boss {g.act_boss}. HP {g.current_hp}/{g.max_hp}. "
                 f"Gold {g.gold}. Potions: {', '.join(p.name for p in g.potions)}.\n"
                 f"Relics: {'; '.join(gamedata.with_relic(r.name) for r in g.relics)}.\nDeck ({len(g.deck)}): {deck}\n\n"
                 f"Shop:\n{listing}\n\nWhat do you buy?")
-        answer, ms = self._call_llm(system, user, max_tokens=60)
+        answer, ms = self._call_llm(system, user, max_tokens=80)
         if answer is None:
             self._log_llm(g, "shop", f"Shop with {g.gold} gold", [l for _, l, _ in items], "(LLM unavailable)", None, ms)
             return None
         wish, spent = [], 0
-        for tok in re.findall(r"\d+", answer):
+        for tok in re.findall(r"\d+", answer.split("|")[0]):
             n = int(tok)
             if 0 <= n < len(items) and items[n][1] not in wish and spent + items[n][2] <= g.gold:
                 wish.append(items[n][1])
@@ -1080,13 +1083,14 @@ class PolicyAgent:
         system = shared_system(g.character)
         listing = "\n".join(f"{i}: {label}" for i, label in enumerate(labels))
         user = (f"{topic.replace('_', ' ').upper()} DECISION. RUN PLAN: archetype {plan.get('archetype', 'undecided')}; "
-                f"wanted {', '.join(plan.get('wanted', [])) or '-'}\n{cursory_view(message)}\n\n{header}\n"
-                f"Options:\n{listing}\n\nAnswer with the option number only.")
-        answer, ms = self._call_llm(system, user)
+                f"wanted {', '.join(plan.get('wanted', [])) or '-'}\n{cursory_view(message)}\n{self._context(g)}\n\n"
+                f"{header}\nOptions:\n{listing}\n\n"
+                "Answer as: <option number> | <reason in at most 12 words>")
+        answer, ms = self._call_llm(system, user, max_tokens=48)
         if answer is None:
             self._log_llm(g, topic, header, labels, "(LLM unavailable)", None, ms)
             return None
-        m = re.search(r"\d+", answer)
+        m = re.search(r"\d+", answer.split("|")[0])
         k = int(m.group(0)) if m else None
         if k is None or not 0 <= k < len(labels):
             self._log_llm(g, topic, header, labels, answer[:120], None, ms)
@@ -1096,6 +1100,62 @@ class PolicyAgent:
         if cache_key and CONFIG.llm_cache is not None and cache_labels:
             CONFIG.llm_cache[cache_key] = cache_labels[k]
         return k
+
+    def _context(self, g) -> str:
+        """What the LLM needs beyond the options: what's ahead, threats left, deck profile, relics."""
+        lines = []
+        boss_floor = {1: 16, 2: 33, 3: 50}.get(g.act, g.floor + 1)
+        ahead = self._map_ahead(g)
+        lines.append(f"Floors to the act boss ({g.act_boss}): {max(0, boss_floor - g.floor)}."
+                     + (f" Reachable ahead: {ahead}." if ahead else ""))
+        fought = {e for f in CONFIG.tracker.fight_log
+                  if 1 + max(0, (f["floor"] - 1) // 17) == g.act and f.get("room") == "MonsterRoomElite"
+                  for e in f["enemies"]}
+        pool = {1: ["Gremlin Nob", "Lagavulin", "Sentry"], 2: ["Gremlin Leader", "Book of Stabbing", "Slaver"],
+                3: ["Giant Head", "Nemesis", "Reptomancer"]}.get(g.act, [])
+        left = [e for e in pool if not any(e in x for x in fought)]
+        if left:
+            lines.append(f"Elites still possible this act: {', '.join(left)}.")
+        deck = list(g.deck)
+        types = collections.Counter(d.type.value for d in deck)
+        roles = collections.Counter(r for d in deck for r in C.roles(d))
+        costs = [d.cost for d in deck if d.cost >= 0 and d.type.value not in ("STATUS", "CURSE")]
+        basics = collections.Counter(C.base_name(d.name) for d in deck if C.base_name(d.name) in C.BASIC)
+        lines.append(f"Deck profile: {len(deck)} cards ({types['ATTACK']} attacks, {types['SKILL']} skills, "
+                     f"{types['POWER']} powers, {types['CURSE']} curses), avg cost {sum(costs) / max(1, len(costs)):.1f}, "
+                     f"{sum(1 for d in deck if d.upgrades)} upgraded; Strikes {basics['Strike']}, Defends {basics['Defend']}; "
+                     f"area damage {roles['aoe']}, big damage {roles['damage']}, block {roles['block']}, "
+                     f"scaling {roles['scaling']}, draw {roles['draw']}.")
+        lines.append("Relics: " + "; ".join(gamedata.with_relic(r.name) for r in g.relics) + ".")
+        pots = [p.name for p in g.potions if p.id != EMPTY_POTION]
+        lines.append(f"Potions: {', '.join(pots) or 'none'}. Gold {g.gold}.")
+        return "\n".join(lines)
+
+    def _map_ahead(self, g) -> str:
+        """Nearest floor distance to each room type reachable from the current map node."""
+        if not g.map:
+            return ""
+        by_pos = {(n.x, n.y): n for n in g.map}
+        if self._pos and self._pos[0] == g.act and (self._pos[1], self._pos[2]) in by_pos:
+            frontier = [by_pos[(self._pos[1], self._pos[2])]]
+        else:
+            frontier = [n for n in g.map if n.y == 0]
+        names = {"E": "elite", "R": "rest site", "$": "shop", "?": "event", "T": "chest", "M": "fight"}
+        first: dict[str, int] = {}
+        seen = set()
+        dist = 0
+        while frontier and dist <= 15:
+            nxt = []
+            for n in frontier:
+                if (n.x, n.y) in seen:
+                    continue
+                seen.add((n.x, n.y))
+                if dist > 0 and n.symbol in names:
+                    first.setdefault(n.symbol, dist)
+                nxt += [by_pos[(c.x, c.y)] for c in n.children if (c.x, c.y) in by_pos]
+            frontier, dist = nxt, dist + 1
+        order = ["E", "R", "$", "?", "T"]
+        return ", ".join(f"{names[s]} in {first[s]}" for s in order if s in first)
 
     def _call_llm(self, system: str, user: str, timeout: float = 90,
                   max_tokens: int = 24) -> tuple[str | None, int]:
