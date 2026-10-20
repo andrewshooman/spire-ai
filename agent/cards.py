@@ -143,6 +143,67 @@ BOSS_NEEDS = {
 }
 
 
+# Act-specific card priors from an A20 Ironclad guide (Panacea), seeding the learned
+# cardctx:<card>:a<act> features: act 1 = save HP now (front-loaded damage, AoE), acts 2-3 =
+# greedier synergy picks (exhaust engine, Barricade, Reaper...).
+_ACT1_GOOD = {"Immolate": 1.0, "Feed": 0.8, "Bludgeon": 0.8, "Fiend Fire": 0.6, "Offering": 0.6, "Anger": 0.6,
+              "Demon Form": 0.5, "Corruption": 0.4, "Impervious": 0.4, "Power Through": 0.4, "Inflame": 0.4,
+              "Pommel Strike": 0.4, "Combust": 0.4, "Battle Trance": 0.4, "Carnage": 0.4, "Hemokinesis": 0.3,
+              "Armaments": 0.2, "Sever Soul": 0.2, "Headbutt": 0.2, "Rampage": 0.2, "Clothesline": 0.2,
+              "Uppercut": 0.3, "Shrug It Off": 0.3, "Cleave": 0.2, "Thunderclap": 0.2, "Perfected Strike": 0.3,
+              "Fire Breathing": 0.1, "Blood for Blood": 0.1}
+_ACT1_SKIP = ["Heavy Blade", "Limit Break", "Sword Boomerang", "Flex", "Wild Strike", "Body Slam", "Havoc",
+              "Exhume", "Sentinel", "Warcry", "Clash", "Barricade", "Juggernaut"]
+_LATE_GOOD = {"Corruption": 0.7, "Dark Embrace": 0.6, "Feel No Pain": 0.6, "Barricade": 0.5, "Reaper": 0.5,
+              "Fiend Fire": 0.4, "Second Wind": 0.3, "Offering": 0.5, "Disarm": 0.3, "Evolve": 0.2,
+              "Impervious": 0.3, "Demon Form": 0.3, "Battle Trance": 0.2, "Shrug It Off": 0.2}
+_LATE_BAD = {"Anger": -0.3, "Perfected Strike": -0.5, "Rampage": -0.2, "Wild Strike": -0.3, "Reckless Charge": -0.3}
+
+
+def cardctx_prior(key: str) -> float:
+    """cardctx:<card>:a<act> priors (other cardctx features start at 0 and are learned)."""
+    m = re.match(r"cardctx:(.+):a(\d)$", key)
+    if not m:
+        return 0.0
+    name, act = m.group(1), int(m.group(2))
+    if act == 1:
+        return _ACT1_GOOD.get(name, -0.6 if name in _ACT1_SKIP else 0.0)
+    return _LATE_GOOD.get(name, _LATE_BAD.get(name, 0.0))
+
+
+# Boss relic judgment from the guide (A0-adjusted): rule bonus on top of learned relic weights.
+GUIDE_BOSS_RELIC = {
+    "Snecko Eye": (0.6, "S tier: draw 2, great with 2-3 cost cards"),
+    "Coffee Dripper": (0.3, "A tier: energy, path around rest sites"), "Cursed Key": (0.3, "A tier: skip chests you don't want"),
+    "Philosopher's Stone": (0.1, "B tier"), "Velvet Choker": (0.1, "B tier"), "Astrolabe": (0.0, "C tier"),
+    "Pandora's Box": (0.0, "C tier"), "Fusion Hammer": (0.1, "energy; lose smithing"), "Runic Pyramid": (0.1, "great with exhaust/energy"),
+    "Slaver's Collar": (-0.4, "energy only in elite/boss fights"), "Mark of Pain": (-0.4, "wounds cost draw"),
+    "Sozu": (-0.6, "no potions for the rest of the run"), "Ectoplasm": (-0.2, "no more gold"),
+    "Busted Crown": (-0.6, "card rewards shrink to 1"), "Runic Dome": (-0.8, "hides intents the planner needs"),
+    "Runic Cube": (-0.4, "low impact"), "Calling Bell": (-0.3, "low impact, 3 curses"), "Black Blood": (-0.3, "low impact"),
+    "Empty Cage": (-0.2, "low impact"), "Sacred Bark": (-0.4, "low impact"), "Black Star": (-0.3, "nothing now"),
+    "Tiny House": (-0.4, "weakest"),
+}
+
+# Shop relic values from the guide (price taken into account), overriding SHOP_RELIC_PRIOR.
+GUIDE_SHOP_RELIC = {
+    "Dead Branch": 1.9, "Membership Card": 1.7, "Orange Pellets": 1.4, "Anchor": 1.3, "Bag of Preparation": 1.3,
+    "Toy Ornithopter": 1.2, "Bag of Marbles": 1.2, "Pantograph": 1.2, "Orrery": 1.2, "Toolbox": 1.2,
+    "Meat on the Bone": 1.1, "Brimstone": 1.1, "White Beast Statue": 1.1, "Orichalcum": 1.1, "Pen Nib": 1.0,
+    "Oddly Smooth Stone": 1.0, "Nunchaku": 1.0, "Lantern": 1.0, "Akabeko": 1.0, "Bronze Scales": 1.0,
+    "Ornamental Fan": 0.85, "Strange Spoon": 0.8, "War Paint": 0.85, "Whetstone": 0.85, "Chemical X": 0.6,
+    "Charon's Ashes": 0.8, "Frozen Egg": 0.75, "Sundial": 0.8, "Cauldron": 0.7, "Bottled Lightning": 0.75,
+    "Bottled Flame": 0.75, "Bottled Tornado": 0.7, "Torii": 0.8, "Meal Ticket": 0.7, "Blood Vial": 0.7,
+    "Champion Belt": 0.7, "Darkstone Periapt": 0.3, "Juzu Bracelet": 0.3, "Strawberry": 0.4, "The Boot": 0.4,
+    "Matryoshka": 0.4, "Singing Bowl": 0.3, "Ceramic Fish": 0.2, "Prismatic Shard": 0.2, "Medical Kit": 0.6,
+    "The Abacus": 0.9, "Frozen Eye": 0.7, "Sling of Courage": 1.0, "Clockwork Souvenir": 1.0, "Lee's Waffle": 0.9,
+    "Hand Drill": 0.5, "Dolly's Mirror": 0.8, "Potion Belt": 0.6,
+}
+
+
+SHOP_RELIC_PRIOR.update(GUIDE_SHOP_RELIC)
+
+
 def character_key(character: str | None) -> str:
     c = (character or "").upper().replace(" ", "_")
     return {"SILENT": "THE_SILENT"}.get(c, c)

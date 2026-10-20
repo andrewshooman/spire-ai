@@ -567,9 +567,9 @@ class PolicyAgent:
         curses = sum(1 for d in g.deck if d.type.value == "CURSE")
         if g.gold < 75:
             return -1.2
-        pull = 1.4 if g.gold >= 250 else (0.9 if g.gold >= 150 else 0.2)
+        pull = 1.4 if g.gold >= 250 else (0.6 if g.gold >= 170 else -0.4)
         if curses:
-            pull += 1.2
+            pull += 1.4
         return pull
 
     def _map_rules(self, g) -> dict[str, float]:
@@ -798,9 +798,11 @@ class PolicyAgent:
         blocks = sum(1 for d in others if "block" in C.roles(d) or C.effects(d).block)
         if attacks > blocks:
             return -1.0 if name == "Strike" else 0.6
-        if blocks > attacks:
+        exhaust_use = any(C.base_name(d.name) in ("Corruption", "Second Wind", "Sever Soul", "Feel No Pain",
+                                                   "Dark Embrace", "Fiend Fire") for d in g.deck)
+        if blocks > attacks and not exhaust_use:
             return -1.0 if name == "Defend" else 0.6
-        return 0.0
+        return -1.0 if name == "Strike" else 0.6  # guide: Strikes go first; Defends feed exhaust
 
     def _card_worth(self, card, g, upgrade: bool = False) -> float:
         if card.type.value in ("CURSE", "STATUS"):
@@ -952,7 +954,8 @@ class PolicyAgent:
         if s.event_name == "Match and Keep!":
             return self._match_and_keep(g, live)
         neow = s.event_name == "Neow" or g.floor == 0
-        heur = [self._event_score(f"{o.label} {o.text}", g, neow) for o in live]
+        heur = [self._event_score(f"{o.label} {o.text}", g, neow) + event_rule(s.event_name, f"{o.label} {o.text}", g)
+                for o in live]
         # learned value of each option on top of the playbook heuristic
         feats = [{f"ev:{s.event_name}:{o.label}": 1.0} for o in live]
         idx, probs = model.choose(feats, CONFIG.temperature, CONFIG.rng, heur)
@@ -1009,12 +1012,12 @@ class PolicyAgent:
         return Choose(choice_index=pick), f"match and keep: flip {mk['seen'].get(pick, 'unknown card')}"
 
     # playbook ranking of Neow's blessings
-    NEOW_SCORES = ((r"three combats have 1 hp", 3.0), (r"random rare relic", 2.6),
-                   (r"random common relic", 2.2), (r"choose a rare card", 2.0),
-                   (r"remove (?:2|two) cards", 2.0), (r"remove a card", 1.5),
-                   (r"random rare card", 1.2), (r"max hp \+", 1.0), (r"gain \d+ gold", 1.3),
-                   (r"choose a card to obtain", 0.9), (r"transform", 0.7),
-                   (r"colorless card", 0.7), (r"upgrade a card", 0.8))
+    NEOW_SCORES = ((r"250 gold", 3.0), (r"choose a rare card", 2.8), (r"random rare relic", 2.7),
+                   (r"transform (?:2|two) cards", 2.6), (r"rare colorless", 2.5), (r"random common relic", 2.4),
+                   (r"remove (?:2|two) cards", 2.3), (r"(?:gain|obtain) 100 gold", 1.9), (r"transform a card", 1.6),
+                   (r"upgrade a card", 1.6), (r"colorless card", 1.4), (r"remove a card", 1.3),
+                   (r"random rare card", 1.1), (r"max hp \+", 1.0), (r"three combats have 1 hp", 0.9),
+                   (r"potion", 0.8), (r"choose a card to obtain", 0.6))
 
     @classmethod
     def _event_score(cls, text: str, g, neow: bool = False) -> float:
@@ -1022,17 +1025,18 @@ class PolicyAgent:
         hp_frac = g.current_hp / max(1, g.max_hp)
         s = 0.0
         if neow:
-            for pat, v in cls.NEOW_SCORES:
-                if re.search(pat, t):
-                    s += v
+            # guide ranking: best reward that matches, minus its drawback (max HP < gold < damage < curse)
+            s = max((v for pat, v in cls.NEOW_SCORES if re.search(pat, t)), default=0.0)
             if "boss relic" in t:
-                s += 0.2 if C.character_key(g.character) == "THE_SILENT" else 0.8
+                s = 1.8 if g.act_boss == "Hexaghost" else 1.0
             if "curse" in t:
-                s -= 1.5
-            if re.search(r"lose \d+ max hp", t):
-                s -= 0.6
+                s -= 1.2
+            if re.search(r"lose (?:all|\d+) gold", t):
+                s -= 0.5
             if "take" in t and "damage" in t:
-                s -= 0.4
+                s -= 0.6
+            if re.search(r"lose \d+ max hp", t):
+                s -= 0.1
             return s
         if "relic" in t and ("obtain" in t or "gain" in t or "receive" in t):
             s += 2.0
@@ -1164,6 +1168,43 @@ def playbook_for(text: str, topic: str, character: str | None = None, limit: int
     return body[:room] + (f"\n\n## Learned from runs\n{learned}" if learned else "")
 
 
+# Guide advice per event, matched on option text: (event, regex, bonus, condition on (hp_frac, g))
+EVENT_RULES = [
+    ("Big Fish", r"heal", 1.2, lambda h, g: h < 0.8), ("Big Fish", r"relic", -1.0, None),
+    ("Living Wall", r"transform", 0.8, lambda h, g: _basics(g) >= 3), ("Living Wall", r"remove", 0.5, None),
+    ("Golden Idol", r"golden idol|take", 1.5, None), ("Golden Idol", r"max hp", 1.5, None),
+    ("Golden Idol", r"curse|injury", -1.5, None),
+    ("The Cleric", r"heal", 1.0, lambda h, g: h < 0.75), ("Cleric", r"heal", 1.0, lambda h, g: h < 0.75),
+    ("Scrap Ooze", r"reach|relic", 0.6, lambda h, g: h >= 0.55), ("Scrap Ooze", r"reach|relic", -1.5, lambda h, g: h < 0.55),
+    ("Shining Light", r"upgrade", 0.6, lambda h, g: h >= 0.6), ("Shining Light", r"upgrade", -1.5, lambda h, g: h < 0.6),
+    ("The Ssssserpent", r"gold|curse|doubt", -1.5, None), ("World of Goop", r"gold", 0.8, lambda h, g: h >= 0.4),
+    ("Wing Statue", r"remove", 1.0, lambda h, g: h >= 0.3), ("Mushrooms", r"fight|stomp", 0.6, lambda h, g: h >= 0.55),
+    ("Dead Adventurer", r"search", -1.0, lambda h, g: h < 0.5),
+    ("Ancient Writing", r"upgrade all|strike", 1.5, lambda h, g: _basics(g) >= 4),
+    ("Augmenter", r"transform 2|transform two", 1.2, None), ("The Colosseum", r"fight|win", 0.8, lambda h, g: h >= 0.5),
+    ("Council of Ghosts", r"apparition|accept", 1.5, None), ("Cursed Tome", r"read|book", 0.8, lambda h, g: h >= 0.5),
+    ("The Library", r"choose|card", 0.6, lambda h, g: h >= 0.5), ("The Library", r"heal|sleep", 0.8, lambda h, g: h < 0.5),
+    ("Masked Bandits", r"fight", 0.8, lambda h, g: h >= 0.5), ("The Nest", r"dagger", 1.2, None),
+    ("Pleading Vagrant", r"relic", 1.0, None), ("Vampires(?)", r"bite|vampire", -1.5, None),
+    ("Vampires", r"bite|vampire", -1.5, None), ("Old Beggar", r"remove", 0.4, None),
+    ("The Mausoleum", r"writhe|curse|open", -1.2, None), ("Forgotten Altar", r"golden idol|offer", 2.0, None),
+    ("Mind Bloom", r"rare relic|war", 1.5, None), ("Mind Bloom", r"999", 1.0, lambda h, g: g.floor <= 40),
+    ("Mind Bloom", r"awake|cannot heal", -1.5, None), ("Mysterious Sphere", r"open|fight", 0.8, lambda h, g: h >= 0.6),
+    ("Sensory Stone", r"3 card|three", 0.8, lambda h, g: h >= 0.4), ("Winding Halls", r"madness", -0.5, None),
+]
+
+
+def _basics(g) -> int:
+    return sum(1 for d in g.deck if C.base_name(d.name) in C.BASIC)
+
+
+def event_rule(event: str, text: str, g) -> float:
+    t = text.lower()
+    h = g.current_hp / max(1, g.max_hp)
+    return sum(b for ev, pat, b, cond in EVENT_RULES
+               if ev == event and re.search(pat, t) and (cond is None or cond(h, g)))
+
+
 def boss_relic_rule(name: str, g) -> tuple[float, str]:
     """Playbook judgment of a boss relic for THIS deck: (bonus, reason)."""
     deck = list(g.deck)
@@ -1176,24 +1217,19 @@ def boss_relic_rule(name: str, g) -> tuple[float, str]:
     unupgraded = sum(1 for d in deck if not d.upgrades and C.base_name(d.name) not in C.BASIC)
     weak_tools = sum(1 for d in deck if C.effects(d).weak or C.effects(d).enemy_str_down
                      or C.effects(d).enemy_str_down_temp)
+    guide = C.GUIDE_BOSS_RELIC.get(name, (0.0, ""))
     if name in ("Snecko Eye", "Velvet Choker", "Runic Pyramid"):
-        return (0.0, "")  # judged by synergy.relic_fit against this deck
+        return guide  # plus synergy.relic_fit against this deck
     if name == "Astrolabe":
-        return (0.6, f"{basics} starter cards to transform") if basics >= 6 else (-0.2, "few starters left")
+        return (0.4, f"{basics} starter cards to transform") if basics >= 6 else (-0.2, "few starters left")
+    if name == "Pandora's Box":
+        return (0.3, f"{basics} Strikes/Defends to transform") if basics >= 7 else (-0.3, "few starters left")
     if name == "Calling Bell":
         return (1.2, "Omamori eats the curses") if "Omamori" in relics else (0.0, "")
     if name == "Coffee Dripper":
-        return (0.5, "has a healing source") if healing else (-0.5, "no healing besides resting")
+        return (0.4, "A tier; has healing") if healing else (0.0, "A tier, but no healing besides resting")
     if name == "Fusion Hammer":
         return (-0.5, f"{unupgraded} key cards unupgraded") if unupgraded >= 4 else (0.3, "deck mostly upgraded")
     if name == "Philosopher's Stone":
         return (0.4, "has Weak/Strength-down to answer it") if weak_tools else (0.0, "")
-    if name == "Black Blood":
-        return (0.6, "upgrades Burning Blood") if "Burning Blood" in relics else (0.0, "")
-    if name == "Tiny House":
-        return (-0.4, "weakest boss relic")
-    if name == "Slaver's Collar":
-        return (-0.3, "only extra energy in elite/boss fights")
-    if name == "Runic Dome":
-        return (-0.6, "hides intents the combat planner needs")
-    return (0.0, "")
+    return guide

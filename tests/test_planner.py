@@ -165,8 +165,8 @@ def main() -> None:
     g = msg.game_state
     sc = {t: policy.PolicyAgent._event_score(t, g, True) for t in
           ("Enemies in your next three combats have 1 HP", "Upgrade a Card", "Obtain a random common Relic")}
-    check("Neow: 1-HP blessing > common relic > upgrade",
-          sc["Enemies in your next three combats have 1 HP"] > sc["Obtain a random common Relic"] > sc["Upgrade a Card"],
+    check("Neow (guide): common relic > upgrade > 1-HP blessing",
+          sc["Obtain a random common Relic"] > sc["Upgrade a Card"] > sc["Enemies in your next three combats have 1 HP"],
           str(sc))
     # Match and Keep!: finish a known pair instead of flipping the same two cards forever
     from types import SimpleNamespace as NS
@@ -249,8 +249,8 @@ def main() -> None:
         check(f"removal picks {want} for this deck", note == f"remove {want}", note)
     from types import SimpleNamespace as NS
     pull = policy.PolicyAgent._shop_pull
-    check("map: shops pull with gold/curses, push when broke",
-          pull(NS(gold=40, deck=[])) < 0 < pull(NS(gold=120, deck=[])) < pull(NS(gold=300, deck=[]))
+    check("map: shops pull at 170+ gold or a curse, push when poor (guide)",
+          pull(NS(gold=40, deck=[])) < pull(NS(gold=120, deck=[])) < 0 < pull(NS(gold=200, deck=[])) < pull(NS(gold=300, deck=[]))
           and pull(NS(gold=120, deck=[NS(type=NS(value="CURSE"))])) > pull(NS(gold=120, deck=[])))
 
     # boss-aware picks and less dilution late; Champ: don't cross half without a deep burst
