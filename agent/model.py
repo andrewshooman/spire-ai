@@ -66,6 +66,12 @@ FEATURE_PRIORS = {
 }
 
 
+# Archetype-wide weights apply to every card of an archetype at once; unbounded they snowballed
+# (tag:Strength reached +3.8) until nearly every run drafted Strength. Keep them small so the
+# individual card weights, synergy rules and the LLM decide.
+WEIGHT_BOUNDS = {"tag": (-1.0, 1.0), "syn": (-1.0, 1.5)}
+
+
 def hp_bucket(hp: int, max_hp: int) -> int:
     frac = hp / max(1, max_hp)
     return 0 if frac < 0.4 else 1 if frac < 0.7 else 2
@@ -224,7 +230,8 @@ class Model:
                         continue
                     for k, x in feats.items():
                         delta = lr * adv * g * x
-                        self.weights[k] = max(-6.0, min(6.0, self.w(k) + delta))
+                        lo, hi = WEIGHT_BOUNDS.get(k.partition(":")[0], (-6.0, 6.0))
+                        self.weights[k] = max(lo, min(hi, self.w(k) + delta))
                         changed[k] = changed.get(k, 0.0) + delta
         if not replay:
             self.fit_value(events, reward)

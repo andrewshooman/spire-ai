@@ -36,9 +36,9 @@ DEFAULT_CARD_PRIOR = 0.3
 
 ARCHETYPES = {
     "IRONCLAD": {
-        "Strength": {"Inflame": 1.0, "Spot Weakness": 1.0, "Demon Form": 1.2, "Limit Break": 0.8,
-                     "Heavy Blade": 0.8, "Sword Boomerang": 0.6, "Whirlwind": 0.6, "Twin Strike": 0.5,
-                     "Pummel": 0.5, "Flex": 0.4, "Reaper": 0.4},
+        "Strength": {"Inflame": 1.0, "Spot Weakness": 1.0, "Demon Form": 1.2, "Limit Break": 0.6,
+                     "Heavy Blade": 0.4, "Sword Boomerang": 0.25, "Whirlwind": 0.3, "Twin Strike": 0.2,
+                     "Pummel": 0.25, "Flex": 0.2, "Reaper": 0.4},
         "Exhaust": {"Corruption": 1.5, "Feel No Pain": 1.2, "Dark Embrace": 1.2, "Burning Pact": 0.6,
                     "Second Wind": 0.6, "True Grit": 0.5, "Fiend Fire": 0.6, "Sever Soul": 0.5,
                     "Sentinel": 0.4, "Exhume": 0.4, "Offering": 0.3},
@@ -204,6 +204,13 @@ GUIDE_SHOP_RELIC = {
 SHOP_RELIC_PRIOR.update(GUIDE_SHOP_RELIC)
 
 
+# Cards worth building a run around when found (engines, rares, run-defining commons).
+ENGINE_CARDS = {"Corruption", "Demon Form", "Barricade", "Feel No Pain", "Dark Embrace", "Offering", "Feed",
+                "Immolate", "Reaper", "Fiend Fire", "Impervious", "Limit Break", "Bludgeon", "Rupture",
+                "Juggernaut", "Brutality", "Berserk", "Battle Trance", "Second Wind", "Evolve", "Whirlwind",
+                "Inflame", "Spot Weakness", "Metallicize", "Entrench", "Body Slam", "Double Tap", "Exhume"}
+
+
 def character_key(character: str | None) -> str:
     c = (character or "").upper().replace(" ", "_")
     return {"SILENT": "THE_SILENT"}.get(c, c)
@@ -243,11 +250,25 @@ def card_archetypes(character: str, name: str) -> list[str]:
     return [a for a, keys in archetypes(character).items() if n in keys]
 
 
+ARCH_SOURCES = {  # an archetype only counts as committed once one of its engine cards is in the deck
+    "Strength": {"Inflame", "Spot Weakness", "Demon Form", "Rupture"},
+    "Exhaust": {"Corruption", "Feel No Pain", "Dark Embrace"},
+    "Block": {"Barricade", "Entrench", "Juggernaut", "Metallicize"},
+    "Self-damage": {"Rupture", "Brutality", "Combust", "Offering", "Bloodletting", "Hemokinesis"},
+}
+
+
 def commitment(character: str, deck_names: list[str]) -> dict[str, float]:
-    """How far the deck leans into each archetype, 0..1."""
+    """How far the deck leans into each archetype, 0..1 (at most 0.3 without an engine card)."""
     names = [base_name(n) for n in deck_names]
-    return {a: min(1.0, sum(keys.get(n, 0.0) for n in names) / 2.0)
-            for a, keys in archetypes(character).items()}
+    out = {}
+    for a, keys in archetypes(character).items():
+        v = min(1.0, sum(keys.get(n, 0.0) for n in names) / 2.0)
+        src = ARCH_SOURCES.get(a)
+        if src and not src & set(names):
+            v = min(v, 0.3)
+        out[a] = v
+    return out
 
 
 # ---------------------------------------------------------------- effects

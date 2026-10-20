@@ -577,6 +577,15 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
     coach_job = None
     policy.ON_LLM_FAILURE = lambda: ollama_health(args.base_url)
     llm_cache = load_cache(ws)
+    if not ws.model.meta.get("arch_bounds_v1"):
+        # one-time: shrink the snowballed archetype weights into the new bounds
+        from model import WEIGHT_BOUNDS
+        for k in list(ws.model.weights):
+            lo, hi = WEIGHT_BOUNDS.get(k.partition(":")[0], (None, None))
+            if lo is not None:
+                ws.model.weights[k] = max(lo, min(hi, ws.model.weights[k]))
+        ws.model.meta["arch_bounds_v1"] = True
+        say("archetype weights bounded (Strength had snowballed); builds will vary more")
     if ws.model.meta.get("reward_version") != Model.REWARD_VERSION:
         # the reward scale changed: restart the running baselines instead of comparing apples to oranges
         ws.model.meta.update({"reward_version": Model.REWARD_VERSION, "baseline": None, "var": 0.04,

@@ -389,6 +389,8 @@ class PolicyAgent:
         arch = C.archetypes(char)
         if arch:
             lean = max(arch, key=lambda a: commit[a] + 0.3 * model.w(f"tag:{a}"))
+            if CONFIG.flavor in arch and g.act <= 2 and commit.get(CONFIG.flavor, 0) + 0.3 >= commit[lean]:
+                lean = CONFIG.flavor  # this explore run is testing that build
         else:
             lean = None
         committed = lean if lean and commit[lean] >= 0.35 else None
@@ -417,8 +419,8 @@ class PolicyAgent:
 
     def _card_bonus(self, card, g) -> float:
         b = sum(v for r, v in self._boss_needs_now(g).items() if r in C.roles(card))
-        if CONFIG.flavor and g.act == 1 and C.base_name(card.name) in C.archetypes(g.character).get(CONFIG.flavor, {}):
-            b += 0.6  # this run tries a different build early; learning sees how it goes
+        if CONFIG.flavor and g.act <= 2 and C.base_name(card.name) in C.archetypes(g.character).get(CONFIG.flavor, {}):
+            b += 1.0 if g.act == 1 else 0.6  # this run tests a build; learning sees how it goes
         return b
 
     @staticmethod
@@ -433,8 +435,13 @@ class PolicyAgent:
     def _pick_guidance(self, g, commit: dict) -> str:
         syn = ", ".join(f"{a} {v:.0%}" for a, v in sorted(commit.items(), key=lambda kv: -kv[1]) if v > 0)
         needs = ", ".join(k for k, _ in sorted(C.BOSS_NEEDS.get(g.act_boss, {}).items(), key=lambda kv: -kv[1]))
-        text = (f"Synergies so far: {syn or 'none yet'}. Build around what the deck already has instead of forcing "
-                "an archetype; early in act 1 take strong flexible cards (damage, area damage, block, draw).")
+        engines = sorted({C.base_name(d.name) for d in g.deck} & C.ENGINE_CARDS)
+        text = (f"Synergies so far: {syn or 'none yet'}. Engines in the deck: {', '.join(engines) or 'none yet'}. "
+                "Build around the most powerful cards found so far (engines, rares) rather than a fixed archetype; "
+                "early in act 1 take strong flexible cards (damage, area damage, block, draw).")
+        if CONFIG.flavor and g.act <= 2:
+            text += (f" This training run tests a {CONFIG.flavor} build: favor its key cards when they are "
+                     "reasonable picks, so the bot learns how that build performs.")
         if needs:
             text += f" The act boss {g.act_boss} tests: {needs}."
         if g.act == 1:
