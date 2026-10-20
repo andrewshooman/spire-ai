@@ -29,7 +29,7 @@ Get-ChildItem "$ws\content" | Remove-Item -Force
 Copy-Item "$here\build\Spireseer.jar" "$ws\content\Spireseer.jar"
 
 $cfg = Get-Content "$ws\config.json" -Raw | ConvertFrom-Json
-$cfg.title = "Spireseer - see the best turn, or let it play"
+$cfg.title = "Spireseer"
 $cfg.description = @"
 [h1]See the best turn. Or let it play.[/h1]
 Spireseer reads your hand, your energy and every enemy's intent, works out the strongest way to play the turn, and shows it to you right on the cards. Learn from it, check your own plan against it, or hand it the controller.
@@ -55,6 +55,15 @@ Spireseer's brain comes from [b]Spire AI[/b], a self-learning bot that has playe
 [*][b]It re-thinks after every card.[/b] Draws and random effects change the turn, so the game is read again after each play.
 [/list]
 
+[h2]How it was trained[/h2]
+[list]
+[*][b]Real runs, played by the bot.[/b] Spire AI plays complete runs of the actual game through CommunicationMod, at sped-up game speed, every fight start to finish. Runs come in cycles of ten: eight training runs that explore, two benchmark runs on fixed seeds to measure progress. Each run gets one score: deeper is worth disproportionately more, elites add a little, a win is best.
+[*][b]Evolution-style tuning of the combat weights.[/b] A training run plays with the weights nudged in a random direction (say block +8%, damage -5%). The next run replays [i]the same seed[/i] with the opposite nudge, and whichever went deeper pulls the weights its way. Same seed, mirrored nudges: most of the luck cancels out. Over hundreds of runs the weights drifted from the starting guesses to what you get here.
+[*][b]What it learned.[/b] Protect HP more, chase raw damage less: the value of each point of block rose about 50%, of each HP a card costs you more than doubled, and raw damage fell by about a third. That matches how its runs actually died: worn down across fights, rarely unable to finish one.
+[*][b]Rules from studying its deaths.[/b] Some lessons were found by analysing where runs ended and written in as rules: a run that ended its turn 60 times in a row against a Thorns enemy, the Champ's second half (the top killer), potions wasted on turn one, the Automaton's Orbs soaking up damage.
+[*][b]Packed into the mod.[/b] The bot's turn planner was ported to Java with the same scoring, so every learned weight means exactly what it did in training. In the game the mod reads each card's real computed damage instead of estimating it. The mod doesn't learn while you play: each release carries the bot's latest weights.
+[/list]
+
 [h2]Plays fair[/h2]
 [list]
 [*]Every launch starts in Off or Suggest, never Auto.
@@ -64,11 +73,14 @@ Spireseer's brain comes from [b]Spire AI[/b], a self-learning bot that has playe
 [/list]
 
 [h2]Characters[/h2]
-Tuned on the Ironclad. The search plays every character's cards using the game's own damage and block numbers, but it doesn't yet model the Silent's poison ticking, the Defect's orbs and Focus, or the Watcher's stances, so its advice for those is rougher. Support for them is next.
+Each character gets its own learned weights: the mod picks the set for whoever you play (shown at the top left). The Ironclad set comes from 240+ runs; the Silent, Defect and Watcher are training now and use the Ironclad set until theirs are ready. The search already plays every character's cards from the game's own numbers, but it doesn't yet model the Silent's poison ticking, the Defect's orbs and Focus, or the Watcher's stances, so its advice for those is rougher for now.
 
 Requires BaseMod. Works alongside other mods.
+
+[i]Search terms: auto battle, auto play, autoplay, auto chess, autobattler, auto battler, auto combat, AFK, idle, bot, AI, automation, combat helper, turn advisor, best move, suggestions, hints, coach, solver, assistant.[/i]
 "@
 $cfg.visibility = $Visibility
+$cfg | Add-Member -Force -NotePropertyName tags -NotePropertyValue @("Utility", "Qol")
 if ($ChangeNote) { $cfg.changeNote = $ChangeNote }
 elseif (-not $cfg.changeNote) { $cfg.changeNote = "First release: combat suggestions, auto-battle, potion advice." }
 [IO.File]::WriteAllText("$ws\config.json", ($cfg | ConvertTo-Json -Depth 5))   # no BOM: the uploader reads plain JSON

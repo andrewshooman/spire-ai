@@ -58,7 +58,8 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
     static boolean oneAtATime = false;      // Suggest: only the next card (F9 switches)
     static int delayMs = 350;
     static SpireConfig config;
-    static final Planner.Params params = new Planner.Params();
+    static Planner.Params params = new Planner.Params();   // per character, from Weights at each replan
+    private static String weightsLabel = "";
 
     // last plan, recomputed only when the combat state changes
     private static String lastSig;
@@ -201,6 +202,9 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
         String sig = GameBridge.signature();
         if (!sig.equals(lastSig) || lastPlan == null) {
             lastSim = GameBridge.read(stall);
+            String cls = AbstractDungeon.player.chosenClass == null ? null : AbstractDungeon.player.chosenClass.name();
+            params = Weights.forClass(cls);
+            weightsLabel = Weights.label(cls);
             lastPlan = Planner.plan(lastSim, params);
             lastReasons = Planner.explain(lastSim, lastPlan, params);
             lastSig = sig;
@@ -271,7 +275,8 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
         if (CardCrawlGame.mode != CardCrawlGame.GameMode.GAMEPLAY || !AbstractDungeon.isPlayerInDungeon()) return;
         float s = Settings.scale;
         String head = "Spireseer: " + mode + (mode == Mode.OFF ? "" : oneAtATime ? " - next card" : " - whole turn")
-                + (status.isEmpty() ? "" : " - " + status) + "   (F7 mode, F8 pause, F9 next card / whole turn)";
+                + (status.isEmpty() ? "" : " - " + status) + (weightsLabel.isEmpty() ? "" : " - " + weightsLabel)
+                + "   (F7 mode, F8 pause, F9 next card / whole turn)";
         FontHelper.renderFontLeftTopAligned(sb, FontHelper.tipBodyFont, head, 24f * s, Settings.HEIGHT - 70f * s, DIM);
         if (mode == Mode.OFF || lastPlan == null || lastSim == null || !inCombat()) return;
         if (mode == Mode.AUTO && !showInAuto) return;

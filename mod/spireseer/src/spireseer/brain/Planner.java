@@ -16,6 +16,23 @@ public final class Planner {
     public static final class Params {
         public double damage = 0.67, kill = 5.7, block = 1.76, surplusBlock = 0.09, vuln = 2.8, weak = 0.81;
         public double draw = 3.2, strength = 4.3, power = 4.9, hpCost = 3.4, endThreshold = 0.43;
+
+        /** From the bot's model.json "params" (keys as in Spire AI's model.COMBAT_DEFAULTS). */
+        public static Params from(java.util.Map<String, Double> m) {
+            Params p = new Params();
+            p.damage = m.getOrDefault("damage", p.damage);
+            p.kill = m.getOrDefault("kill", p.kill);
+            p.block = m.getOrDefault("block", p.block);
+            p.surplusBlock = m.getOrDefault("surplus_block", p.surplusBlock);
+            p.vuln = m.getOrDefault("vuln", p.vuln);
+            p.weak = m.getOrDefault("weak", p.weak);
+            p.draw = m.getOrDefault("draw", p.draw);
+            p.strength = m.getOrDefault("strength", p.strength);
+            p.power = m.getOrDefault("power", p.power);
+            p.hpCost = m.getOrDefault("hp_cost", p.hpCost);
+            p.endThreshold = m.getOrDefault("end_threshold", p.endThreshold);
+            return p;
+        }
     }
 
     public static final class Step {

@@ -81,6 +81,13 @@ public final class PlannerTest {
     public static void main(String[] args) {
         Planner.Params P = new Planner.Params();
 
+        // weights from the bot's model.json params
+        java.util.Map<String, Double> mp = new java.util.HashMap<>();
+        mp.put("block", 2.5);
+        mp.put("hp_cost", 1.0);
+        Planner.Params fromBot = Planner.Params.from(mp);
+        check("bot weights load by name, others keep defaults", fromBot.block == 2.5 && fromBot.hpCost == 1.0 && fromBot.kill == P.kill, "");
+
         // text parser
         Effects e = Effects.parse("Deal !D! damage. NL Apply !M! Vulnerable.", "ATTACK", 2);
         check("parser: Bash applies 2 Vulnerable", e.vuln == 2, "vuln " + e.vuln);
