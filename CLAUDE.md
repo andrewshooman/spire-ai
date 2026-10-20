@@ -139,9 +139,10 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     boss_fit (LLM override at <= -2), shop quality, shop LLM labels and the LLM shopping list.
 21. Your own runs (human.py): the game's run history (.run files: card_choices offered/picked, boss_relics,
     campfire_choices, events, purchases/purges, HP/gold per floor) from save slots other than BOT_SLOT
-    (<n>_runs) and evolve\human_inbox\<CHAR> (import_runs.bat <folder>, e.g. Steam Deck). Timeline rebuilds
+    (runs\<n>_IRONCLAD; floors may be floats -> human.normalize) and evolve\human_inbox\<CHAR> (import_runs.bat <folder>, e.g. Steam Deck). Timeline rebuilds
     deck/relics per floor; card/boss-relic/rest decisions use the policy's own features; stored in
-    evolve\<char>\humanuns (never mixed into bot stats); evolve.py learns pending ones before each run
+    evolve\<char>\human
+uns (never mixed into bot stats); evolve.py learns pending ones before each run
     (model.learn replay=True, lr * --human-lr 0.25) and passes human evidence to the LLM ('human player's
     runs'). Bot runs skipped by seed (human.seed_number). launch-game.ps1 sets DEFAULT_SLOT=BOT_SLOT;
     evolve.wait_for_bot_slot() never plays while the game has another profile open. gamedata has id->name.

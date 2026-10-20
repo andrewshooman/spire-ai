@@ -62,6 +62,11 @@ def main() -> None:
     check("deck rebuilt from picks, shop, removal and smith",
           sorted(tl.deck) == sorted(d["master_deck"]), str(sorted(tl.deck)))
     check("a win is the top reward", reward >= 1.0, f"{reward:.2f}")
+    flt = fake_run("p2", 124)
+    for x in flt["card_choices"] + flt["campfire_choices"]:
+        x["floor"] = float(x["floor"])   # the game wrote floors as 1.0 in a real run
+    flt["item_purchase_floors"] = [3.0, 3.0]
+    check("floors written as decimals still import", len(human.convert(flt, "ironclad", m)[1]) == 6)
 
     # import from an inbox; bot runs (seed match) and dailies are skipped; nothing from the bot's save slot
     tmp = Path(tempfile.mkdtemp())

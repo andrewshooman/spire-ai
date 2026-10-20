@@ -1,6 +1,6 @@
 """human.py -- learn from runs YOU played (PC or Steam Deck), kept apart from the bot's stats.
 
-The game writes a history file for every finished run (SlayTheSpire/<slot>runs/<CHARACTER>/*.run):
+The game writes a history file for every finished run (SlayTheSpire/runs/[<slot>_]<CHARACTER>/*.run):
 card rewards offered/picked, boss relics, rest sites, events, shop buys, HP/gold per floor, the path,
 the result. Combat isn't in there, so these runs teach the out-of-combat choices only.
 
@@ -64,13 +64,14 @@ def run_dirs(char: str) -> list[tuple[Path, str]]:
     """Run history folders to import from: every save slot except the bot's, plus the inbox."""
     out = []
     g = game_dir()
-    if g:
-        for d in sorted(g.iterdir()):
-            m = re.fullmatch(r"(?:(\d+)_)?runs", d.name)
+    if g and (g / "runs").is_dir():
+        # the first profile writes runs/IRONCLAD, profile n writes runs/<n>_IRONCLAD
+        for d in sorted((g / "runs").iterdir()):
+            m = re.fullmatch(r"(?:(\d+)_)?" + GAME_CHAR[char], d.name)
             if m and d.is_dir():
                 slot = int(m.group(1) or 0)
-                if slot != bot_slot() and (d / GAME_CHAR[char]).is_dir():
-                    out.append((d / GAME_CHAR[char], f"slot {slot}"))
+                if slot != bot_slot():
+                    out.append((d, f"profile slot {slot}"))
     inbox = EVOLVE / "human_inbox" / GAME_CHAR[char]
     if inbox.is_dir():
         out.append((inbox, "inbox"))
@@ -104,10 +105,28 @@ def _is_card(cid: str) -> bool:
 
 # ---------------------------------------------------------------- one run -> record + decisions
 
+def normalize(d: dict) -> dict:
+    """Some game builds write floors as 1.0: make every floor an int."""
+    def fix(x):
+        if isinstance(x, dict):
+            return {k: (int(v) if k == "floor" and isinstance(v, (int, float)) else fix(v)) for k, v in x.items()}
+        if isinstance(x, list):
+            return [fix(v) for v in x]
+        return x
+    d = fix(d)
+    for k in ("item_purchase_floors", "items_purged_floors", "potions_floor_usage", "potions_floor_spawned"):
+        if isinstance(d.get(k), list):
+            d[k] = [int(v) for v in d[k] if isinstance(v, (int, float))]
+    if isinstance(d.get("floor_reached"), float):
+        d["floor_reached"] = int(d["floor_reached"])
+    return d
+
+
 class Timeline:
     """Deck and relics as they were at each floor, rebuilt from the history file."""
 
     def __init__(self, d: dict, gchar: str):
+        d = normalize(d)
         deck, relics = STARTER.get(gchar, ([], []))
         self.deck = list(deck) + (["AscendersBane"] if d.get("ascension_level", 0) >= 10 else [])
         self.relics = list(relics)
@@ -179,6 +198,7 @@ def _boss_for(d: dict, act: int) -> str:
 def convert(d: dict, char: str, model: Model) -> tuple[dict, list[dict], float]:
     """A .run file -> (run record in the bot's format, learning events, reward)."""
     import policy  # late: policy imports a lot
+    d = normalize(d)
     gchar = GAME_CHAR[char]
     hp = d.get("current_hp_per_floor", [])
     mx = d.get("max_hp_per_floor", [])

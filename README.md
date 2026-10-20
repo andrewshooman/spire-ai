@@ -43,8 +43,8 @@ says the dependency pin changed.
 - Finished runs on your profile are imported before the bot's next run. It learns your card picks and skips,
   boss relics and rest/smith choices (weight 0.25 vs its own runs; Settings tab), and the LLM sees how your
   picks did ("human player's runs"). Combat isn't in the game's run history, so combat isn't learned.
-- Steam Deck: copy its run history folder (`~/.local/share/Steam/steamapps/common/SlayTheSpire/runs`, or
-  `1_runs` for the second profile) to the PC, then `import_runs.bat <that folder>`. Runs the bot played are
+- Steam Deck: copy its run history folder (`~/.local/share/Steam/steamapps/common/SlayTheSpire/runs`; the second profile's runs are in
+  `runs/1_IRONCLAD`) to the PC, then `import_runs.bat <that folder>`. Runs the bot played are
   recognized by seed and skipped.
 - The Overview tab shows "You vs the bot".
 
