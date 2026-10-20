@@ -101,6 +101,9 @@ class Model:
         if kind == "node":  # node:<sym>:h<bucket>
             sym, _, hb = rest.partition(":h")
             return NODE_PRIORS.get((sym, int(hb or 1)), 0.0)
+        if kind in ("synrule", "synneed"):
+            import synergy
+            return synergy.prior(key) or 0.0
         if kind == "nodeact":  # nodeact:<sym>:a<act>
             sym, _, a = rest.partition(":a")
             return NODEACT_PRIORS.get((sym, int(a or 1)), 0.0)

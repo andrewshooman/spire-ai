@@ -34,6 +34,7 @@ from sts_bench.tools.card_db import card_text, upgraded_card_text
 
 import cards as C
 import evidence
+import synergy
 import gamedata
 import planner
 from model import Model, hp_bucket
@@ -344,6 +345,8 @@ class PolicyAgent:
             f[f"cardctx:{name}|{lean}"] = 1.0
         if len(g.deck) >= 28:
             f[f"cardctx:{name}:big"] = 1.0
+        sf, _ = synergy.explain(card.name, [d.name for d in g.deck], [r.name for r in g.relics])
+        f.update(sf)
         for a in C.card_archetypes(char, name):
             f[f"tag:{a}"] = 1.0
             if commit.get(a, 0) > 0:
@@ -433,6 +436,11 @@ class PolicyAgent:
             text += f" The deck already has {len(g.deck)} cards: skip unless the card is clearly better than the deck's average card."
         return text
 
+    @staticmethod
+    def _syn_note(name: str, g) -> str:
+        _, why = synergy.explain(name, [d.name for d in g.deck], [r.name for r in g.relics])
+        return f"({why})" if why else ""
+
     def _card_reward(self, message, decision):
         g, model, tr = message.game_state, CONFIG.model, CONFIG.tracker
         offered = g.screen.cards
@@ -455,7 +463,8 @@ class PolicyAgent:
             for k, card in enumerate(offered):
                 text = (card_text(card) or "").replace("\n", " ")
                 described.append(f"{card.name} ({card.type.value.lower()}, cost {card.cost}): {text} "
-                                 f"[policy {probs[k]:.0%}] {evidence.card(CONFIG.evidence, card.name, g.act)}".strip())
+                                 f"[policy {probs[k]:.0%}] {self._syn_note(card.name, g)} "
+                                 f"{evidence.card(CONFIG.evidence, card.name, g.act)}".strip())
             if can_skip:
                 described.append(f"Skip this reward [policy {probs[-1]:.0%}]")
             deck = ", ".join(f"{n} x{k}" if k > 1 else n for n, k in
@@ -663,7 +672,8 @@ class PolicyAgent:
         for relic in s.relics:
             n = relic.name.lower()
             if n in choices:
-                quality = C.SHOP_RELIC_PRIOR.get(relic.name, 0.8) - 0.8
+                quality = C.SHOP_RELIC_PRIOR.get(relic.name, 0.8) - 0.8 + \
+                    synergy.relic_fit(relic.name, [d.name for d in g.deck])[0]
                 add({f"shoprelic:{relic.name}": 1.0, "shop:relic": 1.0, "shop:price": (relic.price or 0) / 100},
                     relic.name, choices.index(n), relic.price or 0, quality)
         if any(p.id == EMPTY_POTION for p in g.potions):
@@ -735,6 +745,11 @@ class PolicyAgent:
                 d = f"{c.type.value.lower()}, cost {c.cost}: {(card_text(c) or '').strip()}"
             if lab == "remove a card":
                 d = "remove one card from the deck for good"
+            fit = synergy.relic_fit(lab, [x.name for x in g.deck])[1] if gamedata.relic(lab) else ""
+            if lab in shop_cards:
+                fit = self._syn_note(lab, g)
+            if fit:
+                d = f"{d} [{fit.strip('()')}]"
             h = evidence.shop(CONFIG.evidence, lab)
             return (f"{lab}: {d}" if d else lab) + (f" {h}" if h else "")
 
@@ -882,7 +897,11 @@ class PolicyAgent:
         g, model, tr = message.game_state, CONFIG.model, CONFIG.tracker
         relics = g.screen.relics
         options = [{f"relic:{r.name}": 1.0} for r in relics]
-        rules = [boss_relic_rule(r.name, g) for r in relics]
+        rules = []
+        for r in relics:
+            b, why = boss_relic_rule(r.name, g)
+            fb, fwhy = synergy.relic_fit(r.name, [d.name for d in g.deck])
+            rules.append((b + fb, "; ".join(x for x in (why, fwhy) if x)))
         bonus = [b for b, _ in rules]
         can_skip = validate(ReturnBack(), message).ok
         if can_skip:
@@ -1157,10 +1176,8 @@ def boss_relic_rule(name: str, g) -> tuple[float, str]:
     unupgraded = sum(1 for d in deck if not d.upgrades and C.base_name(d.name) not in C.BASIC)
     weak_tools = sum(1 for d in deck if C.effects(d).weak or C.effects(d).enemy_str_down
                      or C.effects(d).enemy_str_down_temp)
-    if name == "Snecko Eye":
-        return (0.8, "many 2+ cost cards") if avg_cost >= 1.4 else (-0.6, "deck is cheap")
-    if name == "Velvet Choker":
-        return (0.3, "expensive deck") if avg_cost >= 1.3 else (-0.5, "deck plays many cheap cards")
+    if name in ("Snecko Eye", "Velvet Choker", "Runic Pyramid"):
+        return (0.0, "")  # judged by synergy.relic_fit against this deck
     if name == "Astrolabe":
         return (0.6, f"{basics} starter cards to transform") if basics >= 6 else (-0.2, "few starters left")
     if name == "Calling Bell":
