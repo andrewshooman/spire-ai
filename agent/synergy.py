@@ -119,9 +119,16 @@ def card_tags(name: str) -> set[str]:
     return tags
 
 
+# Starter Strikes/Defends are about to be removed: they never count as synergy feeders
+# (they made Body Slam and Perfected Strike look like synergy picks in a starter deck).
+STARTERS = {"Strike", "Defend"}
+
+
 def deck_tags(deck_names: list[str], relic_names: list[str] = ()) -> Counter:
     c: Counter = Counter()
     for n in deck_names:
+        if base(n) in STARTERS:
+            continue
         c.update(card_tags(n))
     for r in relic_names:
         c.update(RELIC_TAGS.get(r, ()))
@@ -136,6 +143,8 @@ def explain(name: str, deck_names: list[str], relic_names: list[str] = ()) -> tu
     reasons = []
     by_tag: dict[str, list[str]] = {}
     for n in list(deck_names) + list(relic_names):
+        if base(n) in STARTERS:
+            continue
         for t in card_tags(n) | RELIC_TAGS.get(n, set()):
             by_tag.setdefault(t, []).append(base(n))
     for rule, tag, feeders, w, cap in RULES:

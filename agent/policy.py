@@ -437,6 +437,11 @@ class PolicyAgent:
                 "an archetype; early in act 1 take strong flexible cards (damage, area damage, block, draw).")
         if needs:
             text += f" The act boss {g.act_boss} tests: {needs}."
+        if g.act == 1:
+            text += (" Act 1: pick what saves HP in the next fights (front-loaded damage, area damage); the "
+                     "guide skips Heavy Blade, Limit Break, Sword Boomerang, Flex, Wild Strike, Body Slam, Havoc, "
+                     "Exhume, Sentinel, Warcry, Clash this early. Synergy notes only count real engine cards, never "
+                     "starter Strikes/Defends.")
         if g.act >= 2 and len(g.deck) >= 25:
             text += f" The deck already has {len(g.deck)} cards: skip unless the card is clearly better than the deck's average card."
         return text
@@ -1087,7 +1092,7 @@ class PolicyAgent:
         system = shared_system(g.character)
         listing = "\n".join(f"{i}: {label}" for i, label in enumerate(labels))
         user = (f"{topic.replace('_', ' ').upper()} DECISION. RUN PLAN: archetype {plan.get('archetype', 'undecided')}; "
-                f"wanted {', '.join(plan.get('wanted', [])) or '-'}\n{cursory_view(message)}\n{self._context(g)}\n\n"
+                f"wanted {', '.join(plan.get('wanted', [])) or '-'}\n{self._context(g)}\n\n"
                 f"{header}\nOptions:\n{listing}\n\n"
                 "Answer as: <option number> | <reason in at most 12 words>")
         answer, ms = self._call_llm(system, user, max_tokens=48)
