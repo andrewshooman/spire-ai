@@ -63,7 +63,7 @@ class Mon:
     __slots__ = ("i", "name", "hp", "hp0", "max_hp", "block", "block0", "vuln", "weak", "weak0",
                  "new_vuln", "new_weak", "atk", "hits", "down", "down_perm", "poison", "artifact",
                  "barricade", "thorns", "sharp", "malleable", "curl", "intangible", "cap", "prio",
-                 "asleep", "nob", "dead", "shifting")
+                 "asleep", "nob", "dead", "shifting", "flight")
 
     def copy(self) -> "Mon":
         n = Mon.__new__(Mon)
@@ -102,6 +102,7 @@ class Ctx:
     strikes: int
     barricade: bool
     beat_of_death: int
+    hex: int
     time_warp: int
     curiosity_amt: int
     playable0: list
@@ -181,6 +182,7 @@ def build(message, deck_names: list[str]) -> tuple[Sim, Ctx]:
         x.asleep = m.name == "Lagavulin" and m.intent.value == "SLEEP"
         x.nob = pw(m.powers, "Anger", "Enrage")
         x.shifting = pw(m.powers, "Shifting") != 0 or any(p.id == "Shifting" for p in m.powers)
+        x.flight = pw(m.powers, "Flight")
         x.dead = False
         sim.mons.append(x)
     hand = list(c.hand)
@@ -191,6 +193,7 @@ def build(message, deck_names: list[str]) -> tuple[Sim, Ctx]:
         strikes=sum(1 for n in deck_names if "Strike" in n),
         barricade=pw(p.powers, "Barricade") > 0,
         beat_of_death=max((pw(m.powers, "BeatOfDeath", "Beat of Death") for m in c.monsters if alive(m)), default=0),
+        hex=pw(p.powers, "Hex"),
         time_warp=max((pw(m.powers, "Time Warp") for m in c.monsters if alive(m)), default=-1)
         if any(pw(m.powers, "Time Warp") or m.name == "Time Eater" for m in c.monsters if alive(m)) else -1,
         curiosity_amt=max((pw(m.powers, "Curiosity") for m in c.monsters if alive(m)), default=0),
@@ -206,6 +209,11 @@ def _hit(sim: Sim, m: Mon, dmg: float) -> None:
         return
     if m.intangible:
         dmg = min(dmg, 1)
+    if m.flight > 0:  # Byrds: half damage while flying; every hit knocks a stack off
+        dmg = dmg // 2
+        m.flight -= 1
+        if m.flight == 0:
+            m.atk = 0  # grounded: stunned, its attack this turn never lands
     dmg = min(dmg, m.cap)
     if m.block >= dmg:
         m.block -= dmg
@@ -253,6 +261,8 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int])
     tgt = next((m for m in sim.mons if m.i == target), None)
     if ctx.beat_of_death:
         sim.self_loss += ctx.beat_of_death
+    if ctx.hex and ctype != "ATTACK":
+        sim.junk -= 2 * ctx.hex  # each non-Attack adds a Dazed to the deck (0.6 junk credit -> net cost)
     if ctype == "SKILL":
         for m in sim.mons:
             if m.nob and not m.dead:
@@ -396,8 +406,6 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
         dealt += removed
         if m.barricade and not m.dead:
             v += P["damage"] * 0.8 * max(0, m.block0 - m.block)
-        if m.name == "The Champ" and not m.dead and m.hp0 > m.max_hp // 2 >= m.hp > 0.3 * m.max_hp:
-            v -= 8.0  # playbook: don't push the Champ past half (his transform) unless the burst goes deep
         if m.dead:
             kills += 1
             v += P["kill"] * m.prio

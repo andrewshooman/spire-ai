@@ -263,10 +263,19 @@ def main() -> None:
     strike = parse_message(state(["Strike"], [monster("Jaw Worm", 40, 0)])).game_state.combat_state.hand[0]
     check("before the Champ, scaling cards get a boost", ag._card_bonus(infl, gq) > ag._card_bonus(strike, gq))
     check("big act-2 deck leans toward skipping", ag._skip_bonus(gq) > 0)
-    msg = state(["Strike"], [monster("The Champ", 420, 0)], energy=1)
-    msg.game_state.combat_state.monsters[0].current_hp = 214
+    # Byrds: multi-hits knock a flying Byrd down (its attack never lands); single hits do half damage
+    msg = state(["Twin Strike", "Strike"], [monster("Byrd", 30, 12, powers=[("Flight", 2)])], energy=1)
     plan = planner.plan_turn(msg, P, [])
-    check("Champ: no chip across half", not plan.steps, str(plan.steps))
+    check("Byrd: multi-hit grounds it", names(plan, msg) == ["Twin Strike"], plan.describe(
+        msg.game_state.combat_state.hand, msg.game_state.combat_state.monsters))
+    # Hex: non-Attack cards cost a Dazed each
+    from sts_bench.state.schema import Power
+    msg = state(["Shrug It Off"], [monster("Chosen", 95, 0)], energy=1)
+    no_hex = planner.plan_turn(msg, P, [])
+    msg.game_state.combat_state.player.powers.append(Power(id="Hex", name="Hex", amount=1))
+    hexed = planner.plan_turn(msg, P, [])
+    check("Hex: Skills cost a Dazed", (hexed.value - hexed.base) < (no_hex.value - no_hex.base),
+          f"{no_hex.value - no_hex.base:.1f} -> {hexed.value - hexed.base:.1f}")
 
     # 1: track record compares takers with passers of the same offer in the same act
     import evidence
