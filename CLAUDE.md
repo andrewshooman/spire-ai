@@ -141,9 +141,8 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     campfire_choices, events, purchases/purges, HP/gold per floor) from save slots other than BOT_SLOT
     (runs\<n>_IRONCLAD; floors may be floats -> human.normalize) and evolve\human_inbox\<CHAR> (import_runs.bat <folder>, e.g. Steam Deck). Timeline rebuilds
     deck/relics per floor; card/boss-relic/rest decisions use the policy's own features; stored in
-    evolve\<char>\human
-uns (never mixed into bot stats); evolve.py learns pending ones before each run
-    (model.learn replay=True, lr * --human-lr 0.25) and passes human evidence to the LLM ('human player's
+    evolve\<char>\human\runs (never mixed into bot stats); evolve.py learns pending ones before each run
+    (model.learn replay=True, lr * --human-lr, now 0.1) and passes human evidence to the LLM ('human player's
     runs'). Bot runs skipped by seed (human.seed_number). launch-game.ps1 sets DEFAULT_SLOT=BOT_SLOT;
     evolve.wait_for_bot_slot() never plays while the game has another profile open. gamedata has id->name.
 22. Your runs are a light data point: --human-lr 0.1 (Settings max 0.5) and model.learn(adv_cap=1.0) so one
