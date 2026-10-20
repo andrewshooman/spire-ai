@@ -2,6 +2,7 @@ package autospire;
 
 import autospire.brain.Effects;
 import autospire.brain.Planner;
+import autospire.brain.PotionAdvisor;
 import autospire.brain.Sim;
 
 /** Plain-Java checks for the combat brain (no game needed). Mirrors cases from Spire AI's tests/test_planner.py. */
@@ -62,6 +63,18 @@ public final class PlannerTest {
         StringBuilder b = new StringBuilder();
         for (Planner.Step st : p.steps) b.append(s.hand.get(st.card).name).append(st.target >= 0 ? ">" + st.target : "").append(" ");
         return b.toString().trim();
+    }
+
+    static java.util.List<PotionAdvisor.Potion> pots(String... names) {
+        java.util.List<PotionAdvisor.Potion> out = new java.util.ArrayList<>();
+        for (String nm : names) {
+            PotionAdvisor.Potion p = new PotionAdvisor.Potion();
+            p.slot = out.size();
+            p.id = nm.replace(" ", "");
+            p.name = nm;
+            out.add(p);
+        }
+        return out;
     }
 
     public static void main(String[] args) {
@@ -145,6 +158,29 @@ public final class PlannerTest {
         Planner.Plan p2 = Planner.plan(s2, P);
         check("Champ: holds the crossing at low HP only", !names(s, p).contains("Heavy Blade") && names(s2, p2).contains("Heavy Blade"),
               names(s, p) + " | " + names(s2, p2));
+
+        // potions (Spire AI policy._potion rules)
+        PotionAdvisor.Context ctx = new PotionAdvisor.Context();
+        ctx.boss = true; ctx.turn = 1; ctx.hp = 60; ctx.maxHp = 80; ctx.champHp = 420; ctx.champMaxHp = 420;
+        PotionAdvisor.Advice a = PotionAdvisor.advise(pots("Fire Potion", "Strength Potion"), ctx);
+        check("Champ opening: Strength Potion, Fire Potion saved", a != null && a.potion.name.equals("Strength Potion"), a == null ? "none" : a.potion.name);
+        ctx.champHp = 200; ctx.turn = 8;
+        a = PotionAdvisor.advise(pots("Fire Potion"), ctx);
+        check("Champ phase 2: burst potion now", a != null && a.potion.name.equals("Fire Potion"), a == null ? "none" : a.why);
+        PotionAdvisor.Context hall = new PotionAdvisor.Context();
+        hall.boss = true; hall.turn = 1; hall.hp = 60; hall.maxHp = 80;
+        a = PotionAdvisor.advise(pots("Fire Potion"), hall);
+        check("boss: keeps its only non-permanent potion", a == null, a == null ? "" : a.potion.name);
+        hall.attacksPlanned = false;
+        a = PotionAdvisor.advise(pots("Flex Potion", "Fire Potion"), hall);
+        check("no Flex Potion on a turn without attacks", a != null && !a.potion.name.equals("Flex Potion"), a == null ? "none" : a.potion.name);
+        PotionAdvisor.Context lethal = new PotionAdvisor.Context();
+        lethal.hp = 10; lethal.maxHp = 80; lethal.taken = 30; lethal.turn = 3;
+        a = PotionAdvisor.advise(pots("Fire Potion", "Block Potion"), lethal);
+        check("lethal incoming: Block Potion first", a != null && a.potion.name.equals("Block Potion"), a == null ? "none" : a.potion.name);
+        PotionAdvisor.Context calm = new PotionAdvisor.Context();
+        calm.hp = 70; calm.maxHp = 80; calm.taken = 5; calm.turn = 2;
+        check("hallway fight: keeps potions", PotionAdvisor.advise(pots("Strength Potion"), calm) == null, "");
 
         if (failed > 0) {
             System.out.println(failed + " FAILED");

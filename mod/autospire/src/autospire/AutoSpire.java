@@ -1,6 +1,8 @@
 package autospire;
 
 import autospire.brain.Planner;
+import autospire.brain.PotionAdvisor;
+import basemod.ReflectionHacks;
 import autospire.brain.Sim;
 import basemod.BaseMod;
 import basemod.ModLabel;
@@ -22,7 +24,10 @@ import com.megacrit.cardcrawl.core.Settings;
 import com.megacrit.cardcrawl.dungeons.AbstractDungeon;
 import com.megacrit.cardcrawl.helpers.FontHelper;
 import com.megacrit.cardcrawl.helpers.ImageMaster;
+import com.megacrit.cardcrawl.helpers.Hitbox;
 import com.megacrit.cardcrawl.monsters.AbstractMonster;
+import com.megacrit.cardcrawl.potions.AbstractPotion;
+import com.megacrit.cardcrawl.ui.buttons.EndTurnButton;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -49,6 +54,7 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
     static boolean paused;
     static boolean autoEndTurn = true;
     static boolean showInAuto = true;
+    static boolean autoPotions = true;
     static int delayMs = 350;
     static SpireConfig config;
     static final Planner.Params params = new Planner.Params();
@@ -62,6 +68,10 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
     private static String stallHp;
     private static int stall, stallTurn = -1;
     private static String status = "";
+    private static PotionAdvisor.Advice lastPotion;
+    private static int lastPotionTarget = -1;
+    private static int potionsThisTurn, potionTurn = -1;
+    private static AbstractCard glowed;     // the card we tinted, restored when the suggestion moves
 
     public static void initialize() {
         BaseMod.subscribe(new AutoSpire());
@@ -71,11 +81,13 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
             d.setProperty("autoEndTurn", "true");
             d.setProperty("showInAuto", "true");
             d.setProperty("delayMs", "350");
+            d.setProperty("autoPotions", "true");
             config = new SpireConfig("AutoSpire", "config", d);
             mode = "OFF".equals(config.getString("mode")) ? Mode.OFF : Mode.SUGGEST;   // never AUTO at launch
             autoEndTurn = config.getBool("autoEndTurn");
             showInAuto = config.getBool("showInAuto");
             delayMs = Math.max(0, config.getInt("delayMs"));
+            autoPotions = config.getBool("autoPotions");
         } catch (Exception e) {
             log.warn("AutoSpire config not loaded: " + e);
         }
@@ -88,6 +100,7 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
             config.setBool("autoEndTurn", autoEndTurn);
             config.setBool("showInAuto", showInAuto);
             config.setInt("delayMs", delayMs);
+            config.setBool("autoPotions", autoPotions);
             config.save();
         } catch (Exception e) {
             log.warn("AutoSpire config not saved: " + e);
@@ -115,6 +128,11 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
                     delayMs = b.enabled ? 350 : 60;
                     save();
                 }));
+        panel.addUIElement(new ModLabeledToggleButton("Auto mode drinks potions (same rules as the suggestions)", x, y - 210f,
+                Settings.CREAM_COLOR, FontHelper.charDescFont, autoPotions, panel, l -> {}, b -> {
+                    autoPotions = b.enabled;
+                    save();
+                }));
         Texture badge = ImageMaster.loadImage("autospireResources/badge.png");
         BaseMod.registerModBadge(badge, "AutoSpire", "Andrew",
                 "Combat suggestions or auto-battle. F7 cycles Off / Suggest / Auto, F8 pauses.", panel);
@@ -128,7 +146,19 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
             log.warn("AutoSpire update failed: " + e);
             lastPlan = null;
             lastSig = null;
+            glow(null);
         }
+    }
+
+    /** Tint the suggested card's glow; put the previous one back to the game's own color. */
+    private static void glow(AbstractCard c) {
+        if (glowed != null && glowed != c) {
+            Color blue = ReflectionHacks.getPrivateStatic(AbstractCard.class, "BLUE_BORDER_GLOW_COLOR");
+            if (blue != null) glowed.glowColor = blue.cpy();
+            glowed.triggerOnGlowCheck();
+        }
+        if (c != null) c.glowColor = SUGGEST_GLOW.cpy();
+        glowed = c;
     }
 
     private static void update() {
@@ -139,7 +169,11 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
         }
         if (Gdx.input.isKeyJustPressed(Input.Keys.F8) && mode == Mode.AUTO) paused = !paused;
         if (mode == Mode.OFF || !GameBridge.ready()) {
-            if (mode == Mode.OFF || !inCombat()) lastPlan = null;
+            if (mode == Mode.OFF || !inCombat()) {
+                lastPlan = null;
+                lastPotion = null;
+                glow(null);
+            }
             return;
         }
         // stall guard: count turns in which no enemy lost HP
@@ -155,18 +189,35 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
             lastSim = GameBridge.read(stall);
             lastPlan = Planner.plan(lastSim, params);
             lastSig = sig;
+            if (turn != potionTurn) {
+                potionTurn = turn;
+                potionsThisTurn = 0;
+            }
+            lastPotion = PotionAdvisor.advise(GameBridge.potions(),
+                    GameBridge.potionContext(lastSim, lastPlan, potionsThisTurn));
+            lastPotionTarget = lastPotion == null ? -1 : GameBridge.potionTarget(lastPotion.potion, lastSim);
         }
+        glow(lastPlan.endTurn(params) || lastPlan.steps.isEmpty() ? null : GameBridge.handCard(lastPlan.steps.get(0).card));
         boolean autoOk = mode == Mode.AUTO && !paused && !Settings.isDailyRun;
         status = mode == Mode.AUTO ? (Settings.isDailyRun ? "AUTO is off in Daily Climbs" : paused ? "AUTO paused (F8)" : "")
                 : "";
         if (!autoOk || GameBridge.playerBusy() || System.currentTimeMillis() < nextActionAt) return;
-        if (lastPlan.endTurn(params)) {
+        if (lastPotion != null && autoPotions) {
+            if (GameBridge.usePotion(lastPotion.potion.slot, lastPotionTarget)) potionsThisTurn++;
+            lastPotion = null;
+        } else if (lastPlan.endTurn(params)) {
             if (autoEndTurn) GameBridge.endTurn();
         } else if (!GameBridge.play(lastPlan.steps.get(0))) {
             log.info("AutoSpire: planned card no longer playable; replanning");
         }
         lastSig = null;   // re-read the game after every action
         nextActionAt = System.currentTimeMillis() + delayMs;
+    }
+
+    /** The game's own targeting reticle around a monster. */
+    private static void reticle(SpriteBatch sb, AbstractMonster m) {
+        m.reticleAlpha = 1f;
+        m.renderReticle(sb);
     }
 
     private static boolean inCombat() {
@@ -186,6 +237,8 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
 
     private static final Color GOLD = new Color(0.95f, 0.78f, 0.32f, 1f);
     private static final Color DIM = new Color(0.8f, 0.78f, 0.7f, 0.85f);
+    private static final Color SUGGEST_GLOW = new Color(0.35f, 1f, 0.45f, 0.25f);   // glow drawn around the card
+    private static final Color GREEN = new Color(0.45f, 1f, 0.55f, 1f);
 
     private static void render(SpriteBatch sb) {
         if (CardCrawlGame.mode != CardCrawlGame.GameMode.GAMEPLAY || !AbstractDungeon.isPlayerInDungeon()) return;
@@ -194,17 +247,32 @@ public class AutoSpire implements PostInitializeSubscriber, PostUpdateSubscriber
         FontHelper.renderFontLeftTopAligned(sb, FontHelper.tipBodyFont, head, 24f * s, Settings.HEIGHT - 70f * s, DIM);
         if (mode == Mode.OFF || lastPlan == null || lastSim == null || !inCombat()) return;
         if (mode == Mode.AUTO && !showInAuto) return;
-        String line = (lastPlan.endTurn(params) ? "Suggested: end turn" : "Suggested: " + lastPlan.describe(lastSim));
+        boolean end = lastPlan.endTurn(params) || lastPlan.steps.isEmpty();
+        String line = end ? "Suggested: end turn" : "Suggested: " + lastPlan.describe(lastSim);
         FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, line, Settings.WIDTH / 2f, Settings.HEIGHT * 0.74f, GOLD);
-        if (lastPlan.endTurn(params) || lastPlan.steps.isEmpty()) return;
-        Planner.Step first = lastPlan.steps.get(0);
-        AbstractCard c = GameBridge.handCard(first.card);
-        if (c != null)
-            FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, "PLAY", c.current_x,
-                    c.current_y + c.hb.height / 2f + 34f * s, GOLD);
-        AbstractMonster m = GameBridge.monster(first.target);
-        if (m != null)
-            FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, "TARGET", m.hb.cX,
-                    m.hb.y + m.hb.height + 60f * s, GOLD);
+        // potion first: its slot gets a marker and the reason
+        if (lastPotion != null) {
+            AbstractPotion p = GameBridge.potion(lastPotion.potion.slot);
+            String pl = "Potion: " + lastPotion.potion.name + "  (" + lastPotion.why + ")";
+            FontHelper.renderFontCentered(sb, FontHelper.tipBodyFont, pl, Settings.WIDTH / 2f, Settings.HEIGHT * 0.74f - 36f * s, GREEN);
+            if (p != null) FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, "USE", p.posX, p.posY - 44f * s, GREEN);
+            AbstractMonster pm = GameBridge.monster(lastPotionTarget);
+            if (pm != null) reticle(sb, pm);
+        }
+        if (end) {
+            EndTurnButton btn = AbstractDungeon.overlayMenu.endTurnButton;
+            Hitbox hb = ReflectionHacks.getPrivate(btn, EndTurnButton.class, "hb");
+            if (hb != null) FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, "END TURN", hb.cX, hb.y + hb.height + 26f * s, GOLD);
+            return;
+        }
+        // the cards in the order to play them: 1, 2, 3 ... (the first one also glows green)
+        for (int k = 0; k < lastPlan.steps.size(); k++) {
+            AbstractCard c = GameBridge.handCard(lastPlan.steps.get(k).card);
+            if (c != null)
+                FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, String.valueOf(k + 1), c.current_x,
+                        c.current_y + c.hb.height / 2f + 30f * s, k == 0 ? GREEN : GOLD);
+        }
+        AbstractMonster m = GameBridge.monster(lastPlan.steps.get(0).target);
+        if (m != null && lastPotion == null) reticle(sb, m);
     }
 }

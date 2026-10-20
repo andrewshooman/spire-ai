@@ -2,6 +2,7 @@ package autospire;
 
 import autospire.brain.Effects;
 import autospire.brain.Planner;
+import autospire.brain.PotionAdvisor;
 import autospire.brain.Sim;
 import basemod.ReflectionHacks;
 import com.megacrit.cardcrawl.actions.GameActionManager;
@@ -11,7 +12,10 @@ import com.megacrit.cardcrawl.characters.AbstractPlayer;
 import com.megacrit.cardcrawl.core.CardCrawlGame;
 import com.megacrit.cardcrawl.dungeons.AbstractDungeon;
 import com.megacrit.cardcrawl.monsters.AbstractMonster;
+import com.megacrit.cardcrawl.potions.AbstractPotion;
+import com.megacrit.cardcrawl.potions.PotionSlot;
 import com.megacrit.cardcrawl.powers.AbstractPower;
+import com.megacrit.cardcrawl.relics.AbstractRelic;
 import com.megacrit.cardcrawl.rooms.AbstractRoom;
 import com.megacrit.cardcrawl.rooms.MonsterRoomBoss;
 import com.megacrit.cardcrawl.rooms.MonsterRoomElite;
@@ -164,6 +168,84 @@ public final class GameBridge {
         if (!c.canUse(pl, m)) return false;
         AbstractDungeon.actionManager.cardQueue.add(new CardQueueItem(c, m));
         return true;
+    }
+
+    /** Potions and the fight context for PotionAdvisor. */
+    public static java.util.List<PotionAdvisor.Potion> potions() {
+        java.util.List<PotionAdvisor.Potion> out = new ArrayList<>();
+        ArrayList<AbstractPotion> ps = AbstractDungeon.player.potions;
+        for (int i = 0; i < ps.size(); i++) {
+            AbstractPotion p = ps.get(i);
+            if (p == null || p instanceof PotionSlot) continue;
+            PotionAdvisor.Potion x = new PotionAdvisor.Potion();
+            x.slot = i;
+            x.id = p.ID;
+            x.name = p.name;
+            x.canUse = p.canUse();
+            x.targetRequired = p.targetRequired;
+            out.add(x);
+        }
+        return out;
+    }
+
+    public static PotionAdvisor.Context potionContext(Sim s, Planner.Plan plan, int usedThisTurn) {
+        PotionAdvisor.Context c = new PotionAdvisor.Context();
+        AbstractRoom room = AbstractDungeon.getCurrRoom();
+        c.boss = room instanceof MonsterRoomBoss;
+        c.elite = room instanceof MonsterRoomElite;
+        c.turn = s.turn;
+        c.hp = s.hp;
+        c.maxHp = s.maxHp;
+        c.taken = plan.taken;
+        c.handSize = s.hand.size();
+        c.usedThisTurn = usedThisTurn;
+        c.floorInAct = AbstractDungeon.floorNum % 17;
+        int empty = 0;
+        for (AbstractPotion p : AbstractDungeon.player.potions) if (p instanceof PotionSlot) empty++;
+        c.emptySlots = empty;
+        for (Planner.Step st : plan.steps) {
+            AbstractCard card = handCard(st.card);
+            if (card != null && card.type == AbstractCard.CardType.ATTACK) c.attacksPlanned = true;
+        }
+        for (Sim.Mon m : s.mons)
+            if (m.alive && "The Champ".equals(m.name)) {
+                c.champHp = m.hp;
+                c.champMaxHp = m.maxHp;
+            }
+        return c;
+    }
+
+    /** Target for a potion: Weak Potion on the biggest attacker, damage potions on the weakest enemy. */
+    public static int potionTarget(PotionAdvisor.Potion p, Sim s) {
+        if (!p.targetRequired) return -1;
+        Sim.Mon best = null;
+        boolean defense = "defense".equals(PotionAdvisor.kindOf(p));
+        for (Sim.Mon m : s.mons) {
+            if (!m.alive) continue;
+            if (best == null) best = m;
+            else if (defense ? m.intentDmg * Math.max(1, m.intentHits) > best.intentDmg * Math.max(1, best.intentHits)
+                             : m.hp < best.hp) best = m;
+        }
+        return best == null ? -1 : best.index;
+    }
+
+    /** Drink a potion the way the game's potion button does (same calls as CommunicationMod). */
+    public static boolean usePotion(int slot, int target) {
+        AbstractPlayer pl = AbstractDungeon.player;
+        if (slot < 0 || slot >= pl.potions.size()) return false;
+        AbstractPotion p = pl.potions.get(slot);
+        if (p instanceof PotionSlot || !p.canUse()) return false;
+        AbstractMonster m = p.targetRequired ? monster(target) : null;
+        if (p.targetRequired && (m == null || m.isDeadOrEscaped())) return false;
+        p.use(p.targetRequired ? m : pl);
+        for (AbstractRelic r : pl.relics) r.onUsePotion();
+        AbstractDungeon.topPanel.destroyPotion(p.slot);
+        return true;
+    }
+
+    public static AbstractPotion potion(int slot) {
+        ArrayList<AbstractPotion> ps = AbstractDungeon.player.potions;
+        return slot >= 0 && slot < ps.size() ? ps.get(slot) : null;
     }
 
     public static void endTurn() {
