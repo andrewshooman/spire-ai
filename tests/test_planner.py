@@ -305,8 +305,8 @@ def main() -> None:
     policy._LLM_DOWN_UNTIL[0] = 0.0
     policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P))
     ag = policy.PolicyAgent()
-    first, second = ag._call_llm("s", "u"), ag._call_llm("s", "u")
-    check("LLM failure: cooldown + health check", first[0] is None and second == (None, 0) and pings == [1])
+    call1, call2 = ag._call_llm("s", "u"), ag._call_llm("s", "u")
+    check("LLM failure: cooldown + health check", call1[0] is None and call2 == (None, 0) and pings == [1])
     policy.ask_llm, policy.ON_LLM_FAILURE, policy._LLM_DOWN_UNTIL[0] = real_ask, None, 0.0
 
     # per-act credit: an act-2 choice in a run that died early in act 2 is judged against act-2 runs
