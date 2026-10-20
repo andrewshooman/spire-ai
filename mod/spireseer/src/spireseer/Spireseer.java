@@ -55,6 +55,7 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
     static boolean autoEndTurn = true;
     static boolean showInAuto = true;
     static boolean autoPotions = true;
+    static boolean oneAtATime = false;      // Suggest: only the next card (F9 switches)
     static int delayMs = 350;
     static SpireConfig config;
     static final Planner.Params params = new Planner.Params();
@@ -72,6 +73,7 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
     private static int lastPotionTarget = -1;
     private static int potionsThisTurn, potionTurn = -1;
     private static AbstractCard glowed;     // the card we tinted, restored when the suggestion moves
+    private static java.util.List<String> lastReasons = new java.util.ArrayList<>();
 
     public static void initialize() {
         BaseMod.subscribe(new Spireseer());
@@ -82,12 +84,14 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
             d.setProperty("showInAuto", "true");
             d.setProperty("delayMs", "350");
             d.setProperty("autoPotions", "true");
+            d.setProperty("oneAtATime", "false");
             config = new SpireConfig("Spireseer", "config", d);
             mode = "OFF".equals(config.getString("mode")) ? Mode.OFF : Mode.SUGGEST;   // never AUTO at launch
             autoEndTurn = config.getBool("autoEndTurn");
             showInAuto = config.getBool("showInAuto");
             delayMs = Math.max(0, config.getInt("delayMs"));
             autoPotions = config.getBool("autoPotions");
+            oneAtATime = config.getBool("oneAtATime");
         } catch (Exception e) {
             log.warn("Spireseer config not loaded: " + e);
         }
@@ -101,6 +105,7 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
             config.setBool("showInAuto", showInAuto);
             config.setInt("delayMs", delayMs);
             config.setBool("autoPotions", autoPotions);
+            config.setBool("oneAtATime", oneAtATime);
             config.save();
         } catch (Exception e) {
             log.warn("Spireseer config not saved: " + e);
@@ -131,6 +136,11 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
         panel.addUIElement(new ModLabeledToggleButton("Auto mode drinks potions (same rules as the suggestions)", x, y - 210f,
                 Settings.CREAM_COLOR, FontHelper.charDescFont, autoPotions, panel, l -> {}, b -> {
                     autoPotions = b.enabled;
+                    save();
+                }));
+        panel.addUIElement(new ModLabeledToggleButton("Suggest one card at a time instead of the whole turn (F9)", x, y - 260f,
+                Settings.CREAM_COLOR, FontHelper.charDescFont, oneAtATime, panel, l -> {}, b -> {
+                    oneAtATime = b.enabled;
                     save();
                 }));
         Texture badge = ImageMaster.loadImage("spireseerResources/badge.png");
@@ -168,6 +178,10 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
             save();
         }
         if (Gdx.input.isKeyJustPressed(Input.Keys.F8) && mode == Mode.AUTO) paused = !paused;
+        if (Gdx.input.isKeyJustPressed(Input.Keys.F9)) {
+            oneAtATime = !oneAtATime;
+            save();
+        }
         if (mode == Mode.OFF || !GameBridge.ready()) {
             if (mode == Mode.OFF || !inCombat()) {
                 lastPlan = null;
@@ -188,6 +202,7 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
         if (!sig.equals(lastSig) || lastPlan == null) {
             lastSim = GameBridge.read(stall);
             lastPlan = Planner.plan(lastSim, params);
+            lastReasons = Planner.explain(lastSim, lastPlan, params);
             lastSig = sig;
             if (turn != potionTurn) {
                 potionTurn = turn;
@@ -239,37 +254,63 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
     private static final Color DIM = new Color(0.8f, 0.78f, 0.7f, 0.85f);
     private static final Color SUGGEST_GLOW = new Color(0.35f, 1f, 0.45f, 0.25f);   // glow drawn around the card
     private static final Color GREEN = new Color(0.45f, 1f, 0.55f, 1f);
+    private static final Color CREAM = new Color(0.93f, 0.89f, 0.8f, 1f);
+
+    private static String stepName(int k) {
+        Planner.Step st = lastPlan.steps.get(k);
+        AbstractCard c = GameBridge.handCard(st.card);
+        AbstractMonster m = GameBridge.monster(st.target);
+        return (c == null ? "?" : c.name) + (m == null ? "" : " > " + m.name);
+    }
+
+    private static String reasonAt(int k) {
+        return k < lastReasons.size() ? lastReasons.get(k) : "";
+    }
 
     private static void render(SpriteBatch sb) {
         if (CardCrawlGame.mode != CardCrawlGame.GameMode.GAMEPLAY || !AbstractDungeon.isPlayerInDungeon()) return;
         float s = Settings.scale;
-        String head = "Spireseer: " + mode + (status.isEmpty() ? "" : " - " + status) + "   (F7 mode, F8 pause)";
+        String head = "Spireseer: " + mode + (mode == Mode.OFF ? "" : oneAtATime ? " - next card" : " - whole turn")
+                + (status.isEmpty() ? "" : " - " + status) + "   (F7 mode, F8 pause, F9 next card / whole turn)";
         FontHelper.renderFontLeftTopAligned(sb, FontHelper.tipBodyFont, head, 24f * s, Settings.HEIGHT - 70f * s, DIM);
         if (mode == Mode.OFF || lastPlan == null || lastSim == null || !inCombat()) return;
         if (mode == Mode.AUTO && !showInAuto) return;
         boolean end = lastPlan.endTurn(params) || lastPlan.steps.isEmpty();
-        String line = end ? "Suggested: end turn" : "Suggested: " + lastPlan.describe(lastSim);
-        FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, line, Settings.WIDTH / 2f, Settings.HEIGHT * 0.74f, GOLD);
+        float cx = Settings.WIDTH / 2f, y = Settings.HEIGHT * 0.79f, gap = 30f * s;
         // potion first: its slot gets a marker and the reason
         if (lastPotion != null) {
             AbstractPotion p = GameBridge.potion(lastPotion.potion.slot);
-            String pl = "Potion: " + lastPotion.potion.name + "  (" + lastPotion.why + ")";
-            FontHelper.renderFontCentered(sb, FontHelper.tipBodyFont, pl, Settings.WIDTH / 2f, Settings.HEIGHT * 0.74f - 36f * s, GREEN);
+            String pl = "First, drink " + lastPotion.potion.name + ": " + lastPotion.why;
+            FontHelper.renderFontCentered(sb, FontHelper.tipBodyFont, pl, cx, y, GREEN);
+            y -= gap;
             if (p != null) FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, "USE", p.posX, p.posY - 44f * s, GREEN);
             AbstractMonster pm = GameBridge.monster(lastPotionTarget);
             if (pm != null) reticle(sb, pm);
         }
         if (end) {
+            FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, "End turn: " + Planner.endReason(lastSim), cx, y, GOLD);
             EndTurnButton btn = AbstractDungeon.overlayMenu.endTurnButton;
             Hitbox hb = ReflectionHacks.getPrivate(btn, EndTurnButton.class, "hb");
             if (hb != null) FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, "END TURN", hb.cX, hb.y + hb.height + 26f * s, GOLD);
             return;
         }
-        // the cards in the order to play them: 1, 2, 3 ... (the first one also glows green)
-        for (int k = 0; k < lastPlan.steps.size(); k++) {
+        int n = lastPlan.steps.size();
+        if (oneAtATime) {
+            // just the next card and why; the rest is re-planned after it resolves
+            FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, "Next: " + stepName(0) + "  -  " + reasonAt(0), cx, y, GREEN);
+            if (n > 1) FontHelper.renderFontCentered(sb, FontHelper.tipBodyFont,
+                    "then " + (n - 1) + " more card" + (n > 2 ? "s" : "") + " this turn  (" + lastPlan.totals() + ")", cx, y - gap, DIM);
+        } else {
+            FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, "This turn: " + lastPlan.totals(), cx, y, GOLD);
+            for (int k = 0; k < n; k++)
+                FontHelper.renderFontCentered(sb, FontHelper.tipBodyFont, (k + 1) + ". " + stepName(k) + "  -  " + reasonAt(k),
+                        cx, y - gap * (k + 1), k == 0 ? GREEN : CREAM);
+        }
+        // numbers on the cards: the whole order, or just the next one
+        for (int k = 0; k < (oneAtATime ? Math.min(1, n) : n); k++) {
             AbstractCard c = GameBridge.handCard(lastPlan.steps.get(k).card);
             if (c != null)
-                FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, String.valueOf(k + 1), c.current_x,
+                FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, oneAtATime ? "NEXT" : String.valueOf(k + 1), c.current_x,
                         c.current_y + c.hb.height / 2f + 30f * s, k == 0 ? GREEN : GOLD);
         }
         AbstractMonster m = GameBridge.monster(lastPlan.steps.get(0).target);

@@ -36,10 +36,14 @@ Spireseer reads your hand, your energy and every enemy's intent, works out the s
 
 [h2]Two modes[/h2]
 [list]
-[*][b]Suggest[/b] (default): the cards to play are numbered [b]1, 2, 3[/b] in order, the next one glows green, the target gets the targeting reticle, and one line sums up the turn: [i]"Bash > Jaw Worm, Strike > Jaw Worm (deal 20, block 0, take 5)"[/i]. A potion worth drinking is marked [b]USE[/b] with the reason; [b]END TURN[/b] is marked when nothing is worth playing. You still play every card.
+[*][b]Suggest[/b] (default): the cards to play are numbered [b]1, 2, 3[/b] in order, the next one glows green and its target gets the targeting reticle. Every card comes with its reason:
+[i]1. Bash > Jaw Worm - deals 8 to Jaw Worm, Vulnerable first: the attacks after it hit 50% harder
+2. Strike > Jaw Worm - deals 9 to Jaw Worm
+3. Defend - blocks 5 of the 12 coming[/i]
+Prefer one step at a time? [b]F9[/b] switches to [b]next card only[/b] ("Next: Bash > Jaw Worm - ..."), re-planned after every card. A potion worth drinking is marked [b]USE[/b] with the reason; [b]END TURN[/b] is marked with why ("out of energy", "what's left would cost more than it gains"). You still play every card.
 [*][b]Auto[/b]: plays the turn for you at a watchable pace, drinks potions by the same rules and ends the turn. Each part can be switched off in Mods > Spireseer > Config.
 [/list]
-[b]F7[/b] cycles Off / Suggest / Auto. [b]F8[/b] pauses Auto instantly.
+[b]F7[/b] cycles Off / Suggest / Auto. [b]F8[/b] pauses Auto instantly. [b]F9[/b] switches whole turn / next card only.
 
 [h2]The AI behind the decisions[/h2]
 Spireseer's brain comes from [b]Spire AI[/b], a self-learning bot that has played hundreds of full Ironclad runs on its own, learning from every win and death.

@@ -2,6 +2,7 @@ package spireseer;
 
 import spireseer.brain.Effects;
 import spireseer.brain.Planner;
+import java.util.List;
 import spireseer.brain.PotionAdvisor;
 import spireseer.brain.Sim;
 
@@ -126,6 +127,10 @@ public final class PlannerTest {
         strike(s); defend(s); defend(s);
         p = Planner.plan(s, P);
         check("blocks a lethal hit", names(s, p).split("Defend", -1).length - 1 == 2, names(s, p));
+        List<String> whyBlock = Planner.explain(s, p, P);
+        boolean blocks = false;
+        for (String w : whyBlock) blocks |= w.startsWith("blocks 5 of the 12 coming");
+        check("reason: Defend says what it blocks", blocks, whyBlock.toString());
 
         // Vulnerable before the big hits
         s = sim(70, 3);
@@ -134,6 +139,9 @@ public final class PlannerTest {
         card(s, "Bash", "ATTACK", 2, 8, 0, true, "Deal !D! damage. NL Apply !M! Vulnerable.", 2);
         p = Planner.plan(s, P);
         check("Bash before Strike", names(s, p).startsWith("Bash"), names(s, p));
+        java.util.List<String> why = Planner.explain(s, p, P);
+        check("reason: Bash is played first for Vulnerable", why.get(0).contains("Vulnerable first"), why.toString());
+        check("reason: Strike says how much it deals", why.size() > 1 && why.get(1).startsWith("deals 9"), why.toString());
 
         // kill the attacker that can be killed now
         s = sim(30, 1);
@@ -142,6 +150,8 @@ public final class PlannerTest {
         strike(s);
         p = Planner.plan(s, P);
         check("kills what it can", !p.steps.isEmpty() && p.steps.get(0).target == 1, names(s, p));
+        why = Planner.explain(s, p, P);
+        check("reason: names the kill and the damage it stops", why.get(0).startsWith("kills Louse (stops its 7)"), why.toString());
 
         // The Champ: don't chip it into phase 2 at low HP; fine with HP to spare
         s = sim(40, 2);

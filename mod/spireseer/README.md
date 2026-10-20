@@ -6,6 +6,7 @@ Combat suggestions or auto-battle, in the game, with no Python or LLM needed.
 |---|---|
 | F7 | Cycle **Off -> Suggest -> Auto** |
 | F8 | Pause / resume Auto |
+| F9 | Suggest the whole turn (1, 2, 3 with a reason for each card) or only the next card |
 
 - **Suggest** shows the best play for the turn: the cards are numbered 1, 2, 3 in the order to play them (the
   first one glows green), the target gets the game's targeting reticle, and a line explains the turn

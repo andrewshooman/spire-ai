@@ -42,7 +42,12 @@ public final class Planner {
                 if (m != null) b.append(" > ").append(m.name);
             }
             if (b.length() == 0) b.append("end turn");
-            return b + "  (deal " + dealt + ", block " + block + ", take " + taken + (kills > 0 ? ", kill " + kills : "") + ")";
+            return b + "  (" + totals() + ")";
+        }
+
+        /** "deal 20, block 5, take 0, kill 1" for the whole turn. */
+        public String totals() {
+            return "deal " + dealt + ", block " + block + ", take " + taken + (kills > 0 ? ", kill " + kills : "");
         }
     }
 
@@ -87,6 +92,15 @@ public final class Planner {
     }
 
     private Plan run() {
+        St st = initial();
+        best = new Plan();
+        best.value = best.base = evaluate(st, best, true);
+        dfs(st, new ArrayList<>());
+        best.nodes = nodes;
+        return best;
+    }
+
+    private St initial() {
         St st = new St();
         int n = s.mons.size();
         st.energy = s.energy;
@@ -106,11 +120,89 @@ public final class Planner {
         }
         noSafeTarget = anyAlive && allRetaliate;
         inc0 = incoming(st);
-        best = new Plan();
-        best.value = best.base = evaluate(st, best, true);
-        dfs(st, new ArrayList<>());
-        best.nodes = nodes;
-        return best;
+        return st;
+    }
+
+    // ---------------------------------------------------------------- reasons for the overlay
+
+    /** One short reason per step of the plan: what that card changes, found by replaying the plan. */
+    public static List<String> explain(Sim s, Plan plan, Params p) {
+        Planner pl = new Planner(s, p, 0);
+        St st = pl.initial();
+        List<String> out = new ArrayList<>();
+        for (int k = 0; k < plan.steps.size(); k++) {
+            Step step = plan.steps.get(k);
+            int hk = -1, t = -1;
+            for (int i = 0; i < s.hand.size(); i++) if (s.hand.get(i).index == step.card) hk = i;
+            for (int i = 0; i < s.mons.size(); i++) if (s.mons.get(i).index == step.target) t = i;
+            if (hk < 0) {
+                out.add("");
+                continue;
+            }
+            Sim.Card c = s.hand.get(hk);
+            int cost = c.cost < 0 ? st.energy : c.cost;
+            St before = st.copy();
+            double incBefore = pl.incoming(before);
+            st.used[hk] = true;
+            pl.play(st, c, t, cost);
+            boolean laterAttack = false;
+            for (int j = k + 1; j < plan.steps.size(); j++) {
+                Sim.Card n = card(s, plan.steps.get(j).card);
+                if (n != null && "ATTACK".equals(n.type)) laterAttack = true;
+            }
+            out.add(pl.reason(before, st, c, t, incBefore, laterAttack));
+        }
+        return out;
+    }
+
+    /** Why ending the turn now is best. */
+    public static String endReason(Sim s) {
+        boolean playable = false, affordable = false;
+        for (Sim.Card c : s.hand) {
+            if (!c.playable || "STATUS".equals(c.type) || "CURSE".equals(c.type)) continue;
+            playable = true;
+            if (c.cost <= s.energy) affordable = true;
+        }
+        if (!playable) return "nothing in hand can be played";
+        if (!affordable || s.energy == 0) return "out of energy";
+        return "what's left would cost more than it gains";
+    }
+
+    private String reason(St before, St after, Sim.Card c, int t, double incBefore, boolean laterAttack) {
+        List<String> parts = new ArrayList<>();
+        int dmg = 0;
+        List<String> killed = new ArrayList<>();
+        int vul = 0, weak = 0, down = 0;
+        for (int i = 0; i < s.mons.size(); i++) {
+            dmg += before.hp[i] - after.hp[i];
+            if (!before.dead[i] && after.dead[i]) {
+                Sim.Mon m = s.mons.get(i);
+                int hit = m.intentDmg * Math.max(1, m.intentHits);
+                killed.add(m.name + (hit > 0 ? " (stops its " + hit + ")" : ""));
+            }
+            vul = Math.max(vul, after.vulnAdd[i] - before.vulnAdd[i]);
+            weak = Math.max(weak, after.weakAdd[i] - before.weakAdd[i]);
+            down = Math.max(down, after.strDown[i] - before.strDown[i]);
+        }
+        if (!killed.isEmpty()) parts.add("kills " + String.join(", ", killed));
+        else if (dmg > 0) parts.add("deals " + dmg + (c.aoe ? " across all enemies" : t >= 0 ? " to " + s.mons.get(t).name : ""));
+        if (vul > 0) parts.add(laterAttack ? "Vulnerable first: the attacks after it hit 50% harder" : "applies " + vul + " Vulnerable");
+        if (weak > 0) parts.add("Weak: its attacks deal 25% less");
+        if (down > 0) parts.add("enemy loses " + down + " Strength");
+        int blk = after.block - before.block;
+        if (blk > 0) {
+            double need = Math.max(0, incBefore - before.block);
+            parts.add(need > 0 ? "blocks " + (int) Math.min(blk, need) + " of the " + (int) incBefore + " coming" : "extra block");
+        }
+        int str = c.fx.strength + c.fx.tempStrength;
+        if (str > 0) parts.add(laterAttack ? "+" + str + " Strength before the attacks" : "+" + str + " Strength");
+        if (c.fx.draw > 0) parts.add("draws " + c.fx.draw);
+        if (c.fx.energy > 0) parts.add("+" + c.fx.energy + " energy");
+        if (c.fx.isPower) parts.add("power: pays off every turn after");
+        double thorns = after.retal - before.retal;
+        if (thorns > 0) parts.add("takes " + (int) thorns + " from Thorns");
+        if (c.fx.selfDamage > 0) parts.add("costs " + c.fx.selfDamage + " HP");
+        return parts.isEmpty() ? "sets up the rest of the turn" : String.join(", ", parts);
     }
 
     private void dfs(St st, List<Step> path) {
