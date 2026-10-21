@@ -828,7 +828,8 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
             explore = kind == "explore"
             rng = random.Random()
             # A/B switches: each explore run turns recent features on/off so analyze.bat can measure them
-            ab = ({"hp_budget": rng.random() < 0.5, "llm_cards": rng.random() < 0.7,
+            # hp_budget left the A/B: it won for both characters (Silent act 1 clear 88% vs 70%) -> always on
+            ab = ({"llm_cards": rng.random() < 0.7,
                    "syn_notes": rng.random() < 0.5, "skip_rules": rng.random() < 0.5,
                    "event_pull": rng.random() < 0.5} if explore and args.ab else {})
             eps, es_sign = None, 0

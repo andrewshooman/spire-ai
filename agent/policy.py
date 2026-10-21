@@ -340,7 +340,8 @@ class PolicyAgent:
         elif empty >= 2 and pick(["brew"]):
             choice, why = pick(["brew"]), "Entropic Brew refills empty slots"
         elif taken >= hp:
-            choice, why = pick(["defense", "heal", "damage", "buff", "tempo", "escape"]), "lethal incoming"
+            # no Smoke Bomb: escaping ended a Silent run as an abort (no learning), same as dying but worse
+            choice, why = pick(["defense", "heal", "damage", "buff", "tempo"]), "lethal incoming"
         elif boss and taken >= max(20, 0.35 * hp):
             # the big turns: Champ's Execute, Automaton's Hyper Beam, Collector's spike
             choice, why = pick(["defense", "heal"]), "boss big hit"
@@ -719,7 +720,8 @@ class PolicyAgent:
             out["E"] = 1.0 if hp_frac >= 0.5 and damage >= 1 else (0.3 if hp_frac >= 0.5 else -0.6)
             out["E"] += CONFIG.risk if hp_frac >= 0.4 else 0.0
         elif g.act == 2:
-            out["E"] = 0.9 if hp_frac >= 0.6 else -0.3
+            need = 0.6 if getattr(g, "character", "IRONCLAD") == "IRONCLAD" else 0.7   # Slaver+Taskmaster cost Silent ~30 HP
+            out["E"] = 0.9 if hp_frac >= need else -0.3
             out["E"] += CONFIG.risk if hp_frac >= 0.5 else 0.0
         elif hp_frac < 0.7:
             out["E"] = -1.0                  # act 3 elites end shaky runs
@@ -740,6 +742,11 @@ class PolicyAgent:
             elif hp_frac < mid:
                 for sym, b in (("M", -0.6), ("E", -1.0), ("?", 0.3), ("R", 0.4 if not coffee else 0.0)):
                     out[sym] = out.get(sym, 0.0) + b
+        if hp_frac < 0.4:
+            # anywhere in the run: under 40% HP the next fight can end it -- rest, event or shop instead
+            sev = 2.0 if hp_frac < 0.25 else 1.0
+            for sym, b in (("M", -1.2), ("E", -2.5), ("?", 0.5), ("R", 1.2 if not coffee else 0.0), ("$", 0.3)):
+                out[sym] = out.get(sym, 0.0) + b * sev
         return out
 
     def _chest(self, message, decision):

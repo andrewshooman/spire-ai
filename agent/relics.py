@@ -80,6 +80,7 @@ def profile(g) -> dict:
         "energy_relics": sum(1 for r in relics if r in OWNED_ENERGY),
         "exhaust_outlets": sum(1 for b in base if b in EXHAUST_OUTLETS),
         "exhaust_pay": tags["exhaust_pay"], "status_makers": tags["status_maker"], "selfdmg": tags["selfdmg"],
+        "shiv_makers": sum(1 for d in playable if C.effects(d).shivs),
         "curses": sum(1 for d in deck if d.type.value == "CURSE"),
         "basics": sum(1 for b in base if b in C.BASIC),
         "powers": sum(1 for d in playable if d.type.value == "POWER"),
@@ -137,8 +138,10 @@ def boss_fit(name: str, p: dict) -> tuple[float, list[str]]:
         add(0.1 * min(4, p["high_cost"]) - 0.15 * min(4, p["zero_cost"]) - 0.4 * min(1, p["xcost"]),
             f"{p['high_cost']} cards cost 2+, {p['zero_cost']} cost 0")
     elif name == "Velvet Choker":
-        many = p["zero_cost"] + p["draw"]
-        add(-0.15 * min(5, many), f"{many} cheap/draw cards hit the 6-card limit" if many >= 3 else "")
+        # Shivs are extra free cards every turn: a Shiv deck hits 6 cards fast (5 Silent runs took it, all died in act 2)
+        many = p["zero_cost"] + p["draw"] + 2 * p.get("shiv_makers", 0)
+        add(-0.2 * min(6, many) - (0.6 if many >= 4 else 0.0),
+            f"{many} cheap/draw/Shiv cards hit the 6-card limit" if many >= 3 else "")
     elif name == "Busted Crown":
         add(0.3 if p["n"] >= 25 else -0.5, "deck already built" if p["n"] >= 25 else "deck still needs card rewards")
         add(-0.3 if p["act"] <= 1 else 0.0, "")

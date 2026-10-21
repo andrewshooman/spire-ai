@@ -180,6 +180,9 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     character the bot is playing (unless you picked one in the tab), per-character accent, global status pill.
     Poison: planner reads existing Poison, Catalyst (poison_mult), Bouncing Flask (poison x times, priority
     target), Corpse Explosion single-target; an enemy whose Poison >= HP doesn't attack (dies first).
+26. Overnight Silent (34 runs: act 1 boss 76%, act 2 boss 3%): low-HP path rule in every act (<40% HP: M/E
+    down, R/?/$ up; x2 under 25%); hp_budget left the A/B (always on); never auto Smoke Bomb (escape aborted a
+    run); act 2 elites need 70% HP for non-Ironclad; Velvet Choker counts Shiv makers (relics.profile shiv_makers).
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

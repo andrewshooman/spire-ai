@@ -479,6 +479,16 @@ def main() -> None:
     iron = NS(act=1, floor=5, current_hp=70, max_hp=70, gold=99, relics=[], deck=real_deck, character="IRONCLAD")
     check("Silent starter deck avoids act 1 elites; Ironclad still takes them",
           policy.PolicyAgent()._map_rules(early).get("E", 0) < 0 < policy.PolicyAgent()._map_rules(iron).get("E", 0))
+    # overnight Silent runs: low-HP pathing everywhere, Velvet Choker vs Shiv decks, no auto Smoke Bomb
+    low = NS(act=1, floor=9, current_hp=20, max_hp=70, gold=99, relics=[], deck=real_deck, character="THE_SILENT")
+    r = policy.PolicyAgent()._map_rules(low)
+    check("under 40% HP: away from fights, toward rest", r.get("M", 0) < -1 and r.get("E", 0) < -2 and r.get("R", 0) > 1, str(r))
+    shiv = deck_g(starter + ["Blade Dance", "Blade Dance", "Shrug It Off"])
+    vc = policy.boss_relic_rule("Velvet Choker", shiv)
+    check("Velvet Choker is bad for a Shiv deck", vc[0] < -0.8, str(vc))
+    msg = state(["Strike"], [monster("Jaw Worm", 40, 30)], hp=10, potions=["Smoke Bomb"])
+    action, note = first(msg)
+    check("no Smoke Bomb on a lethal turn (escape aborted a run)", not isinstance(action, UsePotion), note)
     print("PLANNER OK")
 
 

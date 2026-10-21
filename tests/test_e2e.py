@@ -343,7 +343,7 @@ def main() -> None:
     assert snap["decisions"] and "deck" in snap and "map" in snap
     explore_ab = [json.loads(p.read_text()).get("ab") for p in runs if json.loads(p.read_text())["kind"] == "explore"]
     print("A/B switches recorded:", explore_ab[:2])
-    assert all(a and set(a) == {"hp_budget", "llm_cards", "syn_notes", "skip_rules", "event_pull"} for a in explore_ab)
+    assert all(a and set(a) == {"llm_cards", "syn_notes", "skip_rules", "event_pull"} for a in explore_ab)
     topics = sorted({c["topic"] for c in snap["llm"]})
     print("llm topics in live feed:", topics)
     assert "shop" in topics, "the shop should ask the LLM for a shopping list"
