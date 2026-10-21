@@ -65,6 +65,8 @@ FEATURE_PRIORS = {
     "relic:skip": -0.5,
     # expert players' pick rate vs their average (human.expert_rates): +0.7 for a card they always take
     "expertpick": 3.0, "expertrelic": 2.0,
+    # how the bot really uses a card (cardutil): play rate vs average, fight credit (z), co-played partners
+    "cardplay": 1.0, "cardfight": 1.0, "cardpair": 1.5,
 }
 
 
@@ -72,7 +74,8 @@ FEATURE_PRIORS = {
 # (tag:Strength reached +3.8) until nearly every run drafted Strength. Keep them small so the
 # individual card weights, synergy rules and the LLM decide.
 WEIGHT_BOUNDS = {"tag": (-1.0, 1.0), "syn": (-1.0, 1.5), "relicctx": (-1.0, 1.0), "relicfit": (-0.5, 2.5),
-                 "skip": (-1.5, 1.5), "expertpick": (0.0, 6.0), "expertrelic": (0.0, 4.0)}  # skip:a2 had run away to -5.5 (the LLM never skipped; training followed it)
+                 "skip": (-1.5, 1.5), "expertpick": (0.0, 6.0), "expertrelic": (0.0, 4.0),
+                 "cardplay": (0.0, 4.0), "cardfight": (0.0, 4.0), "cardpair": (0.0, 4.0)}  # skip:a2 had run away to -5.5 (the LLM never skipped; training followed it)
 
 
 def hp_bucket(hp: int, max_hp: int) -> int:

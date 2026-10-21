@@ -211,6 +211,14 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     (always re-scored), window and champion. Imported human/expert runs re-scored when learned
     (human.current_reward). analyze.bat leads with wins / act 2 boss / score, A/B with a z-test on act 2 boss
     beaten; LLM track records (evidence.py) give act 2 boss % and wins instead of average floor.
+31. Web app: Overview "Best cards and synergies" (stats.best, /api/best; by act 2 boss / wins, bot + experts)
+    replaced "You vs the bot"; Settings "Restart after this run" (evolve/restart.request -> exit 75 between
+    runs, game closed; start.bat relaunches the game and reruns the bot). Relics: more RELIC_TAGS (count in
+    card synergies), path features pathrelic:<relic>:<room> (policy.PATH_RELIC priors).
+    Card utility (agent/cardutil.py): each run's protocol log -> evolve/<char>/carduse/run_NNNN.json (hand
+    and plays per turn, HP lost per fight); features cardplay (play rate when in hand vs average), cardfight
+    (HP vs the encounter's usual when in the deck, z), cardpair (co-played with cards in the deck beyond
+    their separate rates); priors 1.0/1.0/1.5, bounds 0..4; synced at start and after every run.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

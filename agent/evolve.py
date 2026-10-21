@@ -55,6 +55,7 @@ import evidence  # noqa: E402
 import live  # noqa: E402
 import webapp  # noqa: E402
 import human  # noqa: E402
+import cardutil  # noqa: E402
 import policy  # noqa: E402
 from model import Model  # noqa: E402
 
@@ -868,6 +869,12 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
         args.character = webapp.load_settings().get("character", args.character)
         args.workdir = str(HERE.parent / "evolve" / args.character)
     ws = open_workspace(args)
+    try:   # runs played by older code: parse their logs into card-use data (fast; only missing ones)
+        n = cardutil.sync(args.character, say=say, home=ws.root)
+        if n:
+            say(f"card use: parsed {n} run logs")
+    except Exception as exc:
+        say(f"card use: {type(exc).__name__}: {exc}")
     provider = PROVIDERS["chat"].from_env(model=args.model, base_url=args.base_url)
     own = server is None
     server = server or HarnessServer(port=args.port)
@@ -889,7 +896,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
 
     def play_leftover(env, router) -> None:
         """Finish a run already in progress (after a stall or a restart) without learning from it."""
-        policy.CONFIG = policy.Config(model=ws.model, tracker=policy.RunTracker(), temperature=0.05,
+        policy.CONFIG = policy.Config(model=ws.model, tracker=policy.RunTracker(), temperature=0.05, workspace=ws.root,
                                       params=ws.model.es_params(None), learn=False, llm_events=False,
                                       strategy=ws.strategy)
         say("finishing the run already in progress (not used for learning)")
@@ -967,6 +974,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                     eps, es_sign = ws.model.es_sample(rng), 1
             temp = ws.model.temperature() if explore else 0.05
             policy.CONFIG = policy.Config(
+                workspace=ws.root,
                 model=ws.model, tracker=policy.RunTracker(), temperature=temp,
                 params=ws.model.es_params(eps), rng=rng, learn=explore,
                 llm_events=args.llm_events, llm_model=args.event_model or args.model,
@@ -1057,6 +1065,10 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                       "risk": policy.CONFIG.risk, "flavor": policy.CONFIG.flavor, "ab": ab})
             (ws.root / "runs" / f"run_{index + 1:04d}.json").write_text(json.dumps(s, indent=1),
                                                                         encoding="utf-8")
+            try:   # how each card got used in this run's fights (card-pick features)
+                cardutil.sync(args.character, say=say, home=ws.root)
+            except Exception as exc:
+                say(f"card use: {type(exc).__name__}: {exc}")
             say(f"run {index + 1} done: {'VICTORY' if s['victory'] else 'died on floor ' + str(s['floor'])}"
                 f" | {s['plan'].get('archetype', '?')} | {duration:.0f}s"
                 + (f" | advantage {learned['advantage']:+.2f}" if learned else ""))

@@ -518,6 +518,23 @@ def main() -> None:
     g2 = NS(act=2, floor=20, current_hp=70, max_hp=80, gold=99, relics=[], deck=real_deck, character="IRONCLAD")
     r2 = ag._map_rules(g2)
     check("Ironclad act 2: away from hallway fights, toward elites when healthy", r2.get("M", 0) < 0 and r2.get("E", 0) > 1, str(r2))
+    # card use from the protocol log: hand per turn, plays, HP per fight, co-played pairs
+    import cardutil
+    def st(turn, hand, hp, floor=1, deck=("Strike", "Bash", "Inflame", "Twin Strike")):
+        return "00:00:00.000 << " + json.dumps({"game_state": {"floor": floor, "act": 1, "current_hp": hp,
+            "deck": [{"name": d, "type": "ATTACK"} for d in deck],
+            "combat_state": {"turn": turn, "player": {"current_hp": hp, "max_hp": 80},
+                             "monsters": [{"name": "Jaw Worm"}], "hand": [{"name": h, "type": "ATTACK"} for h in hand]}}})
+    lines = [st(1, ["Inflame", "Twin Strike", "Strike"], 80), "00:00:00.100 >> play 1",
+             st(1, ["Twin Strike", "Strike"], 80), "00:00:00.200 >> play 1 0",
+             st(2, ["Bash", "Strike"], 74), "00:00:00.300 >> end",
+             "00:00:00.400 << " + json.dumps({"game_state": {"floor": 1, "current_hp": 70}})]
+    fights = cardutil.parse_lines(lines)
+    c = cardutil.compact(fights)
+    check("card use: turns, plays, HP lost from the log",
+          len(fights) == 1 and fights[0]["hp_start"] == 80 and fights[0]["hp_end"] == 70
+          and c["played"].get("Inflame") == 1 and c["seen"].get("Bash") == 1 and not c["played"].get("Bash")
+          and c["pair_played"].get("Inflame|Twin Strike") == 1, json.dumps(c)[:200])
     # relics feed card synergies and path choices
     import synergy
     sf, why = synergy.explain("Paper Phrog", [], ["Bag of Marbles"])

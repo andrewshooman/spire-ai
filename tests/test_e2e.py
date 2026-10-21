@@ -358,6 +358,9 @@ def main() -> None:
     notes = [r["note"] for r in csv.DictReader((ws / "progress.csv").open(encoding="utf-8")) if r.get("note")]
     assert notes and all(n.startswith(("measuring", "champion", "kept", "reverted")) for n in notes), notes
     assert (ws / "dashboard.html").exists()
+    cu = list((ws / "carduse").glob("run_*.json"))
+    assert cu, "each finished run's log is parsed into card-use data"
+    print("card use files:", len(cu))
     # "Restart the bot" (web page): between runs the bot saves, closes the game and exits with RESTART_EXIT
     n_before = len(list((ws / "runs").glob("run_*.json")))
     evolve.RESTART_FLAG.write_text("now")

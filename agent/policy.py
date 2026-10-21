@@ -33,6 +33,7 @@ from sts_bench.state.serialize import cursory_view
 from sts_bench.tools.card_db import card_text, upgraded_card_text
 
 import cards as C
+import cardutil
 import evidence
 import synergy
 import gamedata
@@ -115,6 +116,7 @@ class Config:
     human_evidence: dict | None = None  # the same from runs the player played (human.py)
     expert_evidence: dict | None = None  # the same from other strong players' runs (human.py source 'expert')
     expert_features: bool = True  # expertpick / expertrelic features (off while converting expert runs)
+    workspace: object = None      # evolve/<char> folder of the bot playing (card-use stats live there)
     ab: dict = field(default_factory=dict)  # per-run A/B switches (explore runs); missing = on
 
 
@@ -386,7 +388,8 @@ class PolicyAgent:
 
     # ---------------------------------------------------------------- explain choices for the web app
 
-    GROUPS = (("pathrelic", "your relics"), ("expertpick", "experts take it"), ("expertrelic", "experts take it"), ("synneed", "missing enabler"), ("synrule", "synergy"), ("cardctx", "fits now"), ("card", "card value"),
+    GROUPS = (("pathrelic", "your relics"), ("expertpick", "experts take it"), ("cardplay", "how it gets played"),
+              ("cardfight", "fight results with it"), ("cardpair", "plays well with your cards"), ("expertrelic", "experts take it"), ("synneed", "missing enabler"), ("synrule", "synergy"), ("cardctx", "fits now"), ("card", "card value"),
               ("syn", "build"), ("tag", "build"), ("need", "deck needs it"), ("dup", "deck size"), ("dilute", "deck size"),
               ("upgraded", "card value"), ("skip", "skip"), ("relicfit", "fits the deck"), ("relicctx", "fits the deck"),
               ("relic", "relic value"), ("shoprelic", "relic value"), ("nodeact", "path"), ("node", "path"),
@@ -492,6 +495,13 @@ class PolicyAgent:
             f["dup"] = float(dup)
         if len(g.deck) > 15:
             f["dilute"] = (len(g.deck) - 15) / 10.0
+        try:
+            # how the bot really uses it: play rate when drawn, fights with it in the deck, partners it gets
+            # played with (cardutil, from its own fight logs); learned weights like every other feature
+            f.update(cardutil.features(_CHAR_DIR.get(char, "ironclad"), card.name, [d.name for d in g.deck],
+                                       CONFIG.workspace))
+        except Exception:
+            pass
         ex = _expert_rates(char).get("card", {}).get((name, min(g.act, 3)))
         if ex:
             # how much more (or less) often strong players took this card in this act than their average:
@@ -1545,6 +1555,9 @@ EVENT_RULES = [
 
 # optional event fights: (event, regex for the fight option, minimum HP fraction); enforced over the LLM
 FIGHT_EVENT_GUARD = {"Masked Bandits": (r"fight", 0.7), "The Colosseum": (r"victory", 0.6)}
+
+
+_CHAR_DIR = {"IRONCLAD": "ironclad", "THE_SILENT": "silent", "SILENT": "silent", "DEFECT": "defect", "WATCHER": "watcher"}
 
 
 # What a relic does to the value of each room (path prior; the bot learns the actual weight per relic and room)
