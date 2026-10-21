@@ -43,6 +43,7 @@ CARDS = {
     "Zap": ("Zap", "SKILL", 1, False), "Dualcast": ("Dualcast", "SKILL", 1, False),
     "Coolheaded": ("Coolheaded", "SKILL", 1, False), "Defend_B": ("Defend_B", "SKILL", 1, False),
     "Defragment": ("Defragment", "POWER", 1, False),
+    "Piercing Wail": ("PiercingWail", "SKILL", 1, False), "Outmaneuver": ("Outmaneuver", "SKILL", 1, False),
 }
 
 
@@ -630,6 +631,16 @@ def main() -> None:
     msg = state(["Defragment", "Defend_B"], [monster("Jaw Worm", 40, 0)], energy=1, orbs=[light, light, slot])
     check("Defect: Focus with orbs out beats a Defend on a quiet turn",
           names(planner.plan_turn(msg, P, []), msg) == ["Defragment"], ", ".join(names(planner.plan_turn(msg, P, []), msg)))
+    # Silent: Piercing Wail lowers EVERY attacker's Strength (the flag used to be overwritten); next-turn energy isn't now
+    msg = state(["Piercing Wail", "Defend_G"], [monster("Cultist", 40, 12), monster("Cultist", 40, 12)], energy=1, hp=40)
+    plan = planner.plan_turn(msg, P, [])
+    check("Silent: Piercing Wail against two 12-damage attackers", names(plan, msg) == ["Piercing Wail"]
+          and plan.summary["taken"] == 12, plan.describe(msg.game_state.combat_state.hand, msg.game_state.combat_state.monsters))
+    msg = state(["Outmaneuver", "Strike", "Strike"], [monster("Jaw Worm", 40, 0)], energy=1)
+    sim, ctx = planner.build(msg, [])
+    planner.play(sim, ctx, 0, None, [0, 1, 2])
+    check("Outmaneuver's energy comes next turn, not now", sim.energy == 0 and sim.next_energy == 2,
+          f"energy {sim.energy} next {sim.next_energy}")
     # overnight Silent runs: low-HP pathing everywhere, Velvet Choker vs Shiv decks, no auto Smoke Bomb
     low = NS(act=1, floor=9, current_hp=20, max_hp=70, gold=99, relics=[], deck=real_deck, character="THE_SILENT")
     r = policy.PolicyAgent()._map_rules(low)

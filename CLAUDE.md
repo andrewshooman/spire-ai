@@ -251,6 +251,14 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     "fewer hallway fights" (M -0.4) for every class (the extra act 2 elite pull stays Ironclad); bounds for
     ev (+-2), card (-3..4), cardctx (+-3), synrule (+-3), synneed (-3..0.5) -- the Silent's Dagger Spray /
     Shiv weights had run to +6. Learned weights stay per class (each class has its own model).
+38. Defect orbs in the planner (Zap was played 20% / Dualcast 9% of turns in hand): parse_text reads Channel/Evoke/
+    Recursion/Focus/orb slots/Barrage/Electrodynamics; planner.build keeps the game's orbs (amounts include Focus),
+    channel into full slots evokes the oldest, evokes (Lightning, Frost block, Dark on lowest HP, Plasma energy),
+    passives before the enemies act, orbs + Focus valued for the fight (ORB_FUTURE 0.7). Parser fixes (all
+    classes): "ALL enemies lose N Strength" no longer overwritten (Piercing Wail hit nobody), "Next turn, ..."
+    riders are next turn's (Outmaneuver had given 2 energy now; next_block/energy/draw valued 0.8/0.8/0.5),
+    Malaise X Strength + X Weak, After Image (+3 block/turn), Noxious Fumes (+2x/turn). The Spireseer Java brain
+    lacks orbs and these fixes.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

@@ -80,7 +80,8 @@ class Sim:
                  "perm_str", "perm_dex", "turn_str", "turn_block", "turn_energy", "turn_dmg", "powers",
                  "draw_value", "enrage", "curiosity", "played", "junk", "self_vuln", "self_weak",
                  "self_frail", "thorns_back", "ended", "retal", "intangible", "double_atk", "double_skill",
-                 "heal", "orbs", "orb_slots", "focus", "perm_focus", "lightning_all")
+                 "heal", "orbs", "orb_slots", "focus", "perm_focus", "lightning_all",
+                 "next_block", "next_energy", "next_draw")
 
     def copy(self) -> "Sim":
         n = Sim.__new__(Sim)
@@ -165,6 +166,7 @@ def build(message, deck_names: list[str]) -> tuple[Sim, Ctx]:
     sim.double_atk = pw(p.powers, "Double Tap")
     sim.double_skill = pw(p.powers, "Burst")
     sim.heal = 0.0
+    sim.next_block = sim.next_energy = sim.next_draw = 0
     # Defect orbs: the game reports each orb's evoke/passive amounts with Focus already applied
     orbs = getattr(p, "orbs", None) or []
     sim.orb_slots = len(orbs)
@@ -363,11 +365,15 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int],
                 d = per * (1.5 if m.vuln > 0 else 1.0)
                 _hit(sim, m, int(d) * share if share < 1 else int(d))
     # debuffs
-    if e.vuln or e.weak:
+    weak = e.weak + (x_energy if e.x_weak else 0)       # Malaise: X Weak
+    if e.vuln or weak:
         group = [m for m in sim.mons if not m.dead] if (e.aoe_debuff or e.aoe) else ([tgt] if tgt else [])
         for m in group:
-            _debuff(m, e.vuln, e.weak)
-    for n, perm in ((e.enemy_str_down, True), (e.enemy_str_down_temp, False)):
+            _debuff(m, e.vuln, weak)
+    sim.next_block += e.next_block
+    sim.next_energy += e.next_energy
+    sim.next_draw += e.next_draw
+    for n, perm in ((e.enemy_str_down + (x_energy if e.x_str_down else 0), True), (e.enemy_str_down_temp, False)):
         if not n:
             continue
         group = [m for m in sim.mons if not m.dead] if e.aoe_debuff else ([tgt] if tgt else [])
@@ -621,6 +627,8 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
         v -= 500.0
     fight = 1.0 + min(2.0, enemy_left / 40.0)
     v += P["strength"] * sim.perm_str * fight
+    # "Next turn, ..." riders: next turn's block / energy / draw, a little less than now
+    v += 0.8 * (P["block"] * sim.next_block + P["energy"] * sim.next_energy) + 0.5 * P["draw"] * sim.next_draw
     if sim.orbs or sim.perm_focus:
         # orbs and Focus keep working every turn for the rest of the fight
         live = max(1, sum(1 for m in sim.mons if not m.dead))

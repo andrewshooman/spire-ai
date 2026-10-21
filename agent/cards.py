@@ -307,7 +307,7 @@ class Effects:
                  "per_turn_energy", "per_turn_damage", "thorns", "dex", "known", "shivs", "poison_mult",
                  "intangible", "double_attack", "double_skill", "heal_unblocked",
                  "channel", "channel_per_enemy", "channel_x", "evoke", "focus", "orb_slots", "recursion",
-                 "per_orb", "lightning_all")
+                 "per_orb", "lightning_all", "next_block", "next_energy", "next_draw", "x_str_down", "x_weak")
 
     def __init__(self):
         self.damage = 0; self.hits = 1; self.aoe = False; self.random_target = False
@@ -338,6 +338,9 @@ class Effects:
         self.recursion = False   # Recursion: evoke the next orb, then channel it again
         self.per_orb = False     # Barrage: one hit per channeled orb
         self.lightning_all = False   # Electrodynamics: Lightning hits every enemy
+        # "Next turn, ..." riders (Dodge and Roll, Outmaneuver, Flying Knee, Predator): not this turn's resources
+        self.next_block = 0; self.next_energy = 0; self.next_draw = 0
+        self.x_str_down = False; self.x_weak = False   # Malaise: X Strength loss and X Weak
 
 
 def _int(pattern: str, text: str, default: int = 0) -> int:
@@ -366,6 +369,12 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
     e.power = card_type == "POWER"
     e.x_cost = cost == -1
     t, later = _split_triggers(full)
+    nxt = " ".join(x for x in re.split(r"(?<=\.)\s+", t) if re.match(r"Next turn", x, re.I))
+    if nxt:
+        t = " ".join(x for x in re.split(r"(?<=\.)\s+", t) if not re.match(r"Next turn", x, re.I))
+        e.next_block = _int(r"gain (\d+) Block", nxt)
+        e.next_energy = _int(r"gain (\d+) Energy", nxt) or (1 if re.search(r"gain \[[RGBWE]\]", nxt, re.I) else 0)
+        e.next_draw = _int(r"draw (\d+) (?:additional )?cards?", nxt)
     # triggered riders: valued as scaling, never as an immediate effect
     each_turn = " ".join(s for s in re.split(r"(?<=\.)\s+", later)
                          if re.search(r"(?:start|end) of your turn", s, re.I))
@@ -373,6 +382,10 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
     e.per_turn_block = _int(r"gain (\d+) Block", each_turn)
     e.per_turn_energy = _int(r"gain (\d+) Energy", each_turn)
     e.per_turn_damage = _int(r"deal (\d+) damage to ALL enemies", each_turn)
+    # Noxious Fumes: Poison to every enemy each turn piles up -- worth about twice its number each turn
+    e.per_turn_damage += 2 * _int(r"apply (\d+) Poison to ALL enemies", each_turn)
+    # After Image / similar: Block for every card played (~3 a turn)
+    e.per_turn_block += 3 * _int(r"Whenever you play a card, gain (\d+) Block", later)
     e.thorns = _int(r"deal (\d+) damage back", later)
     m = re.search(r"Gain (\d+) (Vulnerable|Weak|Frail)", full)
     if m:
@@ -434,7 +447,10 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
     else:
         e.vuln = _int(r"Apply (\d+) Vulnerable", t)
         e.weak = _int(r"Apply (\d+) Weak", t)
-    e.aoe_debuff = bool(re.search(r"(?:Vulnerable|Weak)[^.]*to ALL enemies", t))
+    # keep "ALL enemies lose N Strength" (Piercing Wail) found above: this line used to overwrite it
+    e.aoe_debuff = e.aoe_debuff or bool(re.search(r"(?:Vulnerable|Weak)[^.]*to ALL enemies", t))
+    e.x_str_down = bool(re.search(r"loses? X Strength", t, re.I))
+    e.x_weak = bool(re.search(r"Apply X Weak", t, re.I))
     e.draw = _int(r"Draw (\d+) cards?", t)
     e.energy = _int(r"Gain (\d+) Energy", t)
     if re.search(r"At the end of this turn, lose", full):
