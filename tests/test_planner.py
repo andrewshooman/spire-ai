@@ -195,10 +195,11 @@ def main() -> None:
     # Neow ranking
     g = msg.game_state
     sc = {t: policy.PolicyAgent._event_score(t, g, True) for t in
-          ("Enemies in your next three combats have 1 HP", "Upgrade a Card", "Obtain a random common Relic")}
-    check("Neow (guide): common relic > upgrade > 1-HP blessing",
-          sc["Obtain a random common Relic"] > sc["Upgrade a Card"] > sc["Enemies in your next three combats have 1 HP"],
-          str(sc))
+          ("Transform a Card", "Obtain a random common Relic", "Enemies in your next three combats have 1 HP",
+           "Upgrade a Card", "Lose 8 Max HP Gain 250 Gold", "Lose your starting Relic Obtain a random boss Relic")}
+    v = list(sc.values())
+    check("Neow (from the runs): transform > common relic > 1-HP > upgrade > HP-cost gold > Ironclad relic swap",
+          v == sorted(v, reverse=True), str({k[:20]: round(x, 1) for k, x in sc.items()}))
     # Match and Keep!: finish a known pair instead of flipping the same two cards forever
     from types import SimpleNamespace as NS
     agent = policy.PolicyAgent()

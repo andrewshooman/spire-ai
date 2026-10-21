@@ -1306,7 +1306,9 @@ class PolicyAgent:
         idx, probs = model.choose(feats, CONFIG.temperature, CONFIG.rng, heur)
         values = [model.score(f) + h for f, h in zip(feats, heur)]
         best2 = sorted(values, reverse=True)[:2]
-        close = neow or len(best2) < 2 or best2[0] - best2[1] < CONFIG.llm_gap
+        # Neow is decided like any event now (it was always the LLM's, 87% of picks, and its favorite -- trading
+        # Burning Blood -- went 1/18 to the act 2 boss): the LLM only when the top options are close
+        close = len(best2) < 2 or best2[0] - best2[1] < CONFIG.llm_gap
         by = "policy"
         if CONFIG.llm_events and close:
             labels = [f"{o.label} {o.text}".strip() + f" (score {v:+.1f}) "
@@ -1366,13 +1368,15 @@ class PolicyAgent:
         mk["first"] = pick
         return Choose(choice_index=pick), f"match and keep: flip {mk['seen'].get(pick, 'unknown card')}"
 
-    # playbook ranking of Neow's blessings
-    NEOW_SCORES = ((r"250 gold", 3.0), (r"choose a rare card", 2.8), (r"random rare relic", 2.7),
-                   (r"transform (?:2|two) cards", 2.6), (r"rare colorless", 2.5), (r"random common relic", 2.4),
-                   (r"remove (?:2|two) cards", 2.3), (r"(?:gain|obtain) 100 gold", 1.9), (r"transform a card", 1.6),
-                   (r"upgrade a card", 1.6), (r"colorless card", 1.4), (r"remove a card", 1.3),
-                   (r"random rare card", 1.1), (r"max hp \+", 1.0), (r"three combats have 1 hp", 0.9),
-                   (r"potion", 0.8), (r"choose a card to obtain", 0.6))
+    # Neow's blessings ranked from the bot's runs (act 2 boss beaten after each choice, Ironclad 309 / Silent 126
+    # runs): Transform a Card 39% / 27%, common relic 27% / 7%, 1-HP combats 29%, colorless card 29%; every option
+    # with an HP or max HP cost 0/22 (Ironclad) and 1/18 (Silent) -- the old guide ranking put 250 gold first.
+    NEOW_SCORES = ((r"transform (?:2|two) cards", 2.6), (r"transform a card", 2.5), (r"random common relic", 2.2),
+                   (r"random rare relic", 2.0), (r"three combats have 1 hp", 1.8), (r"rare colorless", 1.7),
+                   (r"colorless card", 1.6), (r"remove (?:2|two) cards", 1.6), (r"250 gold", 1.5),
+                   (r"remove a card", 1.4), (r"choose a rare card", 1.4), (r"upgrade a card", 1.2),
+                   (r"random rare card", 1.2), (r"(?:gain|obtain) 100 gold", 1.0), (r"max hp \+", 0.8),
+                   (r"potion", 0.8), (r"choose a card to obtain", 0.8))
 
     @classmethod
     def _event_score(cls, text: str, g, neow: bool = False) -> float:
@@ -1383,15 +1387,17 @@ class PolicyAgent:
             # guide ranking: best reward that matches, minus its drawback (max HP < gold < damage < curse)
             s = max((v for pat, v in cls.NEOW_SCORES if re.search(pat, t)), default=0.0)
             if "boss relic" in t:
-                s = 1.8 if g.act_boss == "Hexaghost" else 1.0
+                # trading the starter relic: the Ironclad's Burning Blood carries its act 1 (1 act 2 boss kill in 18
+                # runs after the swap); other classes keep a neutral value until their own runs say otherwise
+                s = 0.3 if "IRONCLAD" in str(getattr(g, "character", "")).upper() else 1.0
             if "curse" in t:
-                s -= 1.2
+                s -= 1.5
             if re.search(r"lose (?:all|\d+) gold", t):
                 s -= 0.5
             if "take" in t and "damage" in t:
-                s -= 0.6
+                s -= 1.0
             if re.search(r"lose \d+ max hp", t):
-                s -= 0.1
+                s -= 0.8
             return s
         if "relic" in t and ("obtain" in t or "gain" in t or "receive" in t):
             s += 2.0

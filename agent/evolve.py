@@ -700,6 +700,16 @@ def migrate(ws: Workspace) -> None:
     if clamped:
         say(f"{clamped} weights pulled back into their bounds")
     ws.model.meta["skip_bounds_v1"] = ws.model.meta["arch_bounds_v1"] = True
+    if not ws.model.meta.get("neow_v2"):
+        # Neow weights were learned under the floor reward, mostly from the LLM's own picks (the Ironclad's
+        # starter-relic swap reached +3.9 with 1 act 2 boss kill in 18 runs): every class restarts them from the
+        # data-based ranking (policy.NEOW_SCORES), learned per class from here
+        gone = [k for k in ws.model.weights if k.startswith("ev:Neow:")]
+        for k in gone:
+            del ws.model.weights[k]
+        ws.model.meta["neow_v2"] = True
+        if gone:
+            say(f"Neow: {len(gone)} learned weights reset (relearned with the win-focused reward)")
     if "SILENT" in str(ws.model.character).upper() and not ws.model.meta.get("silent_tiers_v1"):
         # Silent tiers split (Footwork, Adrenaline, Wraith Form... 1.2 -> 1.6): shift learned card weights by the
         # prior change so the learning is kept. Footwork learned -0.86 while the planner gave Dexterity no lasting
