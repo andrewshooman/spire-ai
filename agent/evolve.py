@@ -701,7 +701,7 @@ def migrate(ws: Workspace) -> None:
 
 # settings the web page may change (evolve/settings.json), applied before each run
 WEB_SETTINGS = ("ascension", "llm_events", "llm_cards", "llm_shop", "llm_share", "coach_every", "ab",
-                "human_learn", "human_lr")
+                "human_learn", "human_lr", "expert_lr")
 
 
 def game_slot() -> str | None:
@@ -751,6 +751,30 @@ def learn_human_runs(ws, args) -> dict | None:
         return evidence.build(runs[-400:]) if runs else None
     except Exception as exc:  # your runs are a bonus; never stop the bot over them
         say(f"importing your runs failed: {type(exc).__name__}: {exc}")
+        return None
+
+
+def learn_expert_runs(ws, args) -> dict | None:
+    """Other strong players' runs (import_runs.bat --expert <folder>): learned once at --expert-lr, kept apart
+    from your runs and the bot's stats. Returns their track record for the LLM prompts."""
+    lr = getattr(args, "expert_lr", 0.1)
+    try:
+        items = human.take_pending(args.character, "expert")
+        for it in items:
+            # they reach far deeper than the bot, so nearly every choice has a positive advantage: in effect
+            # imitation of their picks, capped per decision and kept at a low weight
+            # card picks and boss relics only: their decks lose little HP, so they smith where this bot must rest
+            # (expert rests would have pulled rest:h1 from +1.5 to +0.4; the Silent dies of act 2 attrition)
+            events = [e for e in it["events"] if e.get("kind") != "rest"]
+            ws.model.learn(events, it["reward"], lr=args.lr * lr, replay=True, adv_cap=1.0)
+        if items:
+            ws.model.meta["expert_runs_learned"] = ws.model.meta.get("expert_runs_learned", 0) + len(items)
+            ws.save()
+            say(f"learned from {len(items)} expert runs (weight {lr:.2f})")
+        runs = human.runs(args.character, "expert")
+        return evidence.build(runs) if runs else None
+    except Exception as exc:  # a bonus; never stop the bot over it
+        say(f"expert runs failed: {type(exc).__name__}: {exc}")
         return None
 
 
@@ -834,8 +858,9 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                     continue  # re-check max_runs against the new workspace
                 wait_for_bot_slot()
                 human_ev = learn_human_runs(ws, args)
+                expert_ev = learn_expert_runs(ws, args) if args.expert_lr > 0 else None
             else:
-                human_ev = None
+                human_ev = expert_ev = None
             index = ws.state["run"]
             kind, seed = plan_run(index, args)
             explore = kind == "explore"
@@ -863,7 +888,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                 llm_cards=args.llm_cards and ab.get("llm_cards", True), llm_share=args.llm_share, ab=ab,
                 risk=rng.choice([-0.5, 0.0, 0.5, 1.0, 1.5]) if explore else 0.0,
                 flavor=rng.choice([None] + sorted(cards_mod.archetypes(args.character.upper()))) if explore else None,
-                evidence=evidence.build(ws.runs()[-400:]), human_evidence=human_ev,
+                evidence=evidence.build(ws.runs()[-400:]), human_evidence=human_ev, expert_evidence=expert_ev,
                 llm_cache=llm_cache if args.llm_cache else None)
             if viewer is not None:
                 done = ws.runs()[-10:]
@@ -1036,6 +1061,8 @@ def main() -> None:
     p.add_argument("--strategy-baseline", default=str(HERE / "strategy_baseline.md"))
     p.add_argument("--human-learn", action=argparse.BooleanOptionalAction, default=True,
                    help="learn from runs you played on another save slot / evolve/human_inbox")
+    p.add_argument("--expert-lr", type=float, default=0.1,
+                   help="weight of other players' runs (import_runs.bat --expert <folder>); 0 = ignore them")
     p.add_argument("--human-lr", type=float, default=0.1,
                    help="weight of your runs vs the bot's own (a light data point; pushes capped)")
     p.add_argument("--web-settings", action=argparse.BooleanOptionalAction, default=True,

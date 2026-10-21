@@ -35,7 +35,12 @@ from model import Model, hp_bucket  # noqa: E402
 
 EVOLVE = HERE.parent / "evolve"
 GAME_CHAR = {"ironclad": "IRONCLAD", "silent": "THE_SILENT", "defect": "DEFECT", "watcher": "WATCHER"}
-STARTER = {"IRONCLAD": (["Strike_R"] * 5 + ["Defend_R"] * 4 + ["Bash"], ["Burning Blood"])}
+STARTER = {"IRONCLAD": (["Strike_R"] * 5 + ["Defend_R"] * 4 + ["Bash"], ["Burning Blood"]),
+           "THE_SILENT": (["Strike_G"] * 5 + ["Defend_G"] * 5 + ["Neutralize", "Survivor"], ["Ring of the Snake"]),
+           "DEFECT": (["Strike_B"] * 4 + ["Defend_B"] * 4 + ["Zap", "Dualcast"], ["Cracked Core"]),
+           "WATCHER": (["Strike_P"] * 4 + ["Defend_P"] * 4 + ["Eruption", "Vigilance"], ["Pure Water"])}
+# where imported runs live: 'human' = runs you played, 'expert' = other players' run files (import_runs.bat --expert)
+SOURCES = ("human", "expert")
 BOSS_NAMES = {"Champ": "The Champ", "Collector": "The Collector", "Automaton": "Bronze Automaton"}
 SEED_CHARS = "0123456789ABCDEFGHIJKLMNPQRSTUVWXYZ"
 
@@ -145,6 +150,8 @@ class Timeline:
         for c in d.get("campfire_choices", []):
             if c.get("key") == "SMITH" and c.get("data"):
                 add(c["floor"], "up", c["data"])
+            elif c.get("key") == "PURGE" and c.get("data"):   # Peace Pipe
+                add(c["floor"], "card-", c["data"])
         for e in d.get("event_choices", []):
             for x in e.get("cards_removed", []) + e.get("cards_transformed", []):
                 add(e["floor"], "card-", x)
@@ -158,9 +165,28 @@ class Timeline:
                 add(e["floor"], "relic-", gamedata.relic_name(x) or x)
         for r in d.get("relics_obtained", []):
             add(r["floor"], "relic+", gamedata.relic_name(r["key"]) or r["key"])
+            if r["key"] == "Necronomicon":
+                add(r["floor"], "card+", "Necronomicurse")
+        # Neow (Run History Plus writes neow_bonus_log): removals, transforms, cards, upgrades at floor 0
+        neow = d.get("neow_bonus_log") or {}
+        for x in neow.get("cardsRemoved", []) + neow.get("cardsTransformed", []):
+            add(0, "card-", x)
+        for x in neow.get("cardsObtained", []):
+            add(0, "card+", x)
+        for x in neow.get("cardsUpgraded", []):
+            add(0, "up", x)
+        for x in neow.get("relicsObtained", []):
+            add(0, "relic+", gamedata.relic_name(x) or x)
         for i, b in enumerate(d.get("boss_relics", [])):
             if b.get("picked"):
                 add(16 + 17 * i, "relic+", gamedata.relic_name(b["picked"]) or b["picked"])
+                if b["picked"] == "Calling Bell":
+                    add(16 + 17 * i, "card+", "CurseOfTheBell")
+                elif b["picked"] in ("Empty Cage", "Astrolabe"):
+                    # the file doesn't say which cards: strong players almost always take Strikes first
+                    add(16 + 17 * i, "basic-", 2 if b["picked"] == "Empty Cage" else 3)
+                elif b["picked"] == "Pandora's Box":
+                    add(16 + 17 * i, "basics-", "")   # every Strike and Defend becomes a random card
         self.applied = -1
 
     def advance(self, floor: int) -> None:
@@ -182,6 +208,13 @@ class Timeline:
                         if c == base:
                             self.deck[i] = base + "+1"
                             break
+                elif kind == "basic-":
+                    for _ in range(x):
+                        hit = next((c for c in self.deck if re.match(r"Strike_[RGBP]$", c)), None) or                             next((c for c in self.deck if re.match(r"Defend_[RGBP]$", c)), None)
+                        if hit:
+                            self.deck.remove(hit)
+                elif kind == "basics-":
+                    self.deck = [c for c in self.deck if not re.match(r"(Strike|Defend)_[RGBP]$", re.sub(r"\+\d+$", "", c))]
                 elif kind == "relic+":
                     self.relics.append(x)
                 elif kind == "relic-" and x in self.relics:
@@ -195,7 +228,7 @@ def _boss_for(d: dict, act: int) -> str:
     return BOSS_NAMES.get(e, e)
 
 
-def convert(d: dict, char: str, model: Model) -> tuple[dict, list[dict], float]:
+def convert(d: dict, char: str, model: Model, source: str = "human") -> tuple[dict, list[dict], float]:
     """A .run file -> (run record in the bot's format, learning events, reward)."""
     import policy  # late: policy imports a lot
     d = normalize(d)
@@ -247,7 +280,7 @@ def convert(d: dict, char: str, model: Model) -> tuple[dict, list[dict], float]:
             options = [agent._relic_features(n, g, commit, "relic") for n in names] + [{"relic:skip": 1.0}]
             chosen = len(names) - 1 if x.get("picked") else len(names)
             rec["boss_relics"].append({"floor": f + 1, "relic": names[chosen] if chosen < len(names) else "(skip)",
-                                       "by": "human", "offered": names})
+                                       "by": source, "offered": names})
         else:
             g = state(f, f - 1)
             hb = hp_bucket(g.current_hp, g.max_hp)
@@ -262,7 +295,7 @@ def convert(d: dict, char: str, model: Model) -> tuple[dict, list[dict], float]:
     reward = Model.outcome(floor, win, elites)
     t = d.get("local_time", "")
     rec.update({
-        "run": d.get("play_id"), "kind": "human", "source": "human", "play_id": d.get("play_id"),
+        "run": d.get("play_id"), "kind": source, "source": source, "play_id": d.get("play_id"),
         "seed": str(d.get("seed_played")), "floor": floor, "victory": win,
         "killer": None if win else d.get("killed_by"), "elites_killed": elites,
         "bosses_killed": sum(1 for n in path[:floor - 1] if n == "B"), "ascension": d.get("ascension_level", 0),
@@ -271,12 +304,12 @@ def convert(d: dict, char: str, model: Model) -> tuple[dict, list[dict], float]:
         "hp": [[i + 1, h, at(mx, i + 1, 80)] for i, h in enumerate(hp)],
         "rooms": ["neow"] + [{"M": "fight", "E": "elite", "B": "boss", "R": "rest", "$": "shop", "?": "event",
                               "T": "chest"}.get(n or "", "boss") for n in path],
-        "events": [{"floor": e["floor"], "event": e["event_name"], "choice": e["player_choice"], "by": "human"}
+        "events": [{"floor": e["floor"], "event": e["event_name"], "choice": e["player_choice"], "by": source}
                    for e in d.get("event_choices", [])],
         "shops": [{"floor": f, "bought": card_from_id(i).name if _is_card(i) else (gamedata.relic_name(i) or
-                   gamedata.potion_name(i) or i), "gold": None, "by": "human"}
+                   gamedata.potion_name(i) or i), "gold": None, "by": source}
                   for i, f in zip(d.get("items_purchased", []), d.get("item_purchase_floors", []))]
-        + [{"floor": f, "bought": "remove a card", "gold": None, "by": "human"} for f in d.get("items_purged_floors", [])],
+        + [{"floor": f, "bought": "remove a card", "gold": None, "by": source} for f in d.get("items_purged_floors", [])],
         "started": f"{t[:4]}-{t[4:6]}-{t[6:8]}T{t[8:10]}:{t[10:12]}:{t[12:14]}" if len(t) == 14 else None,
         "duration_s": d.get("playtime", 0), "reward": round(reward, 3),
     })
@@ -285,8 +318,8 @@ def convert(d: dict, char: str, model: Model) -> tuple[dict, list[dict], float]:
 
 # ---------------------------------------------------------------- storage
 
-def _home(char: str) -> Path:
-    return EVOLVE / char / "human"
+def _home(char: str, source: str = "human") -> Path:
+    return EVOLVE / char / source
 
 
 def _bot_seeds(char: str) -> set[int]:
@@ -300,8 +333,8 @@ def _bot_seeds(char: str) -> set[int]:
     return out
 
 
-def runs(char: str) -> list[dict]:
-    d = _home(char) / "runs"
+def runs(char: str, source: str = "human") -> list[dict]:
+    d = _home(char, source) / "runs"
     out = []
     for p in sorted(d.glob("*.json")) if d.is_dir() else []:
         try:
@@ -311,9 +344,11 @@ def runs(char: str) -> list[dict]:
     return sorted(out, key=lambda r: r.get("started") or "")
 
 
-def sync(char: str = "ironclad", model: Model | None = None, say=print) -> dict:
-    """Import new history files. Returns counts; queued decisions go to pending.jsonl."""
-    home = _home(char)
+def sync(char: str = "ironclad", model: Model | None = None, say=print, source: str = "human",
+         folders: list[tuple[Path, str]] | None = None) -> dict:
+    """Import new history files. Returns counts; queued decisions go to pending.jsonl.
+    source 'expert' reads only the given folders (recursively) and keeps the runs apart from yours."""
+    home = _home(char, source)
     (home / "runs").mkdir(parents=True, exist_ok=True)
     done = {p.stem for p in (home / "runs").glob("*.json")}
     skipped_file = home / "skipped.json"
@@ -321,9 +356,9 @@ def sync(char: str = "ironclad", model: Model | None = None, say=print) -> dict:
     bot = None
     model = model or Model(EVOLVE / char / "model.json", GAME_CHAR[char])
     counts = {"new": 0, "bot": 0, "special": 0, "sources": []}
-    for folder, label in run_dirs(char):
+    for folder, label in (folders if folders is not None else run_dirs(char)):
         counts["sources"].append(f"{label}: {folder}")
-        for f in sorted(folder.glob("*.run")):
+        for f in sorted(folder.rglob("*.run") if source == "expert" else folder.glob("*.run")):
             try:
                 d = json.loads(f.read_text(encoding="utf-8", errors="replace"))
             except (OSError, json.JSONDecodeError):
@@ -331,7 +366,9 @@ def sync(char: str = "ironclad", model: Model | None = None, say=print) -> dict:
             pid = str(d.get("play_id") or f.stem)
             if pid in done or pid in skipped:
                 continue
-            if d.get("is_daily") or d.get("is_endless") or d.get("is_trial") or d.get("character_chosen") != GAME_CHAR[char]:
+            if d.get("character_chosen") != GAME_CHAR[char]:
+                continue   # another character's run: its own import picks it up
+            if d.get("is_daily") or d.get("is_endless") or d.get("is_trial"):
                 skipped.add(pid); counts["special"] += 1
                 continue
             bot = bot if bot is not None else _bot_seeds(char)
@@ -343,7 +380,7 @@ def sync(char: str = "ironclad", model: Model | None = None, say=print) -> dict:
                 skipped.add(pid); counts["bot"] += 1
                 continue
             try:
-                rec, events, reward = convert(d, char, model)
+                rec, events, reward = convert(d, char, model, source)
             except Exception as exc:  # one odd file never stops the import
                 say(f"  could not read {f.name}: {type(exc).__name__}: {exc}")
                 skipped.add(pid)
@@ -359,9 +396,9 @@ def sync(char: str = "ironclad", model: Model | None = None, say=print) -> dict:
     return counts
 
 
-def take_pending(char: str) -> list[dict]:
-    """Queued human runs to learn from (and clears the queue)."""
-    p = _home(char) / "pending.jsonl"
+def take_pending(char: str, source: str = "human") -> list[dict]:
+    """Queued imported runs to learn from (and clears the queue)."""
+    p = _home(char, source) / "pending.jsonl"
     if not p.exists():
         return []
     out = [json.loads(line) for line in p.read_text(encoding="utf-8").splitlines() if line.strip()]
@@ -374,7 +411,20 @@ def main() -> None:
     ap = argparse.ArgumentParser(description="Import your own Slay the Spire runs for the bot to learn from.")
     ap.add_argument("folder", nargs="?", help="a folder of .run files (e.g. copied from the Steam Deck)")
     ap.add_argument("--character", default="ironclad", choices=list(GAME_CHAR))
+    ap.add_argument("--expert", action="store_true",
+                    help="the folder holds other players' runs (any character): import them for every character, "
+                         "kept apart from your own runs and learned at --expert-lr")
     a = ap.parse_args()
+    if a.expert:
+        if not a.folder:
+            ap.error("--expert needs a folder of .run files")
+        src = Path(a.folder)
+        for char in GAME_CHAR:
+            c = sync(char, source="expert", folders=[(src, "expert")])
+            print(f"{char:9s} imported {c['new']} new expert runs ({c['total']} in total), "
+                  f"skipped {c['special']} daily/endless/trial")
+        print("Each character's bot learns them at the start of its next run (Settings: expert weight).")
+        return
     if a.folder:
         src = Path(a.folder)
         inbox = EVOLVE / "human_inbox" / GAME_CHAR[a.character]

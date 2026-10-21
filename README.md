@@ -48,6 +48,18 @@ says the dependency pin changed.
   recognized by seed and skipped.
 - The Overview tab shows "You vs the bot".
 
+## Expert runs (other players' run files)
+
+```
+import_runs.bat --expert <folder of .run files>
+```
+Imports other players' runs (any character, nested folders, duplicates skipped) into `evolve\<character>\expert\`,
+kept apart from your runs and the bot's stats. Each character's bot learns their card picks and boss relics once
+at the start of its next run (weight 0.1, capped push; Settings tab "Weight of expert players' runs", 0 = ignore);
+their rest choices are not learned (strong decks lose little HP and smith where this bot must rest). The LLM sees
+their track record as "expert A20 players". Loaded so far: the vmService Slay-the-Spire-data runs, 565 A20 runs
+(Ironclad 157, Silent 156, Defect 156, Watcher 96).
+
 ## Files
 - `start.bat` - Ollama on GPU + bot + game. Settings in `settings.bat`.
 - `dashboard.bat` - the web app at http://127.0.0.1:8765/ (served by the bot while it runs, otherwise by

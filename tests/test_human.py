@@ -103,6 +103,30 @@ def main() -> None:
           0 < abs(capped.w("card:Pommel Strike") - w0) < abs(full.w("card:Pommel Strike") - w0))
     check("human runs stored apart from the bot's", len(human.runs("ironclad")) == 2
           and len(list((tmp / "ironclad" / "runs").glob("*.json"))) == 1)
+    # expert runs (import_runs.bat --expert): any character, nested folders, kept apart from yours
+    ex = tmp / "expert_dl" / "nested"
+    ex.mkdir(parents=True)
+    sil = fake_run("x1", 77, character_chosen="THE_SILENT", ascension_level=20,
+                   card_choices=[{"floor": 1, "picked": "Footwork", "not_picked": ["Slice", "Bane"]}],
+                   boss_relics=[{"picked": "Empty Cage", "not_picked": ["Sozu"]}],
+                   items_purchased=[], item_purchase_floors=[], items_purged=[], items_purged_floors=[],
+                   neow_bonus_log={"cardsRemoved": ["Strike_G", "Defend_G"], "cardsObtained": [], "cardsUpgraded": [],
+                                   "cardsTransformed": [], "relicsObtained": []},
+                   campfire_choices=[{"floor": 6, "key": "PURGE", "data": "Defend_G"}])
+    (ex / "s.run").write_text(json.dumps(sil))
+    (ex / "s_copy.run").write_text(json.dumps(sil))          # the same run twice (chegs/all duplicates)
+    (ex / "i.run").write_text(json.dumps(fake_run("x2", 78)))
+    folders = [(tmp / "expert_dl", "expert")]
+    cs = human.sync("silent", Model(tmp / "silent" / "model.json", "THE_SILENT"), say=lambda *_: None, source="expert", folders=folders)
+    ci = human.sync("ironclad", m, say=lambda *_: None, source="expert", folders=folders)
+    check("expert runs: each character takes its own, duplicates once", cs["new"] == 1 and ci["new"] == 1, f"{cs} {ci}")
+    check("expert runs stored apart from yours", len(human.runs("silent", "expert")) == 1
+          and len(human.runs("ironclad")) == 2 and len(human.take_pending("silent", "expert")) == 1)
+    tl = human.Timeline(sil, "THE_SILENT")
+    tl.advance(999)
+    check("Silent starter, Neow removal, Peace Pipe, Empty Cage rebuilt",
+          tl.deck.count("Strike_G") == 2 and tl.deck.count("Defend_G") == 3 and "Neutralize" in tl.deck
+          and "Footwork" in tl.deck and "AscendersBane" in tl.deck, str(tl.deck))
     print("HUMAN OK")
 
 

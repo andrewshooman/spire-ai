@@ -189,6 +189,14 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     Silent deep runs had 2x the area damage and the poison or Accuracy+Cloak engines: synergy.py gained Silent
     tags/RULES/NEEDS (poison_src/pay, shiv_src/pay, discard_src/pay), area poison counts as 'aoe', Silent/Defect/
     Watcher starters excluded as feeders, Quick Slash prior 0.6. The Spireseer mod's planner lacks these (update later).
+28. Silent analysis (125 runs: act 1 boss 75%, act 2 boss 10%; act 2 = 81 of 112 deaths, attrition: 12 HP per
+    hallway fight in runs that die vs 6 in clears). Fixes: FIGHT_EVENT_GUARD (Masked Bandits under 70% HP,
+    Colosseum's second fight under 60%) overrides the LLM (cached 'Fight!' fought at 2/65 HP); planner (Python
+    + Java brain) values permanent Dexterity like Strength (DEX_BLOCK_CARDS 1.5); Silent tiers 1.6/1.2/0.6/0.0
+    with migration silent_tiers_v1 (+0.4 on learned weights, Footwork reset).
+    Expert runs: human.py source 'expert' (import_runs.bat --expert <folder>), all 4 starters, Neow log, Peace
+    Pipe, Pandora's/Empty Cage/Astrolabe in the deck rebuild; evolve.learn_expert_runs (--expert-lr 0.1, cards +
+    boss relics only), evidence.expert -> "expert A20 players". Loaded: 565 A20 runs (vmService data).
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

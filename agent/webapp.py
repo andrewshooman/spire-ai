@@ -55,6 +55,10 @@ SETTINGS_SCHEMA = {
     "human_lr": {"type": "float", "min": 0.0, "max": 0.5, "default": 0.1,
                  "label": "Weight of your runs vs the bot's own",
                  "help": "Kept low on purpose: your runs are one data point, not something to copy."},
+    "expert_lr": {"type": "float", "min": 0.0, "max": 0.5, "default": 0.1,
+                  "label": "Weight of expert players' runs",
+                  "help": "Strong players' A20 run files (import_runs.bat --expert <folder>): their card, boss relic "
+                          "and rest choices are learned once, and their track record goes into the LLM prompts. 0 = ignore."},
     "pause": {"type": "bool", "default": False, "label": "Pause after the current run",
               "help": "The bot waits at the main menu until this is turned off."},
 }

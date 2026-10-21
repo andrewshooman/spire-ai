@@ -82,6 +82,11 @@ def mine(text: str) -> str:
     return text.replace("[history", "[human player's runs", 1) if text else ""
 
 
+def expert(text: str) -> str:
+    """Relabel a track-record note as coming from other strong players' runs (import_runs.bat --expert)."""
+    return text.replace("[history", "[expert A20 players", 1) if text else ""
+
+
 def event(e: dict | None, name: str, choice: str) -> str:
     if not e:
         return ""
@@ -111,4 +116,5 @@ def shop(e: dict | None, name: str) -> str:
 NOTE = ("History numbers are this bot's own earlier runs (average final floor; a win counts as 70): "
         "prefer options with a clearly better record when the samples are decent, but small samples are noisy. "
         "'human player's runs' numbers come from an experienced human playing the same character: what they "
-        "take often is a good example to follow.")
+        "take often is a good example to follow. 'expert A20 players' numbers come from strong players' runs at the "
+        "highest difficulty (about half of them wins): their picks are good examples, their floors run deeper.")
