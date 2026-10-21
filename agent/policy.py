@@ -395,7 +395,8 @@ class PolicyAgent:
               ("syn", "build"), ("tag", "build"), ("need", "deck needs it"), ("dup", "deck size"), ("dilute", "deck size"),
               ("upgraded", "card value"), ("skip", "skip"), ("relicfit", "fits the deck"), ("relicctx", "fits the deck"),
               ("relic", "relic value"), ("shoprelic", "relic value"), ("nodeact", "path"), ("node", "path"),
-              ("restx", "rest site"), ("rest", "rest site"), ("smith", "rest site"), ("shop", "shop"), ("ev", "event"))
+              ("restx", "rest site"), ("restboss", "rest site"), ("smithboss", "rest site"), ("rest", "rest site"),
+              ("smith", "rest site"), ("shop", "shop"), ("ev", "event"))
 
     @classmethod
     def _group(cls, key: str) -> str:
@@ -916,7 +917,9 @@ class PolicyAgent:
             rule = {"rest": 0.0, "smith": 0.8 if hp_frac >= (0.6 if g.act >= 2 else 0.5) else 0.0}
         for i, opt in enumerate(g.choice_list):
             if opt in ("rest", "smith"):
-                options.append({f"{opt}:h{hb}": 1.0}); bonus.append(rule[opt])
+                # the campfire before a boss learns apart from the others (one shared rest:h1 weight swung from
+                # +0.6 to -2.1 in three hours and out-voted the pre-boss rest rule)
+                options.append({f"{opt}{'boss' if pre_boss else ''}:h{hb}": 1.0}); bonus.append(rule[opt])
             elif opt in static:
                 options.append({f"restx:{opt}": 1.0}); bonus.append(static[opt])
             else:
@@ -925,12 +928,18 @@ class PolicyAgent:
         if not options:
             return self._advance(message), ""
         idx, probs = model.choose(options, CONFIG.temperature, CONFIG.rng, bonus)
+        by = "policy"
+        if pre_boss and hp_frac < need and "rest" in [o for _, o in labels]:
+            # hard rule: resting under the threshold before an act boss (Guardian beaten 40/47 after resting under
+            # 65% HP vs 3/5 after upgrading; Slime Boss 31/40 vs 7/15); learning can't overrule it any more
+            idx, by = [o for _, o in labels].index("rest"), "rule: rest before the boss"
         tr.events.append({"kind": "rest", "options": options, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
-        self._log_choice(g, "rest", [o for _, o in labels], options, bonus, probs, idx, "policy")
+        self._log_choice(g, "rest", [o for _, o in labels], options, bonus, probs, idx, by)
         tr.rests.append({"floor": g.floor, "choice": labels[idx][1], "hp": g.current_hp,
                          "max_hp": g.max_hp})
-        note = "rest site: " + ", ".join(f"{o} {p:.0%}" for (_, o), p in zip(labels, probs))
+        note = "rest site: " + ", ".join(f"{o} {p:.0%}" for (_, o), p in zip(labels, probs)) + \
+            (f" ({by})" if by != "policy" else "")
         return Choose(choice_index=labels[idx][0]), note
 
     def _shop_room(self, message, decision):

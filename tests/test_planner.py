@@ -587,6 +587,20 @@ def main() -> None:
     act_, note = policy.PolicyAgent()._map(parse_message(mp), None)
     probs = policy.CONFIG.tracker.events[-1]["probs"]
     check("projected HP: the rest site where it will be needed (after two act 2 fights)", probs[1] > 0.9, note)
+    # the campfire before the boss: under the threshold it always rests, whatever the learned weights say
+    rs = json.loads((FIX / "rest-1.json").read_text())
+    rs["game_state"].update({"floor": 15, "act": 1, "current_hp": 49, "max_hp": 90, "act_boss": "The Guardian"})
+    mr = Model(Path(tempfile.mkdtemp()) / "m.json", "IRONCLAD")
+    mr.weights.update({"restboss:h1": -1.5, "smithboss:h1": 6.0})      # far beyond what the bounds now allow
+    policy.CONFIG = policy.Config(model=mr, tracker=policy.RunTracker(), temperature=0.35, llm_events=False)
+    act_, note = policy.PolicyAgent()._rest(parse_message(rs), None)
+    check("before the boss under 65% HP: rests even when learning says upgrade",
+          act_.choice_index == 0 and "rule: rest before the boss" in note
+          and "restboss:h1" in policy.CONFIG.tracker.events[-1]["options"][0], note)
+    rs["game_state"]["floor"] = 9
+    act_, note = policy.PolicyAgent()._rest(parse_message(rs), None)
+    check("mid-act campfires use their own weights (rest:h1 / smith:h1)",
+          "rest:h1" in policy.CONFIG.tracker.events[-1]["options"][0], note)
     # overnight Silent runs: low-HP pathing everywhere, Velvet Choker vs Shiv decks, no auto Smoke Bomb
     low = NS(act=1, floor=9, current_hp=20, max_hp=70, gold=99, relics=[], deck=real_deck, character="THE_SILENT")
     r = policy.PolicyAgent()._map_rules(low)

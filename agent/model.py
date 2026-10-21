@@ -60,6 +60,9 @@ FEATURE_PRIORS = {
     "skip:a1": -0.8, "skip:a2": -0.2, "skip:a3": 0.2, "skip:a4": 0.3,
     "rest:h0": 2.0, "rest:h1": 0.3, "rest:h2": -1.0,
     "smith:h0": 0.0, "smith:h1": 0.5, "smith:h2": 0.6,
+    # the campfire right before a boss: rest pays more there (under the threshold a rule forces it anyway)
+    "restboss:h0": 2.5, "restboss:h1": 1.0, "restboss:h2": -1.0,
+    "smithboss:h0": -1.0, "smithboss:h1": 0.3, "smithboss:h2": 0.8,
     "shop:purge": 1.5, "shop:leave": 0.0, "shop:potion": -0.2, "shop:price": -0.6,
     "shop:card": -1.0, "shop:relic": 0.3,
     "relic:skip": -0.5,
@@ -76,6 +79,8 @@ FEATURE_PRIORS = {
 # individual card weights, synergy rules and the LLM decide.
 WEIGHT_BOUNDS = {"tag": (-1.0, 1.0), "syn": (-1.0, 1.5), "relicctx": (-1.0, 1.0), "relicfit": (-0.5, 2.5),
                  "skip": (-1.5, 1.5), "expertpick": (0.0, 6.0), "expertrelic": (0.0, 4.0),
+                 # rest/smith swung by +-2 in hours (sparse boss-kill rewards); keep them in a sane range
+                 "rest": (-1.5, 2.5), "smith": (-1.5, 2.5), "restboss": (-1.5, 3.0), "smithboss": (-1.5, 2.5),
                  "cardplay": (0.0, 4.0), "cardfight": (0.0, 4.0), "cardpair": (0.0, 4.0),
                  "bossneed": (-1.0, 3.0)}  # skip:a2 had run away to -5.5 (the LLM never skipped; training followed it)
 
