@@ -75,15 +75,18 @@ public final class Planner {
 
     /** Search state for one simulated sequence of plays. */
     private static final class St {
-        int energy, block, strGain, permStr, powers, draw;
-        int[] hp, mblock, vulnAdd, weakAdd, strDown;
+        int energy, block, strGain, permStr, powers, draw, doubleAtk, doubleSkill;
+        int[] hp, mblock, vulnAdd, weakAdd, strDown, poison;
         boolean[] dead, used;
-        double retal, selfLoss;
+        boolean intangible;
+        double retal, selfLoss, heal;
 
         St copy() {
             St n = new St();
             n.energy = energy; n.block = block; n.strGain = strGain; n.permStr = permStr; n.powers = powers;
             n.draw = draw; n.retal = retal; n.selfLoss = selfLoss;
+            n.doubleAtk = doubleAtk; n.doubleSkill = doubleSkill; n.intangible = intangible; n.heal = heal;
+            n.poison = poison.clone();
             n.hp = hp.clone(); n.mblock = mblock.clone(); n.vulnAdd = vulnAdd.clone(); n.weakAdd = weakAdd.clone();
             n.strDown = strDown.clone(); n.dead = dead.clone(); n.used = used.clone();
             return n;
@@ -124,11 +127,16 @@ public final class Planner {
         st.block = s.playerBlock;
         st.hp = new int[n]; st.mblock = new int[n]; st.vulnAdd = new int[n]; st.weakAdd = new int[n];
         st.strDown = new int[n]; st.dead = new boolean[n]; st.used = new boolean[s.hand.size()];
+        st.poison = new int[n];
+        st.intangible = s.intangible;
+        st.doubleAtk = s.doubleAttack;
+        st.doubleSkill = s.doubleSkill;
         boolean anyAlive = false, allRetaliate = true;
         for (int i = 0; i < n; i++) {
             Sim.Mon m = s.mons.get(i);
             st.hp[i] = m.hp;
             st.mblock[i] = m.block;
+            st.poison[i] = m.poison;
             st.dead[i] = !m.alive || m.hp <= 0;
             if (!st.dead[i]) {
                 anyAlive = true;
@@ -219,6 +227,20 @@ public final class Planner {
         double thorns = after.retal - before.retal;
         if (thorns > 0) parts.add("takes " + (int) thorns + " from Thorns");
         if (c.fx.selfDamage > 0) parts.add("costs " + c.fx.selfDamage + " HP");
+        int pois = 0;
+        List<String> doomed = new ArrayList<>();
+        for (int i = 0; i < s.mons.size(); i++) {
+            pois += Math.max(0, after.poison[i] - before.poison[i]);
+            if (!after.dead[i] && after.poison[i] >= after.hp[i] && before.poison[i] < before.hp[i]) doomed.add(s.mons.get(i).name);
+        }
+        if (c.fx.poisonMult > 0 && pois > 0) parts.add((c.fx.poisonMult == 2 ? "doubles" : "triples") + " its Poison (+" + pois + ")");
+        else if (pois > 0) parts.add("adds " + pois + " Poison (keeps ticking each turn)");
+        if (!doomed.isEmpty()) parts.add("Poison kills " + String.join(", ", doomed) + " before it attacks");
+        if (c.fx.shivs > 0) parts.add("makes " + c.fx.shivs + " Shiv" + (c.fx.shivs > 1 ? "s" : "") + " to play for free");
+        if (c.fx.intangible > 0) parts.add("Intangible: every hit deals 1");
+        if (c.fx.doubleAttack > 0) parts.add("the next Attack is played twice");
+        if (c.fx.doubleSkill > 0) parts.add("the next Skill is played twice");
+        if (after.heal > before.heal) parts.add("heals " + (int) (after.heal - before.heal));
         return parts.isEmpty() ? "sets up the rest of the turn" : String.join(", ", parts);
     }
 
@@ -271,8 +293,33 @@ public final class Planner {
     }
 
     private void play(St st, Sim.Card c, int target, int cost) {
+        play(st, c, target, cost, false);
+    }
+
+    private int totalHp(St st) {
+        int t = 0;
+        for (int h : st.hp) t += h;
+        return t;
+    }
+
+    /** The target Shivs and random poison go to: the highest kill priority, then the lowest HP. */
+    private int priorityTarget(St st) {
+        int best = -1;
+        for (int i = 0; i < s.mons.size(); i++) {
+            if (st.dead[i]) continue;
+            if (best < 0 || s.mons.get(i).prio > s.mons.get(best).prio
+                    || (s.mons.get(i).prio == s.mons.get(best).prio && st.hp[i] < st.hp[best])) best = i;
+        }
+        return best;
+    }
+
+    private void play(St st, Sim.Card c, int target, int cost, boolean echo) {
         Effects fx = c.fx;
-        st.energy -= cost;
+        boolean again = false;
+        if (!echo && "ATTACK".equals(c.type) && st.doubleAtk > 0) { st.doubleAtk--; again = true; }
+        else if (!echo && "SKILL".equals(c.type) && st.doubleSkill > 0) { st.doubleSkill--; again = true; }
+        int hpBefore = totalHp(st);
+        if (!echo) st.energy -= cost;
         st.energy += fx.energy;
         int hits = c.cost < 0 ? Math.max(0, cost) * Math.max(1, c.hits) : Math.max(1, c.hits);
         // debuffs land before the damage of the same card in most cards (Bash applies after; close enough)
@@ -314,6 +361,30 @@ public final class Planner {
         st.draw += fx.draw;
         st.selfLoss += fx.selfDamage;
         if (fx.isPower) st.powers++;
+        // poison: Crippling Cloud on all, Deadly Poison / Corpse Explosion on the target, Bouncing Flask at random
+        if (fx.poison > 0) {
+            if (fx.poisonAoe) {
+                for (int i = 0; i < s.mons.size(); i++) if (!st.dead[i]) st.poison[i] += fx.poison;
+            } else {
+                int t = target >= 0 && !st.dead[target] ? target : priorityTarget(st);
+                if (t >= 0) st.poison[t] += fx.poison;
+            }
+        }
+        if (fx.poisonMult > 0 && target >= 0 && !st.dead[target]) st.poison[target] *= fx.poisonMult;   // Catalyst
+        for (int k = 0; k < fx.shivs; k++) {   // Shivs: free 4-damage attacks, counted now
+            int t = priorityTarget(st);
+            if (t < 0) break;
+            Sim.Mon m = s.mons.get(t);
+            double per = (4 + s.strength + st.strGain) * (s.playerWeak ? 0.75 : 1.0);
+            if (m.vuln > 0 || st.vulnAdd[t] > 0) per *= 1.5;
+            hit(st, t, (int) per);
+            if (m.thorns > 0) st.retal += m.thorns;
+        }
+        if (fx.intangible > 0) st.intangible = true;
+        st.doubleAtk += fx.doubleAttack;
+        st.doubleSkill += fx.doubleSkill;
+        if (fx.healUnblocked) st.heal += Math.max(0, hpBefore - totalHp(st));   // Reaper
+        if (again) play(st, c, target, cost, true);
     }
 
     private void hit(St st, int i, int dmg) {
@@ -332,11 +403,21 @@ public final class Planner {
             if (st.dead[i]) continue;
             Sim.Mon m = s.mons.get(i);
             if (m.intentDmg <= 0) continue;
+            if (st.poison[i] >= st.hp[i]) continue;   // its Poison kills it at the start of its turn
             double per = Math.max(0, m.intentDmg - st.strDown[i]);
             if (m.weak == 0 && st.weakAdd[i] > 0) per = Math.floor(per * 0.75);
             inc += per * Math.max(1, m.intentHits);
         }
         return inc;
+    }
+
+    private int hitsComing(St st) {
+        int n = 0;
+        for (int i = 0; i < s.mons.size(); i++) {
+            Sim.Mon m = s.mons.get(i);
+            if (!st.dead[i] && m.intentDmg > 0 && st.poison[i] < st.hp[i]) n += Math.max(1, m.intentHits);
+        }
+        return n;
     }
 
     private double evaluate(St st, Plan out, boolean isBase) {
@@ -365,6 +446,10 @@ public final class Planner {
         }
         double inc = incoming(st);
         double taken = Math.max(0, inc - st.block);
+        if (st.intangible) taken = Math.min(taken, hitsComing(st));   // Intangible: every hit deals 1
+        if (st.heal > 0) v += p.hpCost * Math.min(st.heal, Math.max(0, s.maxHp - s.hp + taken));
+        for (int i = 0; i < s.mons.size(); i++)   // poison already on it or added: damage that keeps coming
+            if (!st.dead[i] && s.mons.get(i).alive && st.poison[i] > 0) v += p.damage * Math.min(st.hp[i], st.poison[i] * 2.5);
         v -= p.block * taken;
         v += p.surplusBlock * Math.max(0, st.block - inc);
         double retal = st.retal;

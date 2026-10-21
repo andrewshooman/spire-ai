@@ -96,7 +96,8 @@ public final class PotionAdvisor {
         Potion p;
         if ((p = pick(usable, c, false, "juice")) != null) return new Advice(p, "Fruit Juice is permanent max HP");
         if (c.emptySlots >= 2 && (p = pick(usable, c, false, "brew")) != null) return new Advice(p, "Entropic Brew refills empty slots");
-        if (c.taken >= c.hp && (p = pick(usable, c, false, "defense", "heal", "damage", "buff", "tempo", "escape")) != null)
+        // no Smoke Bomb: escaping gives up the fight's rewards and, for the bot, aborted the run
+        if (c.taken >= c.hp && (p = pick(usable, c, false, "defense", "heal", "damage", "buff", "tempo")) != null)
             return new Advice(p, "lethal damage incoming");
         if (c.boss && c.taken >= Math.max(20, 0.35 * c.hp) && (p = pick(usable, c, false, "defense", "heal")) != null)
             return new Advice(p, "boss big hit");

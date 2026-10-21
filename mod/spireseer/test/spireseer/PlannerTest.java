@@ -176,6 +176,66 @@ public final class PlannerTest {
         check("Champ: holds the crossing at low HP only", !names(s, p).contains("Heavy Blade") && names(s2, p2).contains("Heavy Blade"),
               names(s, p) + " | " + names(s2, p2));
 
+        // ---- Silent mechanics and undervalued cards (ported from the bot's planner)
+        e = Effects.parse("Add !M! *Shivs into your hand.", "SKILL", 3);
+        check("parser: Blade Dance makes 3 Shivs", e.shivs == 3, "shivs " + e.shivs);
+        e = Effects.parse("Apply !M! Poison to a random enemy 3 times.", "SKILL", 3);
+        check("parser: Bouncing Flask is 9 poison", e.poison == 9, "poison " + e.poison);
+        e = Effects.parse("Apply !M! Poison. NL When the enemy dies, deal damage equal to its Max HP to ALL enemies.", "SKILL", 6);
+        check("parser: Corpse Explosion poisons one enemy", e.poison == 6 && !e.poisonAoe, e.poison + " " + e.poisonAoe);
+        e = Effects.parse("Apply !M! Poison and 2 Weak to ALL enemies. NL Exhaust.", "SKILL", 4);
+        check("parser: Crippling Cloud poisons all", e.poison == 4 && e.poisonAoe, e.poison + " " + e.poisonAoe);
+        e = Effects.parse("This turn, your next !M! Attacks are played twice.", "SKILL", 2);
+        check("parser: Double Tap+ doubles 2 Attacks, not a 2-hit card", e.doubleAttack == 2 && e.hits == 1, e.doubleAttack + " " + e.hits);
+
+        s = sim(70, 1);
+        mon(s, "Louse", 11, 6, 1, 0);
+        card(s, "Blade Dance", "SKILL", 1, 0, 0, false, "Add !M! *Shivs into your hand.", 3);
+        defend(s);
+        p = Planner.plan(s, P);
+        check("Shivs count: Blade Dance kills an 11 HP Louse", names(s, p).equals("Blade Dance") && p.kills == 1, p.describe(s));
+
+        s = sim(70, 1);
+        mon(s, "Jaw Worm", 60, 0, 0, 0).poison = 12;
+        card(s, "Catalyst", "SKILL", 1, 0, 0, true, "Double an enemy's Poison. NL Exhaust.", 0);
+        defend(s);
+        p = Planner.plan(s, P);
+        check("Catalyst on a poisoned enemy", names(s, p).startsWith("Catalyst"), names(s, p));
+        check("reason: Catalyst doubles its Poison", Planner.explain(s, p, P).get(0).contains("doubles its Poison"),
+              Planner.explain(s, p, P).toString());
+
+        s = sim(20, 2);
+        mon(s, "Cultist", 5, 30, 1, 0).poison = 6;
+        defend(s); defend(s);
+        p = Planner.plan(s, P);
+        check("poison-doomed enemy never attacks: no lethal panic", p.taken == 0 && p.base > -100, p.describe(s));
+
+        s = sim(40, 3);
+        mon(s, "Book of Stabbing", 120, 6, 6, 0);
+        card(s, "Wraith Form", "POWER", 3, 0, 0, false, "Gain !M! Intangible. NL At the end of your turn, lose 1 Dexterity.", 2);
+        defend(s); defend(s); defend(s);
+        p = Planner.plan(s, P);
+        check("Wraith Form against a 36-damage turn", names(s, p).equals("Wraith Form"), names(s, p));
+
+        s = sim(70, 3);
+        mon(s, "Jaw Worm", 60, 0, 0, 0);
+        card(s, "Double Tap", "SKILL", 1, 0, 0, false, "This turn, your next Attack is played twice.", 0);
+        card(s, "Heavy Blade", "ATTACK", 2, 14, 0, true, "Deal !D! damage.", 3);
+        p = Planner.plan(s, P);
+        check("Double Tap before Heavy Blade hits twice", names(s, p).startsWith("Double Tap") && p.dealt >= 28, p.describe(s));
+
+        Sim hurt = sim(30, 2), full = sim(80, 2);
+        for (Sim x : new Sim[]{hurt, full}) {
+            x.maxHp = 80;
+            mon(x, "Louse", 12, 0, 0, 0);
+            mon(x, "Louse", 12, 0, 0, 0);
+            Sim.Card r = card(x, "Reaper", "ATTACK", 2, 4, 0, false, "Deal !D! damage to ALL enemies. NL Heal HP equal to unblocked damage. NL Exhaust.", 0);
+            r.aoe = true;
+        }
+        Planner.Plan ph = Planner.plan(hurt, P), pf = Planner.plan(full, P);
+        check("Reaper's healing counts when hurt", ph.value - ph.base > pf.value - pf.base + 5,
+              String.format("%.1f vs %.1f", ph.value - ph.base, pf.value - pf.base));
+
         // potions (Spire AI policy._potion rules)
         PotionAdvisor.Context ctx = new PotionAdvisor.Context();
         ctx.boss = true; ctx.turn = 1; ctx.hp = 60; ctx.maxHp = 80; ctx.champHp = 420; ctx.champMaxHp = 420;
@@ -198,6 +258,8 @@ public final class PlannerTest {
         PotionAdvisor.Context calm = new PotionAdvisor.Context();
         calm.hp = 70; calm.maxHp = 80; calm.taken = 5; calm.turn = 2;
         check("hallway fight: keeps potions", PotionAdvisor.advise(pots("Strength Potion"), calm) == null, "");
+        a = PotionAdvisor.advise(pots("Smoke Bomb"), lethal);
+        check("no Smoke Bomb on a lethal turn", a == null, a == null ? "" : a.potion.name);
 
         if (failed > 0) {
             System.out.println(failed + " FAILED");

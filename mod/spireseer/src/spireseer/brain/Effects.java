@@ -12,6 +12,9 @@ import java.util.regex.Pattern;
 public final class Effects {
     public int vuln, weak, draw, energy, strength, tempStrength, selfDamage, enemyStrDown;
     public boolean exhausts, isPower, randomTarget, aoe;
+    // Silent and the cards the planner used to undervalue
+    public int poison, poisonMult, shivs, intangible, doubleAttack, doubleSkill;
+    public boolean poisonAoe, healUnblocked;
     public int hits = 1;
 
     private static final String N = "(!m!|\\d+)";
@@ -56,7 +59,22 @@ public final class Effects {
         e.isPower = "POWER".equals(type);
         e.randomTarget = t.contains("random enemy");
         e.aoe = t.contains("all enemies");
-        if (t.contains("twice")) e.hits = 2;
+        e.poison = find(t, "apply " + N + " poison", magic);
+        int flask = find(t, "poison to a random enemy " + N + " times", magic);   // Bouncing Flask
+        if (flask > 0) e.poison *= flask;
+        e.poisonAoe = Pattern.compile("poison(?: and (?:!m!|\\d+) weak)? to all enemies").matcher(t).find();
+        if (t.matches(".*double (?:an|the) enemy's poison.*")) e.poisonMult = 2;
+        if (t.matches(".*triple (?:an|the) enemy's poison.*")) e.poisonMult = 3;
+        Matcher sv = Pattern.compile("add (!m!|\\d+|a) \\*?shivs?").matcher(t);
+        if (sv.find()) e.shivs = sv.group(1).equals("a") ? 1 : sv.group(1).equals("!m!") ? magic : Integer.parseInt(sv.group(1));
+        e.intangible = find(t, "gain " + N + " intangible", magic);
+        Matcher dt = Pattern.compile("next (?:(!m!|\\d+) )?(attack|skill)s? (?:is|are) played twice").matcher(t);
+        if (dt.find()) {
+            int n = dt.group(1) == null ? 1 : dt.group(1).equals("!m!") ? magic : Integer.parseInt(dt.group(1));
+            if (dt.group(2).equals("attack")) e.doubleAttack = n; else e.doubleSkill = n;
+        }
+        e.healUnblocked = t.contains("heal hp equal to unblocked damage");
+        if (t.contains("damage twice")) e.hits = 2;
         int times = find(t, N + " times", magic);
         if (times > 0) e.hits = times;
         return e;

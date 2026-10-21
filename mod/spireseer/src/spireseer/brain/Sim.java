@@ -30,6 +30,7 @@ public final class Sim {
         public int vuln, weak;         // turns of Vulnerable / Weak already on it
         public int intentDmg, intentHits; // per-hit damage of its intended attack (0 if not attacking)
         public int thorns;             // Thorns / Sharp Hide
+        public int poison;             // Poison on it (ticks at the start of its turn)
         public int strength;
         public boolean alive = true;
         public double prio = 1.0;      // kill priority
@@ -41,6 +42,8 @@ public final class Sim {
     public boolean playerWeak;         // our attacks deal 25% less (already in game-computed damage)
     public boolean elite;              // elite or boss room
     public int stall;                  // turns in a row the enemies' HP did not move
+    public boolean intangible;         // the player is Intangible this turn (hits deal 1)
+    public int doubleAttack, doubleSkill;   // Double Tap / Burst already active
 
     public Mon mon(int index) {
         for (Mon m : mons) if (m.index == index) return m;

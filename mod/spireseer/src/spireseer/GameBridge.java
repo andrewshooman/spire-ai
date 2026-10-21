@@ -60,6 +60,11 @@ public final class GameBridge {
         return pl != null && (pl.isDraggingCard || pl.inSingleTargetMode);
     }
 
+    private static int playerPower(String id) {
+        AbstractPower p = AbstractDungeon.player.getPower(id);
+        return p == null ? 0 : p.amount;
+    }
+
     private static int amount(AbstractMonster m, String id) {
         AbstractPower p = m.getPower(id);
         return p == null ? 0 : p.amount;
@@ -76,6 +81,11 @@ public final class GameBridge {
         AbstractRoom room = AbstractDungeon.getCurrRoom();
         s.elite = room instanceof MonsterRoomElite || room instanceof MonsterRoomBoss;
         s.stall = stall;
+        s.strength = playerPower("Strength");
+        s.playerWeak = playerPower("Weakened") > 0;
+        s.intangible = playerPower("IntangiblePlayer") > 0 || playerPower("Intangible") > 0;
+        s.doubleAttack = playerPower("Double Tap");
+        s.doubleSkill = playerPower("Burst");
         ArrayList<AbstractMonster> ms = AbstractDungeon.getMonsters().monsters;
         for (int i = 0; i < ms.size(); i++) {
             AbstractMonster m = ms.get(i);
@@ -90,6 +100,7 @@ public final class GameBridge {
             x.weak = amount(m, "Weakened");
             x.strength = amount(m, "Strength");
             x.thorns = amount(m, "Thorns") + amount(m, "Sharp Hide");
+            x.poison = amount(m, "Poison");
             String intent = m.intent == null ? "" : m.intent.name();
             if (intent.startsWith("ATTACK")) {
                 x.intentDmg = Math.max(0, m.getIntentDmg());

@@ -73,7 +73,7 @@ Spireseer's brain comes from [b]Spire AI[/b], a self-learning bot that has playe
 [/list]
 
 [h2]Characters[/h2]
-Each character gets its own learned weights: the mod picks the set for whoever you play (shown at the top left). The Ironclad set comes from 240+ runs; the Silent, Defect and Watcher are training now and use the Ironclad set until theirs are ready. The search already plays every character's cards from the game's own numbers, but it doesn't yet model the Silent's poison ticking, the Defect's orbs and Focus, or the Watcher's stances, so its advice for those is rougher for now.
+Each character gets its own learned weights, and the mod picks the set for whoever you play (shown at the top left). The Ironclad set comes from 240+ runs, the Silent set from its own training (growing with every release). The Silent's tools are modeled: poison already on enemies and the poison you add, Catalyst, Bouncing Flask, enemies their poison will kill before they attack, and Shivs. So are cards that work differently from plain damage and block: Wraith Form's Intangible, Double Tap and Burst, Reaper's healing. The Defect's orbs and the Watcher's stances aren't modeled yet, so its advice for those two is rougher for now.
 
 Requires BaseMod. Works alongside other mods.
 
