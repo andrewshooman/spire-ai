@@ -125,6 +125,9 @@ class Model:
             return 0.8
         if kind == "relicfit":  # relicfit:<synergy tag>, value = synergy.relic_fit for this deck
             return 1.0
+        if kind == "pathrelic":  # pathrelic:<relic>:<room>: an owned relic changes what a room is worth
+            from policy import path_relic_prior
+            return path_relic_prior(key)
         return 0.0
 
     def w(self, key: str) -> float:

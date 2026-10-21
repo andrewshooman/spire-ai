@@ -105,6 +105,19 @@ CARD_TAGS.update({
     "Gambling Chip": set(), "Reflex": {"discard_pay"}, "Tactician": {"discard_pay"}, "Eviscerate": {"discard_pay"},
     "Sneaky Strike": {"discard_pay"},
 })
+# relics that feed card synergies (each tag works like a card with it: Bag of Marbles = a Vulnerable source for
+# Vulnerable payoffs, Mark of Pain = Wounds for Evolve / Fire Breathing and exhaust payoffs...)
+RELIC_TAGS.update({
+    "Bag of Marbles": {"vuln_src"}, "Mark of Pain": {"status_maker"}, "Strange Spoon": {"exhaust_pay"},
+    "Letter Opener": {"skill_pay"}, "Nunchaku": {"attack_pay"}, "Bird-Faced Urn": {"power_pay"},
+    "Unceasing Top": {"draw"}, "Gambling Chip": {"discard_src"}, "Hovering Kite": {"discard_pay"},
+    "Wrist Blade": {"shiv_pay"}, "Ninja Scroll": {"shiv_src"}, "The Specimen": {"poison_pay"},
+    "Necronomicon": {"big_hit_pay"}, "Akabeko": {"attack_pay"}, "Ancient Tea Set": {"energy"},
+    "Sundial": {"draw"}, "Pocketwatch": {"cheap"}, "Ink Bottle": {"draw"}, "Orange Pellets": {"power_pay"},
+    # boss energy relics: extra energy feeds X-cost cards (Whirlwind) like Lantern does
+    "Sozu": {"energy"}, "Philosopher's Stone": {"energy"}, "Cursed Key": {"energy"}, "Busted Crown": {"energy"},
+    "Coffee Dripper": {"energy"}, "Ectoplasm": {"energy"}, "Runic Dome": {"energy"}, "Velvet Choker": {"hates_many_cards", "energy"},
+})
 RELIC_TAGS.update({"Snecko Skull": {"poison_src"}, "Twisted Funnel": {"poison_src"}, "Tough Bandages": {"discard_pay"},
                    "Tingsha": {"discard_pay"}, "Ninja Scroll": {"shiv_src"}, "Kunai": {"skill_pay", "shiv_pay"},
                    "Shuriken": {"attack_pay", "shiv_pay"}, "Ornamental Fan": {"attack_pay", "shiv_pay"}})

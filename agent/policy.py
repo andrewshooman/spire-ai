@@ -386,7 +386,7 @@ class PolicyAgent:
 
     # ---------------------------------------------------------------- explain choices for the web app
 
-    GROUPS = (("expertpick", "experts take it"), ("expertrelic", "experts take it"), ("synneed", "missing enabler"), ("synrule", "synergy"), ("cardctx", "fits now"), ("card", "card value"),
+    GROUPS = (("pathrelic", "your relics"), ("expertpick", "experts take it"), ("expertrelic", "experts take it"), ("synneed", "missing enabler"), ("synrule", "synergy"), ("cardctx", "fits now"), ("card", "card value"),
               ("syn", "build"), ("tag", "build"), ("need", "deck needs it"), ("dup", "deck size"), ("dilute", "deck size"),
               ("upgraded", "card value"), ("skip", "skip"), ("relicfit", "fits the deck"), ("relicctx", "fits the deck"),
               ("relic", "relic value"), ("shoprelic", "relic value"), ("nodeact", "path"), ("node", "path"),
@@ -700,9 +700,15 @@ class PolicyAgent:
         memo: dict = {}
 
         shop_pull = self._shop_pull(g)
+        owned = [r.name for r in g.relics if r.name in PATH_RELIC]
+
+        def relic_feats(sym: str) -> dict[str, float]:
+            # relics change what a room is worth (Black Star: elites drop two relics; Juzu Bracelet: no fights in
+            # ? rooms; Ectoplasm: shops are useless...); learnable, starting from PATH_RELIC
+            return {f"pathrelic:{r}:{sym}": 1.0 for r in owned if sym in PATH_RELIC[r]}
 
         def node_score(sym: str) -> float:
-            v = model.w(f"node:{sym}:h{hb}") + model.w(f"nodeact:{sym}:a{act}")
+            v = model.w(f"node:{sym}:h{hb}") + model.w(f"nodeact:{sym}:a{act}") + model.score(relic_feats(sym))
             if sym == "$":
                 v += shop_pull
             return v
@@ -721,7 +727,7 @@ class PolicyAgent:
         rule = self._map_rules(g)
         for n in nodes:
             sym = n.symbol or "?"
-            options.append({f"node:{sym}:h{hb}": 1.0, f"nodeact:{sym}:a{act}": 1.0})
+            options.append({f"node:{sym}:h{hb}": 1.0, f"nodeact:{sym}:a{act}": 1.0, **relic_feats(sym)})
             full = by_pos.get((n.x, n.y))
             future = max((route(ch.x, ch.y) for ch in full.children), default=0.0) if full else 0.0
             bonus.append(0.85 * future + (shop_pull if sym == "$" else 0.0) + rule.get(sym, 0.0))
@@ -1539,6 +1545,26 @@ EVENT_RULES = [
 
 # optional event fights: (event, regex for the fight option, minimum HP fraction); enforced over the LLM
 FIGHT_EVENT_GUARD = {"Masked Bandits": (r"fight", 0.7), "The Colosseum": (r"victory", 0.6)}
+
+
+# What a relic does to the value of each room (path prior; the bot learns the actual weight per relic and room)
+PATH_RELIC = {
+    "Black Star": {"E": 0.6}, "Preserved Insect": {"E": 0.5}, "Sling of Courage": {"E": 0.3},
+    "Lizard Tail": {"E": 0.3}, "Fairy in a Bottle": {"E": 0.2}, "Black Blood": {"E": 0.2, "M": 0.1},
+    "Meat on the Bone": {"E": 0.1, "M": 0.1}, "Gremlin Horn": {"M": 0.1}, "Prayer Wheel": {"M": 0.3},
+    "Question Card": {"M": 0.1, "E": 0.1}, "Singing Bowl": {"M": 0.1}, "Pantograph": {"E": 0.1},
+    "Juzu Bracelet": {"?": 0.5}, "Tiny Chest": {"?": 0.3}, "Ssserpent Head": {"?": 0.3}, "Omamori": {"?": 0.1},
+    "Coffee Dripper": {"R": -0.5}, "Fusion Hammer": {"R": -0.3}, "Regal Pillow": {"R": 0.2},
+    "Dream Catcher": {"R": 0.2}, "Eternal Feather": {"R": 0.3}, "Shovel": {"R": 0.2}, "Girya": {"R": 0.2},
+    "Peace Pipe": {"R": 0.2}, "Ancient Tea Set": {"R": 0.1},
+    "Ectoplasm": {"$": -0.8}, "Membership Card": {"$": 0.5}, "Smiling Mask": {"$": 0.3}, "The Courier": {"$": 0.3},
+    "Old Coin": {"$": 0.2}, "Golden Idol": {"$": 0.2}, "Maw Bank": {"$": -0.2}, "Sozu": {"$": -0.2},
+}
+
+
+def path_relic_prior(key: str) -> float:
+    _, relic, sym = key.split(":", 2)
+    return PATH_RELIC.get(relic, {}).get(sym, 0.0)
 
 
 def _expert_rates(game_char: str) -> dict:

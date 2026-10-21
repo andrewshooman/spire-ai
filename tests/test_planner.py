@@ -518,6 +518,16 @@ def main() -> None:
     g2 = NS(act=2, floor=20, current_hp=70, max_hp=80, gold=99, relics=[], deck=real_deck, character="IRONCLAD")
     r2 = ag._map_rules(g2)
     check("Ironclad act 2: away from hallway fights, toward elites when healthy", r2.get("M", 0) < 0 and r2.get("E", 0) > 1, str(r2))
+    # relics feed card synergies and path choices
+    import synergy
+    sf, why = synergy.explain("Paper Phrog", [], ["Bag of Marbles"])
+    sf2, _ = synergy.explain("Heavy Blade", ["Inflame"], ["Vajra"])
+    check("relics count as synergy enablers (Vajra feeds Heavy Blade)", sf2.get("synrule:strength->payoff", 0) >= 2, str(sf2))
+    check("path relic prior: Black Star makes elites better, Ectoplasm shops worse",
+          Model(Path(tempfile.mkdtemp()) / "m.json", "IRONCLAD").w("pathrelic:Black Star:E") > 0
+          and Model(Path(tempfile.mkdtemp()) / "m.json", "IRONCLAD").w("pathrelic:Ectoplasm:$") < 0)
+    check("path features only for owned relics and the rooms they change",
+          policy.PATH_RELIC["Black Star"] == {"E": 0.6} and "M" not in policy.PATH_RELIC["Black Star"])
     # overnight Silent runs: low-HP pathing everywhere, Velvet Choker vs Shiv decks, no auto Smoke Bomb
     low = NS(act=1, floor=9, current_hp=20, max_hp=70, gold=99, relics=[], deck=real_deck, character="THE_SILENT")
     r = policy.PolicyAgent()._map_rules(low)
