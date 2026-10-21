@@ -86,6 +86,15 @@ public final class GameBridge {
         s.intangible = playerPower("IntangiblePlayer") > 0 || playerPower("Intangible") > 0;
         s.doubleAttack = playerPower("Double Tap");
         s.doubleSkill = playerPower("Burst");
+        // Defect orbs (empty slots are EmptyOrbSlot)
+        s.orbSlots = pl.maxOrbs;
+        s.focus = playerPower("Focus");
+        s.lightningAll = playerPower("Electro") > 0;
+        if (pl.orbs != null)
+            for (com.megacrit.cardcrawl.orbs.AbstractOrb o : pl.orbs)
+                if (o != null && o.ID != null && ("Lightning".equals(o.ID) || "Frost".equals(o.ID) || "Dark".equals(o.ID)
+                        || "Plasma".equals(o.ID)))
+                    s.orbs.add(new Sim.Orb(o.ID, o.evokeAmount, o.passiveAmount));
         ArrayList<AbstractMonster> ms = AbstractDungeon.getMonsters().monsters;
         for (int i = 0; i < ms.size(); i++) {
             AbstractMonster m = ms.get(i);

@@ -256,6 +256,48 @@ public final class PlannerTest {
         p = Planner.plan(fwBoth, P);
         check("Footwork then Defend blocks 7", names(fwBoth, p).startsWith("Footwork") && p.block == 7, p.describe(fwBoth));
 
+        // Defect orbs: channel, evoke, passives, Focus
+        Sim dz = sim(70, 1);
+        dz.orbSlots = 3;
+        mon(dz, "Jaw Worm", 40, 0, 0, 0);
+        card(dz, "Zap", "SKILL", 1, 0, 0, false, "Channel !M! Lightning.", 1);
+        card(dz, "Defend", "SKILL", 1, 0, 5, false, "Gain !B! Block.", 0);
+        p = Planner.plan(dz, P);
+        check("Defect: Zap on a quiet turn", names(dz, p).startsWith("Zap"), p.describe(dz));
+        Sim dd = sim(70, 1);
+        dd.orbSlots = 3;
+        dd.orbs.add(new Sim.Orb("Lightning", 8, 3));
+        mon(dd, "Jaw Worm", 15, 10, 1, 0);
+        card(dd, "Dualcast", "SKILL", 1, 0, 0, false, "Evoke your next Orb twice.", 0);
+        card(dd, "Defend", "SKILL", 1, 0, 5, false, "Gain !B! Block.", 0);
+        p = Planner.plan(dd, P);
+        check("Defect: Dualcast evokes Lightning twice to finish a 15 HP enemy", names(dd, p).startsWith("Dualcast") && p.kills == 1, p.describe(dd));
+        Sim df = sim(70, 0);
+        df.orbSlots = 3;
+        for (int k = 0; k < 3; k++) df.orbs.add(new Sim.Orb("Frost", 5, 2));
+        mon(df, "Jaw Worm", 40, 6, 1, 0);
+        p = Planner.plan(df, P);
+        check("Defect: three Frost orbs block 6 at the end of the turn", p.taken == 0, p.describe(df));
+        Sim dg = sim(70, 1);
+        dg.orbSlots = 3;
+        dg.orbs.add(new Sim.Orb("Lightning", 8, 3));
+        dg.orbs.add(new Sim.Orb("Lightning", 8, 3));
+        mon(dg, "Jaw Worm", 40, 0, 0, 0);
+        card(dg, "Defragment", "POWER", 1, 0, 0, false, "Gain !M! Focus.", 1);
+        card(dg, "Defend", "SKILL", 1, 0, 5, false, "Gain !B! Block.", 0);
+        p = Planner.plan(dg, P);
+        check("Defect: Focus with orbs out beats a Defend on a quiet turn", names(dg, p).startsWith("Defragment"), p.describe(dg));
+        // parser fixes: next-turn riders, Malaise X
+        Effects om = Effects.parse("Next turn, gain [E] [E].", "SKILL", 0);
+        check("Outmaneuver's energy comes next turn", om.energy == 0 && om.nextEnergy == 2, om.energy + " / " + om.nextEnergy);
+        Effects dr = Effects.parse("Gain !B! Block. NL Next turn, gain !M! Block.", "SKILL", 4);
+        check("Dodge and Roll: block next turn", dr.nextBlock == 4, "" + dr.nextBlock);
+        Effects ml = Effects.parse("Enemy loses X Strength. NL Apply X Weak. NL Exhaust.", "SKILL", 0);
+        check("Malaise: X Strength and X Weak", ml.xStrDown && ml.xWeak, ml.xStrDown + " " + ml.xWeak);
+        Effects ch = Effects.parse("Channel 1 Frost for each enemy in combat. NL Exhaust.", "SKILL", 0);
+        Effects ra = Effects.parse("Channel 1 Lightning. NL Channel 1 Frost. NL Channel 1 Dark. NL Exhaust.", "SKILL", 0);
+        check("orb text: Chill per enemy, Rainbow three orbs", "Frost".equals(ch.channelPerEnemy) && ra.channel.size() == 3, ra.channel.toString());
+
         // potions (Spire AI policy._potion rules)
         PotionAdvisor.Context ctx = new PotionAdvisor.Context();
         ctx.boss = true; ctx.turn = 1; ctx.hp = 60; ctx.maxHp = 80; ctx.champHp = 420; ctx.champMaxHp = 420;

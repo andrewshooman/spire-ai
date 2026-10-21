@@ -19,7 +19,7 @@ Combat suggestions or auto-battle, in the game, with no Python or LLM needed.
 
 The brain is a Java port of Spire AI's whole-turn planner (agent/planner.py): it reads the game's own computed
 damage and block for every card and target, simulates Vulnerable/Weak/Strength, Thorns, kills and the enemies'
-intents, and starts from the combat weights the Spire AI bot learned over ~240 runs. Card text is parsed for
+intents, and starts from the combat weights the Spire AI bot learned (300+ Ironclad runs; the Silent has its own set). Card text is parsed for
 draw/energy/debuffs, so cards from other mods work when they use standard wording.
 
 ## Build and install
@@ -66,4 +66,4 @@ from the Workshop page to test, then publish with `-Visibility public`.
 
 ## Not yet
 
-Card rewards, map, shops, rest sites and events (out-of-combat automation), and hand-select screens.
+Card rewards, map, shops, rest sites and events (out-of-combat automation), hand-select screens, and the Watcher's stances. Modeled: Silent poison/Shivs/Dexterity, Defect orbs (channel, evoke, passives, Focus, slots), Intangible, Double Tap/Burst, Reaper, "next turn" riders, Malaise X.

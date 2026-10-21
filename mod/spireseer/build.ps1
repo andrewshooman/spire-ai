@@ -21,25 +21,12 @@ $mts = (Get-ChildItem $ws -Recurse -Filter ModTheSpire.jar | Select-Object -Firs
 $basemod = (Get-ChildItem $ws -Recurse -Filter BaseMod.jar | Select-Object -First 1).FullName
 if (-not $mts -or -not $basemod) { throw "Subscribe to ModTheSpire and BaseMod in the Steam Workshop first." }
 
-# Bundle the bot's learned combat weights for each character trained on 30+ runs
-# (evolve\<character>\model.json "params"); the mod picks the set for the character you play.
-$evolve = Join-Path (Split-Path (Split-Path $here)) "evolve"
-$weights = [ordered]@{}
-foreach ($c in "ironclad", "silent", "defect", "watcher") {
-    $m = "$evolve\$c\model.json"
-    if (-not (Test-Path $m)) { continue }
-    $runs = @(Get-ChildItem "$evolve\$c\runs" -Filter "run_*.json" -ErrorAction SilentlyContinue).Count
-    if ($runs -lt 30) { Write-Host "  $c`: $runs runs, not enough yet (uses Ironclad weights)"; continue }
-    $j = Get-Content $m -Raw | ConvertFrom-Json
-    $weights[$c] = [ordered]@{ runs = $runs; params = $j.params }
-    Write-Host "  $c`: weights from $runs runs"
-}
-$wfile = "$here\resources\spireseerResources\weights.json"
-if ($weights.Count -gt 0) {
-    [IO.File]::WriteAllText($wfile, ($weights | ConvertTo-Json -Depth 5))
-} elseif (-not (Test-Path $wfile)) {
-    Write-Host "  no trained weights found; the mod uses its built-in defaults"
-}
+# Bundle the bot's learned combat weights per character (bundle_weights.py; 30+ runs each)
+$py = Join-Path (Split-Path (Split-Path $here)) "sts-bench\.venv\Scripts\python.exe"
+if (-not (Test-Path $py)) { $py = "python" }
+$env:PYTHONUTF8 = "1"
+& $py "$here\bundle_weights.py"
+if ($LASTEXITCODE) { throw "bundling the learned weights failed" }
 
 $build = "$here\build"
 Remove-Item -Recurse -Force $build -ErrorAction SilentlyContinue

@@ -36,7 +36,18 @@ public final class Sim {
         public double prio = 1.0;      // kill priority
     }
 
+    /** A Defect orb: the game's evoke / passive amounts already include Focus. */
+    public static final class Orb {
+        public String kind = "";       // Lightning / Frost / Dark / Plasma
+        public int evoke, passive;
+        public Orb() {}
+        public Orb(String kind, int evoke, int passive) { this.kind = kind; this.evoke = evoke; this.passive = passive; }
+    }
+
     public final List<Card> hand = new ArrayList<>();
+    public final List<Orb> orbs = new ArrayList<>();
+    public int orbSlots, focus;
+    public boolean lightningAll;       // Electrodynamics
     public final List<Mon> mons = new ArrayList<>();
     public int energy, playerBlock, hp, maxHp, strength, turn = 1;
     public boolean playerWeak;         // our attacks deal 25% less (already in game-computed damage)

@@ -12,11 +12,14 @@ import java.util.Set;
  */
 public final class Planner {
     static final double DEX_BLOCK_CARDS = 1.5;   // block cards played per turn, for the lasting value of Dexterity
+    static final double ORB_FUTURE = 0.7;        // orbs keep paying every turn: valued for the rest of the fight
+    static final String[] ORB = {"Lightning", "Frost", "Dark", "Plasma"};
+    static final int[][] ORB_BASE = {{3, 8}, {2, 5}, {6, 6}, {1, 2}};   // {passive, evoke} at 0 Focus
 
     /** Weights; defaults are the values Spire AI's bot learned over ~240 runs. */
     public static final class Params {
         public double damage = 0.67, kill = 5.7, block = 1.76, surplusBlock = 0.09, vuln = 2.8, weak = 0.81;
-        public double draw = 3.2, strength = 4.3, power = 4.9, hpCost = 3.4, endThreshold = 0.43;
+        public double draw = 3.2, strength = 4.3, power = 4.9, hpCost = 3.4, endThreshold = 0.43, energy = 5.5;
 
         /** From the bot's model.json "params" (keys as in Spire AI's model.COMBAT_DEFAULTS). */
         public static Params from(java.util.Map<String, Double> m) {
@@ -32,6 +35,7 @@ public final class Planner {
             p.power = m.getOrDefault("power", p.power);
             p.hpCost = m.getOrDefault("hp_cost", p.hpCost);
             p.endThreshold = m.getOrDefault("end_threshold", p.endThreshold);
+            p.energy = m.getOrDefault("energy", p.energy);
             return p;
         }
     }
@@ -77,6 +81,9 @@ public final class Planner {
     /** Search state for one simulated sequence of plays. */
     private static final class St {
         int energy, block, strGain, permStr, dexGain, powers, draw, doubleAtk, doubleSkill;
+        int nextBlock, nextEnergy, nextDraw, turnBlock, turnDamage, orbSlots, focus, permFocus;
+        boolean lightningAll;
+        List<int[]> orbs = new ArrayList<>();   // {kind (index in ORB), evoke, passive}
         int[] hp, mblock, vulnAdd, weakAdd, strDown, poison;
         boolean[] dead, used;
         boolean intangible;
@@ -90,6 +97,10 @@ public final class Planner {
             n.poison = poison.clone();
             n.hp = hp.clone(); n.mblock = mblock.clone(); n.vulnAdd = vulnAdd.clone(); n.weakAdd = weakAdd.clone();
             n.strDown = strDown.clone(); n.dead = dead.clone(); n.used = used.clone();
+            n.nextBlock = nextBlock; n.nextEnergy = nextEnergy; n.nextDraw = nextDraw;
+            n.turnBlock = turnBlock; n.turnDamage = turnDamage; n.orbSlots = orbSlots; n.focus = focus;
+            n.permFocus = permFocus; n.lightningAll = lightningAll;
+            for (int[] o : orbs) n.orbs.add(o.clone());
             return n;
         }
     }
@@ -132,6 +143,13 @@ public final class Planner {
         st.intangible = s.intangible;
         st.doubleAtk = s.doubleAttack;
         st.doubleSkill = s.doubleSkill;
+        st.orbSlots = s.orbSlots;
+        st.focus = s.focus;
+        st.lightningAll = s.lightningAll;
+        for (Sim.Orb o : s.orbs) {
+            int k = java.util.Arrays.asList(ORB).indexOf(o.kind);
+            if (k >= 0) st.orbs.add(new int[]{k, o.evoke, o.passive});
+        }
         boolean anyAlive = false, allRetaliate = true;
         for (int i = 0; i < n; i++) {
             Sim.Mon m = s.mons.get(i);
@@ -354,8 +372,8 @@ public final class Planner {
             boolean affected = (fx.aoe || c.aoe) ? !st.dead[i] : i == target;
             if (!affected) continue;
             st.vulnAdd[i] += fx.vuln;
-            st.weakAdd[i] += fx.weak;
-            st.strDown[i] += fx.enemyStrDown;
+            st.weakAdd[i] += fx.weak + (fx.xWeak ? xOf(c, cost) : 0);                  // Malaise: X Weak
+            st.strDown[i] += fx.enemyStrDown + (fx.xStrDown ? xOf(c, cost) : 0);      // and X Strength
         }
         st.strGain += fx.strength + fx.tempStrength;
         st.permStr += fx.strength;
@@ -382,11 +400,96 @@ public final class Planner {
             hit(st, t, (int) per);
             if (m.thorns > 0) st.retal += m.thorns;
         }
+        st.nextBlock += fx.nextBlock;
+        st.nextEnergy += fx.nextEnergy;
+        st.nextDraw += fx.nextDraw;
+        st.turnBlock += fx.turnBlock;
+        st.turnDamage += fx.turnDamage;
+        if (st.orbSlots > 0 || fx.orbSlots != 0 || !fx.channel.isEmpty() || !fx.channelPerEnemy.isEmpty() || !fx.channelX.isEmpty())
+            orbEffects(st, fx, c, target, xOf(c, cost));
         if (fx.intangible > 0) st.intangible = true;
         st.doubleAtk += fx.doubleAttack;
         st.doubleSkill += fx.doubleSkill;
         if (fx.healUnblocked) st.heal += Math.max(0, hpBefore - totalHp(st));   // Reaper
         if (again) play(st, c, target, cost, true);
+    }
+
+    private static int xOf(Sim.Card c, int cost) {
+        return c.cost < 0 ? Math.max(0, cost) : 0;
+    }
+
+    // ---------------------------------------------------------------- Defect orbs
+
+    private int[] newOrb(int k, int focus) {
+        int passive = ORB_BASE[k][0], evoke = ORB_BASE[k][1];
+        if (k <= 1) return new int[]{k, Math.max(0, evoke + focus), Math.max(0, passive + focus)};   // Lightning, Frost
+        if (k == 2) return new int[]{k, evoke, Math.max(0, passive + focus)};                          // Dark
+        return new int[]{k, evoke, passive};                                                           // Plasma
+    }
+
+    private void lightning(St st, int amount) {   // orb damage ignores Strength, Weak and Vulnerable
+        if (st.lightningAll) {
+            for (int i = 0; i < s.mons.size(); i++) if (!st.dead[i]) hit(st, i, amount);
+        } else {
+            int t = priorityTarget(st);
+            if (t >= 0) hit(st, t, amount);
+        }
+    }
+
+    private void evokeOrb(St st, int[] o) {
+        if (o[0] == 0) lightning(st, o[1]);
+        else if (o[0] == 1) st.block += o[1];
+        else if (o[0] == 2) {   // Dark: the lowest-HP enemy
+            int t = -1;
+            for (int i = 0; i < s.mons.size(); i++) if (!st.dead[i] && (t < 0 || st.hp[i] < st.hp[t])) t = i;
+            if (t >= 0) hit(st, t, o[1]);
+        } else st.energy += o[1];
+    }
+
+    private void channelOrb(St st, int k) {
+        if (st.orbSlots <= 0 || k < 0) return;
+        if (st.orbs.size() >= st.orbSlots) evokeOrb(st, st.orbs.remove(0));   // full: the oldest is evoked
+        st.orbs.add(newOrb(k, st.focus));
+    }
+
+    private void orbEffects(St st, Effects fx, Sim.Card c, int target, int x) {
+        java.util.List<String> kinds = java.util.Arrays.asList(ORB);
+        if (fx.focus != 0) {
+            st.focus += fx.focus;
+            st.permFocus += fx.focus;
+            for (int[] o : st.orbs) {
+                if (o[0] <= 1) { o[1] = Math.max(0, o[1] + fx.focus); o[2] = Math.max(0, o[2] + fx.focus); }
+                else if (o[0] == 2) o[2] = Math.max(0, o[2] + fx.focus);
+            }
+        }
+        if (fx.orbSlots != 0) {
+            st.orbSlots = Math.max(0, st.orbSlots + fx.orbSlots);
+            while (st.orbs.size() > st.orbSlots) st.orbs.remove(st.orbs.size() - 1);
+        }
+        if (fx.lightningAll) st.lightningAll = true;
+        if (fx.perOrb && target >= 0 && st.orbs.size() > 1 && c.damage.length > 0) {   // Barrage: one hit per orb
+            int per = (c.damage.length > target ? c.damage[target] : c.damage[0]) + st.strGain;
+            for (int k = 1; k < st.orbs.size() && !st.dead[target]; k++) hit(st, target, per);
+        }
+        int times = fx.evoke < 0 ? x : fx.evoke;
+        if (times > 0 && !st.orbs.isEmpty()) {
+            int[] o = st.orbs.remove(0);
+            for (int k = 0; k < times; k++) evokeOrb(st, o);
+            if (fx.recursion) channelOrb(st, o[0]);
+        }
+        for (String k : fx.channel) channelOrb(st, kinds.indexOf(k));
+        if (!fx.channelPerEnemy.isEmpty())
+            for (int i = 0; i < s.mons.size(); i++) if (!st.dead[i]) channelOrb(st, kinds.indexOf(fx.channelPerEnemy));
+        if (!fx.channelX.isEmpty()) for (int k = 0; k < x; k++) channelOrb(st, kinds.indexOf(fx.channelX));
+    }
+
+    /** End of turn, before the enemies act: Lightning hits, Frost blocks, Dark grows. */
+    private void orbPassives(St st) {
+        for (int[] o : st.orbs) {
+            if (o[0] == 0) lightning(st, o[2]);
+            else if (o[0] == 1) st.block += o[2];
+            else if (o[0] == 2) o[1] += o[2];
+        }
     }
 
     private void hit(St st, int i, int dmg) {
@@ -423,6 +526,10 @@ public final class Planner {
     }
 
     private double evaluate(St st, Plan out, boolean isBase) {
+        if (!st.orbs.isEmpty()) {
+            st = st.copy();
+            orbPassives(st);   // before the enemies act: Frost blocks this turn's hits, Lightning can kill first
+        }
         double v = 0;
         int dealt = 0, kills = 0, hpLeft = 0;
         for (int i = 0; i < s.mons.size(); i++) {
@@ -471,6 +578,20 @@ public final class Planner {
         double fight = 1 + Math.min(2, hpLeft / 40.0);
         v += p.strength * st.permStr * fight;
         v += p.block * st.dexGain * fight * DEX_BLOCK_CARDS;   // Dexterity lasts the fight: +1 on ~1.5 block cards a turn
+        int live = 0;
+        for (int i = 0; i < s.mons.size(); i++) if (!st.dead[i] && s.mons.get(i).alive) live++;
+        if (!st.orbs.isEmpty() || st.permFocus != 0) {   // orbs and Focus keep working every turn
+            double light = 0, frost = 0, dark = 0, plasma = 0;
+            for (int[] o : st.orbs) {
+                if (o[0] == 0) light += o[2]; else if (o[0] == 1) frost += o[2]; else if (o[0] == 2) dark++; else plasma++;
+            }
+            if (st.lightningAll) light *= Math.max(1, live);
+            v += (p.damage * light + p.block * frost + p.damage * 3.0 * dark + p.energy * 0.5 * plasma) * fight * ORB_FUTURE;
+            v += p.block * st.permFocus * Math.max(1, st.orbs.size()) * fight * 0.5;
+        }
+        // "Next turn, ..." riders a little below now; After Image / Noxious Fumes every turn
+        v += 0.8 * (p.block * st.nextBlock + p.energy * st.nextEnergy) + 0.5 * p.draw * st.nextDraw;
+        v += (p.block * st.turnBlock + p.damage * st.turnDamage * Math.max(1, live)) * fight * 0.7;
         if (st.powers > 0) v += p.power * st.powers * (s.elite ? 1.5 : 1) * (s.turn <= 3 ? 1 : 0.5) * fight / 2;
         v += p.draw * st.draw;
         out.dealt = dealt;
