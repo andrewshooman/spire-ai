@@ -867,8 +867,9 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
             rng = random.Random()
             # A/B switches: each explore run turns recent features on/off so analyze.bat can measure them
             # hp_budget left the A/B: it won for both characters (Silent act 1 clear 88% vs 70%) -> always on
-            ab = ({"llm_cards": rng.random() < 0.7,
-                   "syn_notes": rng.random() < 0.5, "skip_rules": rng.random() < 0.5,
+            # syn_notes left it too (Silent +4.7 floors, t=2.3; 16% vs 3% past act 2) -> always on;
+            # llm_cards was dropped: no gain for either character (t=+0.1 / -0.8), 12-18 s of LLM per run
+            ab = ({"skip_rules": rng.random() < 0.5,
                    "event_pull": rng.random() < 0.5} if explore and args.ab else {})
             eps, es_sign = None, 0
             if explore:
@@ -1031,8 +1032,8 @@ def main() -> None:
     p.add_argument("--llm-gap", type=float, default=99.0,
                    help="ask the LLM about an event only when its top options score within this gap "
                         "(default: always, calls take ~0.2 s with thinking off)")
-    p.add_argument("--llm-cards", action=argparse.BooleanOptionalAction, default=True,
-                   help="let the LLM advise card rewards")
+    p.add_argument("--llm-cards", action=argparse.BooleanOptionalAction, default=False,
+                   help="let the LLM advise card rewards (off: its A/B showed no gain)")
     p.add_argument("--llm-share", type=float, default=0.7,
                    help="explore runs: share of card picks that follow the LLM (the rest explore)")
     p.add_argument("--llm-cache", action=argparse.BooleanOptionalAction, default=True,
