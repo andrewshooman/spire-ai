@@ -226,6 +226,10 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     shop list; +0.6 shop pull with 120+ gold and a free slot. Champ (47 logged fights): losses start 26 HP
     lower and deal 38 vs 51 damage a turn (Champ left at 163 HP), not a misplay problem -> BOSS_NEEDS Champ
     gains damage; boss needs are the learnable feature bossneed (prior 1.0) instead of a fixed bonus.
+33. Every act's card picks prepare for that act's boss: learnable bossneed:<boss>:<role> features (roles damage/
+    aoe/block/draw/scaling/debuff; half strength in the first half of the act), priors cards.BOSS_NEEDS reset
+    from Ironclad decks that beat each boss vs lost (Champ: scaling + draw, not block/debuff; Automaton:
+    scaling, not AoE; Hexaghost: scaling; Guardian: damage).
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

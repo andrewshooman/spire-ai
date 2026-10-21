@@ -149,15 +149,22 @@ UPGRADE_PRIORITY = {
 
 
 # What each boss tests (playbook), as card roles from roles(): used to steer picks once the boss is known.
+# What each act boss asks of the deck: the starting value of the learnable bossneed:<boss>:<role> features
+# (every card pick in that act prepares for its boss, at half strength early in the act, full in the second half).
+# Set from Ironclad decks that beat each boss vs decks that lost (non-starter cards by role): winning Champ
+# decks had more scaling (3.9 vs 2.9) and draw (2.4 vs 1.6) but LESS block (1.5 vs 2.4) and debuffs (2.6 vs 3.8);
+# Automaton winners more scaling (4.0 vs 2.7), less AoE; Hexaghost winners more scaling, less block;
+# Guardian winners more damage (3.4 vs 2.3). Small samples: the bot keeps learning each pair.
 BOSS_NEEDS = {
-    "Hexaghost": {"scaling": 0.7, "damage": 0.3}, "The Guardian": {"block": 0.6, "scaling": 0.3},
-    "Slime Boss": {"aoe": 0.6, "damage": 0.4},
-    # Champ fights (47 logged): wins dealt 51 damage a turn vs 38 for losses, which left him at 163 HP
-    "The Champ": {"scaling": 0.7, "damage": 0.4, "block": 0.4, "debuff": 0.3}, "Bronze Automaton": {"aoe": 0.5, "scaling": 0.5, "damage": 0.3},
-    "The Collector": {"aoe": 0.8, "scaling": 0.4},
-    "Awakened One": {"damage": 0.5, "aoe": 0.4}, "Time Eater": {"damage": 0.5, "block": 0.3},
+    "Hexaghost": {"scaling": 0.7, "damage": 0.3}, "The Guardian": {"damage": 0.5, "block": 0.3, "scaling": 0.2},
+    "Slime Boss": {"aoe": 0.5, "damage": 0.4, "scaling": 0.2},
+    "The Champ": {"scaling": 0.8, "draw": 0.4, "damage": 0.2},
+    "Bronze Automaton": {"scaling": 0.7, "damage": 0.3, "aoe": 0.1},
+    "The Collector": {"aoe": 0.4, "scaling": 0.5, "damage": 0.2},
+    "Awakened One": {"damage": 0.5, "aoe": 0.4, "scaling": 0.3}, "Time Eater": {"damage": 0.5, "block": 0.3},
     "Donu and Deca": {"aoe": 0.5, "debuff": 0.5, "scaling": 0.3},
 }
+BOSS_ROLES = ("damage", "aoe", "block", "draw", "scaling", "debuff")
 
 
 # Act-specific card priors from an A20 Ironclad guide (Panacea), seeding the learned

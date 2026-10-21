@@ -294,6 +294,14 @@ def main() -> None:
     strike = parse_message(state(["Strike"], [monster("Jaw Worm", 40, 0)])).game_state.combat_state.hand[0]
     check("before the Champ, scaling cards score higher on the boss-need feature",
           ag._boss_need(infl, gq) > ag._boss_need(strike, gq) and ag._boss_need(infl, gq) > 0)
+    import human
+    gq2 = NS(act_boss="The Champ", floor=28, act=2, character="IRONCLAD", relics=[], gold=99, current_hp=60,
+             max_hp=80, deck=[human.card_from_id(c) for c in ["Strike_R"] * 4 + ["Defend_R"] * 4 + ["Bash"]])
+    fi = ag._card_features(human.card_from_id("Inflame"), gq2, {})
+    mm = Model(Path(tempfile.mkdtemp()) / "m.json", "IRONCLAD")
+    check("act 2 picks prepare for its boss: Champ x scaling feature, data-based start (block no longer)",
+          fi.get("bossneed:The Champ:scaling") == 1.0 and mm.w("bossneed:The Champ:scaling") == 0.8
+          and mm.w("bossneed:The Champ:block") == 0.0, str({k: v for k, v in fi.items() if k.startswith("boss")}))
     check("big act-2 deck leans toward skipping", ag._skip_bonus(gq) > 0)
     # Byrds: multi-hits knock a flying Byrd down (its attack never lands); single hits do half damage
     msg = state(["Twin Strike", "Strike"], [monster("Byrd", 30, 12, powers=[("Flight", 2)])], energy=1)

@@ -490,9 +490,13 @@ class PolicyAgent:
             f["need:draw"] = 1.0
         if "scaling" in roles and deck_roles.get("scaling", 0) < 2 and g.floor >= 6:
             f["need:scaling"] = 1.0
-        need = self._boss_need(card, g)
-        if need:
-            f["bossneed"] = round(need, 2)   # what this act's boss asks for (was a fixed bonus; now learned)
+        boss = getattr(g, "act_boss", None)
+        if boss in C.BOSS_NEEDS:
+            # prepare for this act's boss: one learned weight per boss and role (Champ x scaling...), half
+            # strength in the first half of the act; starting values in cards.BOSS_NEEDS
+            when = self._boss_timing(g)
+            for r in roles & set(C.BOSS_ROLES):
+                f[f"bossneed:{boss}:{r}"] = when
         if card.upgrades:
             f["upgraded"] = 1.0
         dup = sum(1 for d in g.deck if C.base_name(d.name) == name)
@@ -541,6 +545,11 @@ class PolicyAgent:
             tr.plan_history.append([g.floor, plan["archetype"]])
         tr.plan = plan
         return commit
+
+    @staticmethod
+    def _boss_timing(g) -> float:
+        floor = getattr(g, "floor", 0)
+        return 1.0 if (floor % 17) >= 8 or floor % 17 == 0 else 0.5
 
     @staticmethod
     def _boss_needs_now(g) -> dict:
