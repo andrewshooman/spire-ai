@@ -11,6 +11,7 @@ import java.util.Set;
  * scores the end-of-turn position. Only the first step is used; the game is re-read after every card.
  */
 public final class Planner {
+    static final double DEX_BLOCK_CARDS = 1.5;   // block cards played per turn, for the lasting value of Dexterity
 
     /** Weights; defaults are the values Spire AI's bot learned over ~240 runs. */
     public static final class Params {
@@ -75,7 +76,7 @@ public final class Planner {
 
     /** Search state for one simulated sequence of plays. */
     private static final class St {
-        int energy, block, strGain, permStr, powers, draw, doubleAtk, doubleSkill;
+        int energy, block, strGain, permStr, dexGain, powers, draw, doubleAtk, doubleSkill;
         int[] hp, mblock, vulnAdd, weakAdd, strDown, poison;
         boolean[] dead, used;
         boolean intangible;
@@ -83,7 +84,7 @@ public final class Planner {
 
         St copy() {
             St n = new St();
-            n.energy = energy; n.block = block; n.strGain = strGain; n.permStr = permStr; n.powers = powers;
+            n.energy = energy; n.block = block; n.strGain = strGain; n.permStr = permStr; n.dexGain = dexGain; n.powers = powers;
             n.draw = draw; n.retal = retal; n.selfLoss = selfLoss;
             n.doubleAtk = doubleAtk; n.doubleSkill = doubleSkill; n.intangible = intangible; n.heal = heal;
             n.poison = poison.clone();
@@ -348,7 +349,7 @@ public final class Planner {
                 if (m.thorns > 0) st.retal += m.thorns;
             }
         }
-        st.block += c.block;
+        st.block += c.block > 0 ? c.block + st.dexGain : 0;   // the game's block + Dexterity gained this turn
         for (int i = 0; i < s.mons.size(); i++) {
             boolean affected = (fx.aoe || c.aoe) ? !st.dead[i] : i == target;
             if (!affected) continue;
@@ -358,6 +359,7 @@ public final class Planner {
         }
         st.strGain += fx.strength + fx.tempStrength;
         st.permStr += fx.strength;
+        st.dexGain += fx.dexterity;
         st.draw += fx.draw;
         st.selfLoss += fx.selfDamage;
         if (fx.isPower) st.powers++;
@@ -468,6 +470,7 @@ public final class Planner {
         if (taken + st.retal + st.selfLoss >= s.hp) v -= 500;
         double fight = 1 + Math.min(2, hpLeft / 40.0);
         v += p.strength * st.permStr * fight;
+        v += p.block * st.dexGain * fight * DEX_BLOCK_CARDS;   // Dexterity lasts the fight: +1 on ~1.5 block cards a turn
         if (st.powers > 0) v += p.power * st.powers * (s.elite ? 1.5 : 1) * (s.turn <= 3 ? 1 : 0.5) * fight / 2;
         v += p.draw * st.draw;
         out.dealt = dealt;

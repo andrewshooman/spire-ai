@@ -678,6 +678,19 @@ def migrate(ws: Workspace) -> None:
     if clamped:
         say(f"{clamped} weights pulled back into their bounds")
     ws.model.meta["skip_bounds_v1"] = ws.model.meta["arch_bounds_v1"] = True
+    if "SILENT" in str(ws.model.character).upper() and not ws.model.meta.get("silent_tiers_v1"):
+        # Silent tiers split (Footwork, Adrenaline, Wraith Form... 1.2 -> 1.6): shift learned card weights by the
+        # prior change so the learning is kept. Footwork learned -0.86 while the planner gave Dexterity no lasting
+        # value, so it restarts from its prior.
+        import cards
+        moved = [n for n in cards.TIERS["THE_SILENT"].get(1.6, [])]
+        for n in moved:
+            if f"card:{n}" in ws.model.weights:
+                ws.model.weights[f"card:{n}"] += 0.4
+        for k in [k for k in ws.model.weights if k == "card:Footwork" or k.startswith("cardctx:Footwork:")]:
+            del ws.model.weights[k]
+        ws.model.meta["silent_tiers_v1"] = True
+        say(f"Silent tiers: {len(moved)} top cards +0.4, Footwork back to its prior")
     if ws.model.meta.get("reward_version") != Model.REWARD_VERSION:
         # the reward scale changed: restart the running baselines instead of comparing apples to oranges
         ws.model.meta.update({"reward_version": Model.REWARD_VERSION, "baseline": None, "var": 0.04,

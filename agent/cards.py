@@ -33,12 +33,13 @@ TIERS = {
 }
 # The Silent (community tier lists, A0-ish): seeds the learned card:<name> weights like the Ironclad ones.
 TIERS["THE_SILENT"] = {
-    1.2: ["Footwork", "Noxious Fumes", "Catalyst", "Wraith Form", "Adrenaline", "Backflip", "Blade Dance", "Dash",
-          "Leg Sweep", "Piercing Wail", "Malaise", "Well-Laid Plans", "Acrobatics", "Escape Plan", "Dodge and Roll",
-          "Blur", "Terror", "Bullet Time", "After Image", "Accuracy", "Burst", "Glass Knife", "Die Die Die",
-          "Predator", "Deadly Poison", "Bouncing Flask", "Cloak and Dagger", "Corpse Explosion", "Crippling Cloud",
-          "Riddle with Holes", "Tools of the Trade", "Calculated Gamble", "Heel Hook", "Skewer", "Dagger Spray",
-          "Sucker Punch", "A Thousand Cuts"],
+    # scaling defense and the best commons/uncommons (the Silent survives act 2 on Dexterity, Weak and draw)
+    1.6: ["Footwork", "Adrenaline", "Noxious Fumes", "Wraith Form", "Malaise", "Piercing Wail", "Leg Sweep",
+          "Backflip", "Acrobatics", "Blade Dance", "After Image", "Dash", "Terror", "Glass Knife"],
+    1.2: ["Catalyst", "Well-Laid Plans", "Burst", "Die Die Die", "Predator", "Deadly Poison", "Bouncing Flask",
+          "Cloak and Dagger", "Corpse Explosion", "Crippling Cloud", "Dodge and Roll", "Blur", "Escape Plan",
+          "Bullet Time", "Accuracy", "Tools of the Trade", "Calculated Gamble", "Dagger Spray", "Riddle with Holes",
+          "A Thousand Cuts", "Skewer", "Heel Hook", "Sucker Punch"],
     0.6: ["Quick Slash", "Poisoned Stab", "Dagger Throw", "Slice", "Sneaky Strike", "Flying Knee", "Prepared", "Outmaneuver",
           "Deflect", "Caltrops", "Infinite Blades", "Storm of Steel", "Eviscerate", "Unload", "Finisher", "Reflex",
           "Tactician", "Expertise", "Choke", "All-Out Attack", "Phantasmal Killer", "Nightmare", "Alchemize",

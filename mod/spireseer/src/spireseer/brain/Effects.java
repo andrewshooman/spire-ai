@@ -10,7 +10,7 @@ import java.util.regex.Pattern;
  * standard wording. Damage and block themselves come from the game's own calculation.
  */
 public final class Effects {
-    public int vuln, weak, draw, energy, strength, tempStrength, selfDamage, enemyStrDown;
+    public int vuln, weak, draw, energy, strength, tempStrength, dexterity, selfDamage, enemyStrDown;
     public boolean exhausts, isPower, randomTarget, aoe;
     // Silent and the cards the planner used to undervalue
     public int poison, poisonMult, shivs, intangible, doubleAttack, doubleSkill;
@@ -53,6 +53,8 @@ public final class Effects {
         int str = find(t, "gain " + N + " strength", magic);
         if (temporary) e.tempStrength = str;
         else if (!trigger) e.strength = str;
+        int dex = find(t, "gain " + N + " dexterity", magic);
+        if (!temporary && !trigger) e.dexterity = dex;
         e.selfDamage = find(t, "lose " + N + " hp", magic);
         e.enemyStrDown = find(t, "enemy loses " + N + " strength", magic);
         if (e.enemyStrDown == 0) e.enemyStrDown = find(t, "all enemies lose " + N + " strength", magic);

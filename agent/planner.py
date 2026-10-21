@@ -72,9 +72,12 @@ class Mon:
         return n
 
 
+DEX_BLOCK_CARDS = 1.5   # block cards played per turn, for the lasting value of Dexterity
+
+
 class Sim:
     __slots__ = ("energy", "block", "str", "dex", "weak", "frail", "mons", "self_loss", "card_loss",
-                 "perm_str", "turn_str", "turn_block", "turn_energy", "turn_dmg", "powers",
+                 "perm_str", "perm_dex", "turn_str", "turn_block", "turn_energy", "turn_dmg", "powers",
                  "draw_value", "enrage", "curiosity", "played", "junk", "self_vuln", "self_weak",
                  "self_frail", "thorns_back", "ended", "retal", "intangible", "double_atk", "double_skill",
                  "heal")
@@ -147,6 +150,7 @@ def build(message, deck_names: list[str]) -> tuple[Sim, Ctx]:
     sim.weak = pw(p.powers, "Weakened") > 0
     sim.frail = pw(p.powers, "Frail") > 0
     sim.self_loss = sim.card_loss = sim.retal = 0.0
+    sim.perm_dex = 0
     sim.perm_str = sim.turn_str = sim.turn_block = sim.turn_energy = sim.turn_dmg = 0
     sim.powers = 0
     sim.draw_value = 0.0
@@ -307,6 +311,7 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int],
         sim.perm_str += sim.str
         sim.str *= 2
     sim.dex += e.dex
+    sim.perm_dex += e.dex
     # hand-exhausting cards
     others = [j for j in remaining if j != idx]
     exhausted = 0
@@ -507,6 +512,9 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
         v -= 500.0
     fight = 1.0 + min(2.0, enemy_left / 40.0)
     v += P["strength"] * sim.perm_str * fight
+    # Dexterity lasts the fight like Strength: +1 block on each block card, ~1.5 of them a turn (Footwork sat
+    # in hand valued only as a generic power, and the Silent learned to skip it: taken 5 times in 68 offers)
+    v += P["block"] * sim.perm_dex * fight * DEX_BLOCK_CARDS
     v += P["strength"] * sim.turn_str * fight * 1.5
     v += P["block"] * sim.turn_block * fight * 0.7
     v += P["damage"] * sim.turn_dmg * max(1, sum(1 for m in sim.mons if not m.dead)) * fight * 0.7

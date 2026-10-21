@@ -38,7 +38,8 @@ CARDS = {
     "Catalyst": ("Catalyst", "SKILL", 1, True), "Bouncing Flask": ("Bouncing Flask", "SKILL", 2, False),
     "Deadly Poison": ("Deadly Poison", "SKILL", 1, True),
     "Wraith Form": ("Wraith Form", "POWER", 3, False), "Double Tap": ("Double Tap", "SKILL", 1, False),
-    "Reaper": ("Reaper", "ATTACK", 2, False),
+    "Reaper": ("Reaper", "ATTACK", 2, False), "Footwork": ("Footwork", "POWER", 1, False),
+    "Defend_G": ("Defend_G", "SKILL", 1, False),
 }
 
 
@@ -493,6 +494,13 @@ def main() -> None:
     full = planner.plan_turn(state(["Reaper"], [monster("Louse", 12, 0), monster("Louse", 12, 0)], hp=80, energy=2), P, [])
     check("Reaper's healing counts when hurt", (hurt.value - hurt.base) > (full.value - full.base) + 5,
           f"{hurt.value - hurt.base:+.1f} vs {full.value - full.base:+.1f}")
+    # Dexterity lasts the fight: Footwork over one Defend on a quiet turn, but not when the hit would kill
+    calm = state(["Footwork", "Defend"], [monster("Jaw Worm", 44, 5)], energy=1)
+    check("Footwork on a quiet turn", names(planner.plan_turn(calm, P, []), calm) == ["Footwork"],
+          ", ".join(names(planner.plan_turn(calm, P, []), calm)))
+    lethal = state(["Footwork", "Defend"], [monster("Jaw Worm", 44, 11)], hp=8, energy=1)
+    check("Defend when the hit would kill", names(planner.plan_turn(lethal, P, []), lethal) == ["Defend"],
+          ", ".join(names(planner.plan_turn(lethal, P, []), lethal)))
     # overnight Silent runs: low-HP pathing everywhere, Velvet Choker vs Shiv decks, no auto Smoke Bomb
     low = NS(act=1, floor=9, current_hp=20, max_hp=70, gold=99, relics=[], deck=real_deck, character="THE_SILENT")
     r = policy.PolicyAgent()._map_rules(low)

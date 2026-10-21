@@ -1209,6 +1209,12 @@ class PolicyAgent:
                                  cache_labels=[o.label for o in live])
             if k is not None:
                 idx, by = k, self._llm_source
+        guard = FIGHT_EVENT_GUARD.get(s.event_name)
+        if guard and g.current_hp < guard[1] * g.max_hp and re.search(guard[0], f"{live[idx].label} {live[idx].text}".lower()):
+            # optional event fights at low HP killed 8 Silent runs (Bandits at 2/65 HP): a hard rule over the LLM
+            other = [k for k, o in enumerate(live) if not re.search(guard[0], f"{o.label} {o.text}".lower())]
+            if other:
+                idx, by = other[0], f"rule: {g.current_hp}/{g.max_hp} HP is under {guard[1]:.0%}, no optional fight"
         tr.events.append({"kind": "event", "options": feats, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
         self._log_choice(g, "event: " + s.event_name, [o.label for o in live], feats, heur, probs, idx, by)
@@ -1493,10 +1499,11 @@ EVENT_RULES = [
     ("Wing Statue", r"remove", 1.0, lambda h, g: h >= 0.3), ("Mushrooms", r"fight|stomp", 0.6, lambda h, g: h >= 0.55),
     ("Dead Adventurer", r"search", -1.0, lambda h, g: h < 0.5),
     ("Ancient Writing", r"upgrade all|strike", 1.5, lambda h, g: _basics(g) >= 4),
-    ("Augmenter", r"transform 2|transform two", 1.2, None), ("The Colosseum", r"fight|win", 0.8, lambda h, g: h >= 0.5),
+    ("Augmenter", r"transform 2|transform two", 1.2, None), ("The Colosseum", r"fight|win", 0.8, lambda h, g: h >= 0.6),
     ("Council of Ghosts", r"apparition|accept", 1.5, None), ("Cursed Tome", r"read|book", 0.8, lambda h, g: h >= 0.5),
     ("The Library", r"choose|card", 0.6, lambda h, g: h >= 0.5), ("The Library", r"heal|sleep", 0.8, lambda h, g: h < 0.5),
-    ("Masked Bandits", r"fight", 0.8, lambda h, g: h >= 0.5), ("The Nest", r"dagger", 1.2, None),
+    ("Masked Bandits", r"fight", 0.8, lambda h, g: h >= 0.7), ("Masked Bandits", r"fight", -2.0, lambda h, g: h < 0.7),
+    ("The Colosseum", r"victory", -2.0, lambda h, g: h < 0.6), ("The Nest", r"dagger", 1.2, None),
     ("Pleading Vagrant", r"relic", 1.0, None), ("Vampires(?)", r"bite|vampire", -1.5, None),
     ("Vampires", r"bite|vampire", -1.5, None), ("Old Beggar", r"remove", 0.4, None),
     ("The Mausoleum", r"writhe|curse|open", -1.2, None), ("Forgotten Altar", r"golden idol|offer", 2.0, None),
@@ -1504,6 +1511,10 @@ EVENT_RULES = [
     ("Mind Bloom", r"awake|cannot heal", -1.5, None), ("Mysterious Sphere", r"open|fight", 0.8, lambda h, g: h >= 0.6),
     ("Sensory Stone", r"3 card|three", 0.8, lambda h, g: h >= 0.4), ("Winding Halls", r"madness", -0.5, None),
 ]
+
+
+# optional event fights: (event, regex for the fight option, minimum HP fraction); enforced over the LLM
+FIGHT_EVENT_GUARD = {"Masked Bandits": (r"fight", 0.7), "The Colosseum": (r"victory", 0.6)}
 
 
 def _basics(g) -> int:

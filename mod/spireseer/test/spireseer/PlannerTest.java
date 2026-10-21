@@ -236,6 +236,26 @@ public final class PlannerTest {
         check("Reaper's healing counts when hurt", ph.value - ph.base > pf.value - pf.base + 5,
               String.format("%.1f vs %.1f", ph.value - ph.base, pf.value - pf.base));
 
+        // Dexterity lasts the fight: Footwork over one Defend on a quiet turn, Defend when the hit would kill
+        Sim fwQuiet = sim(70, 1);
+        mon(fwQuiet, "Jaw Worm", 44, 5, 1, 0);
+        card(fwQuiet, "Footwork", "POWER", 1, 0, 0, false, "Gain !M! Dexterity.", 2);
+        defend(fwQuiet);
+        p = Planner.plan(fwQuiet, P);
+        check("Footwork on a quiet turn", names(fwQuiet, p).startsWith("Footwork"), p.describe(fwQuiet));
+        Sim fwKill = sim(8, 1);
+        mon(fwKill, "Jaw Worm", 44, 11, 1, 0);
+        card(fwKill, "Footwork", "POWER", 1, 0, 0, false, "Gain !M! Dexterity.", 2);
+        defend(fwKill);
+        p = Planner.plan(fwKill, P);
+        check("Defend when the hit would kill", names(fwKill, p).startsWith("Defend"), p.describe(fwKill));
+        Sim fwBoth = sim(70, 2);
+        mon(fwBoth, "Jaw Worm", 44, 20, 1, 0);
+        card(fwBoth, "Footwork", "POWER", 1, 0, 0, false, "Gain !M! Dexterity.", 2);
+        defend(fwBoth);
+        p = Planner.plan(fwBoth, P);
+        check("Footwork then Defend blocks 7", names(fwBoth, p).startsWith("Footwork") && p.block == 7, p.describe(fwBoth));
+
         // potions (Spire AI policy._potion rules)
         PotionAdvisor.Context ctx = new PotionAdvisor.Context();
         ctx.boss = true; ctx.turn = 1; ctx.hp = 60; ctx.maxHp = 80; ctx.champHp = 420; ctx.champMaxHp = 420;
