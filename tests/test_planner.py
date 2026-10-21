@@ -40,6 +40,9 @@ CARDS = {
     "Wraith Form": ("Wraith Form", "POWER", 3, False), "Double Tap": ("Double Tap", "SKILL", 1, False),
     "Reaper": ("Reaper", "ATTACK", 2, False), "Footwork": ("Footwork", "POWER", 1, False),
     "Defend_G": ("Defend_G", "SKILL", 1, False),
+    "Zap": ("Zap", "SKILL", 1, False), "Dualcast": ("Dualcast", "SKILL", 1, False),
+    "Coolheaded": ("Coolheaded", "SKILL", 1, False), "Defend_B": ("Defend_B", "SKILL", 1, False),
+    "Defragment": ("Defragment", "POWER", 1, False),
 }
 
 
@@ -56,7 +59,8 @@ def monster(name: str, hp: int, dmg: int, hits: int = 1, block: int = 0, powers=
             "powers": [{"id": p, "name": p, "amount": a} for p, a in powers]}
 
 
-def state(hand: list[str], monsters: list[dict], hp: int = 70, energy: int = 3, potions=(), room="MonsterRoom", turn=2):
+def state(hand: list[str], monsters: list[dict], hp: int = 70, energy: int = 3, potions=(), room="MonsterRoom", turn=2,
+          orbs=None):
     s = copy.deepcopy(json.loads((FIX / "none-1.json").read_text()))
     g = s["game_state"]
     g.update({"class": "IRONCLAD", "room_type": room, "current_hp": hp, "max_hp": 80, "floor": 20, "act": 2})
@@ -64,7 +68,7 @@ def state(hand: list[str], monsters: list[dict], hp: int = 70, energy: int = 3, 
     c["hand"] = [card(n, i) for i, n in enumerate(hand)]
     c["monsters"] = monsters
     c["turn"] = turn
-    c["player"].update(current_hp=hp, max_hp=80, energy=energy, block=0, orbs=[], powers=[])
+    c["player"].update(current_hp=hp, max_hp=80, energy=energy, block=0, orbs=orbs or [], powers=[])
     g["relics"] = [{"id": "Burning Blood", "name": "Burning Blood", "counter": -1}]
     g["deck"] = [card(n, i) for i, n in enumerate(["Strike"] * 5 + ["Defend"] * 4 + ["Bash"])]
     pots = [{"id": n, "name": n, "can_use": True, "can_discard": True, "requires_target": False} for n in potions]
@@ -604,6 +608,28 @@ def main() -> None:
     act_, note = policy.PolicyAgent()._rest(parse_message(rs), None)
     check("mid-act campfires use their own weights (rest:h1 / smith:h1)",
           "rest:h1" in policy.CONFIG.tracker.events[-1]["options"][0], note)
+    # Defect orbs: channel, evoke, passives, Focus
+    slot = {"name": "Orb Slot", "evoke_amount": 0, "passive_amount": 0}
+    light = {"id": "Lightning", "name": "Lightning", "evoke_amount": 8, "passive_amount": 3}
+    msg = state(["Zap", "Defend_B"], [monster("Jaw Worm", 40, 0)], energy=1, orbs=[slot] * 3)
+    check("Defect: Zap on a quiet turn (a Lightning orb hits every turn)", names(planner.plan_turn(msg, P, []), msg) == ["Zap"],
+          ", ".join(names(planner.plan_turn(msg, P, []), msg)))
+    msg = state(["Dualcast", "Defend_B"], [monster("Jaw Worm", 15, 10)], energy=1, orbs=[light, slot, slot])
+    plan = planner.plan_turn(msg, P, [])
+    check("Defect: Dualcast evokes Lightning twice (16) to finish a 15 HP enemy",
+          names(plan, msg) == ["Dualcast"] and plan.summary["kills"] == 1, plan.describe(msg.game_state.combat_state.hand, msg.game_state.combat_state.monsters))
+    frost = {"id": "Frost", "name": "Frost", "evoke_amount": 5, "passive_amount": 2}
+    msg = state(["Strike"], [monster("Jaw Worm", 40, 6)], energy=0, orbs=[frost, frost, frost])
+    plan = planner.plan_turn(msg, P, [])
+    check("Defect: three Frost orbs block 6 at the end of the turn", plan.summary["taken"] == 0, str(plan.summary))
+    msg = state(["Zap"], [monster("Jaw Worm", 40, 0)], energy=1, orbs=[light, light, light])
+    sim, ctx = planner.build(msg, [])
+    planner.play(sim, ctx, 0, None, [0])
+    check("Defect: channeling into full slots evokes the oldest orb (8 damage)",
+          len(sim.orbs) == 3 and sim.mons[0].hp == 32, f"orbs {sim.orbs} hp {sim.mons[0].hp}")
+    msg = state(["Defragment", "Defend_B"], [monster("Jaw Worm", 40, 0)], energy=1, orbs=[light, light, slot])
+    check("Defect: Focus with orbs out beats a Defend on a quiet turn",
+          names(planner.plan_turn(msg, P, []), msg) == ["Defragment"], ", ".join(names(planner.plan_turn(msg, P, []), msg)))
     # overnight Silent runs: low-HP pathing everywhere, Velvet Choker vs Shiv decks, no auto Smoke Bomb
     low = NS(act=1, floor=9, current_hp=20, max_hp=70, gold=99, relics=[], deck=real_deck, character="THE_SILENT")
     r = policy.PolicyAgent()._map_rules(low)

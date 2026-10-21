@@ -305,7 +305,9 @@ class Effects:
                  "enemy_str_down_temp", "poison", "per_strike", "exhaust_hand", "block_per_exhaust",
                  "damage_per_exhaust", "if_vuln", "per_turn_strength", "per_turn_block",
                  "per_turn_energy", "per_turn_damage", "thorns", "dex", "known", "shivs", "poison_mult",
-                 "intangible", "double_attack", "double_skill", "heal_unblocked")
+                 "intangible", "double_attack", "double_skill", "heal_unblocked",
+                 "channel", "channel_per_enemy", "channel_x", "evoke", "focus", "orb_slots", "recursion",
+                 "per_orb", "lightning_all")
 
     def __init__(self):
         self.damage = 0; self.hits = 1; self.aoe = False; self.random_target = False
@@ -326,6 +328,16 @@ class Effects:
         self.double_attack = 0  # Double Tap: next N Attacks played twice
         self.double_skill = 0   # Burst: next N Skills played twice
         self.heal_unblocked = False  # Reaper: heal the unblocked damage it deals
+        # Defect orbs
+        self.channel = []        # orbs channeled on play, in order ("Lightning", "Frost", "Dark", "Plasma")
+        self.channel_per_enemy = ""   # Chill: one of this orb per enemy
+        self.channel_x = ""      # Tempest: X of this orb
+        self.evoke = 0           # evoke the next orb N times (-1 = X times: Multi-Cast)
+        self.focus = 0           # Focus gained for the fight (Consume, Defragment, Biased Cognition)
+        self.orb_slots = 0       # orb slots gained (Capacitor) or lost (Consume)
+        self.recursion = False   # Recursion: evoke the next orb, then channel it again
+        self.per_orb = False     # Barrage: one hit per channeled orb
+        self.lightning_all = False   # Electrodynamics: Lightning hits every enemy
 
 
 def _int(pattern: str, text: str, default: int = 0) -> int:
@@ -436,6 +448,26 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
     e.strength_mult = _int(r"Strength affects this card (\d+) times", t, 1)
     e.hp_loss = _int(r"Lose (\d+) HP", t)
     e.dex = _int(r"Gain (\d+) Dexterity", t)
+    # Defect orbs
+    for n, kind in re.findall(r"Channel (\d+) (Lightning|Frost|Dark|Plasma)(?! for each)", t, flags=re.IGNORECASE):
+        e.channel += [kind.title()] * int(n)
+    m = re.search(r"Channel 1 (Lightning|Frost|Dark|Plasma) for each enemy", t, flags=re.IGNORECASE)
+    if m:
+        e.channel_per_enemy = m.group(1).title()
+    m = re.search(r"Channel X (Lightning|Frost|Dark|Plasma)", t, flags=re.IGNORECASE)
+    if m:
+        e.channel_x = m.group(1).title()
+    if re.search(r"Evoke your next Orb X times", t, flags=re.IGNORECASE):
+        e.evoke = -1
+    elif re.search(r"Evoke your next Orb twice", t, flags=re.IGNORECASE):
+        e.evoke = 2
+    elif re.search(r"Evoke your next Orb", t, flags=re.IGNORECASE):
+        e.evoke = 1
+    e.recursion = bool(re.search(r"Channel the Orb that was just Evoked", t, flags=re.IGNORECASE))
+    e.focus = _int(r"Gain (\d+) Focus", t)
+    e.orb_slots = _int(r"Gain (\d+) Orb slot", t) - _int(r"Lose (\d+) Orb slot", t)
+    e.per_orb = bool(re.search(r"for each Channeled Orb", t, flags=re.IGNORECASE))
+    e.lightning_all = bool(re.search(r"Lightning now hits ALL enemies", full, flags=re.IGNORECASE))
     if e.block_per_exhaust:
         e.block = 0
     return e

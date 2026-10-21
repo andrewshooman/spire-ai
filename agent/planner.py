@@ -80,20 +80,22 @@ class Sim:
                  "perm_str", "perm_dex", "turn_str", "turn_block", "turn_energy", "turn_dmg", "powers",
                  "draw_value", "enrage", "curiosity", "played", "junk", "self_vuln", "self_weak",
                  "self_frail", "thorns_back", "ended", "retal", "intangible", "double_atk", "double_skill",
-                 "heal")
+                 "heal", "orbs", "orb_slots", "focus", "perm_focus", "lightning_all")
 
     def copy(self) -> "Sim":
         n = Sim.__new__(Sim)
         for s in Sim.__slots__:
             setattr(n, s, getattr(self, s))
         n.mons = [m.copy() for m in self.mons]
+        n.orbs = [list(o) for o in self.orbs]
         return n
 
     def key(self) -> tuple:
         return (self.energy, self.block, self.str, self.dex, self.played,
                 tuple((m.hp, m.block, m.vuln, m.weak, m.down, m.artifact, m.poison) for m in self.mons),
                 round(self.draw_value, 2), self.perm_str, self.powers, self.self_loss,
-                self.double_atk, self.double_skill, self.intangible, round(self.heal, 1))
+                self.double_atk, self.double_skill, self.intangible, round(self.heal, 1),
+                tuple(tuple(o) for o in self.orbs), self.focus, self.orb_slots)
 
 
 @dataclass
@@ -163,6 +165,13 @@ def build(message, deck_names: list[str]) -> tuple[Sim, Ctx]:
     sim.double_atk = pw(p.powers, "Double Tap")
     sim.double_skill = pw(p.powers, "Burst")
     sim.heal = 0.0
+    # Defect orbs: the game reports each orb's evoke/passive amounts with Focus already applied
+    orbs = getattr(p, "orbs", None) or []
+    sim.orb_slots = len(orbs)
+    sim.orbs = [[o.name, o.evoke_amount, o.passive_amount] for o in orbs if o.name in ORB_BASE]
+    sim.focus = pw(p.powers, "Focus")
+    sim.perm_focus = 0
+    sim.lightning_all = pw(p.powers, "Electrodynamics", "Electro") > 0
     sim.ended = False
     sim.mons = []
     for i, m in enumerate(c.monsters):
@@ -391,6 +400,8 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int],
             m = max(live, key=lambda x: (x.prio, -x.hp))
             per = (4 + sim.str) * (0.75 if sim.weak else 1.0)
             _hit(sim, m, int(per * (1.5 if m.vuln > 0 else 1.0)))
+    if sim.orb_slots or e.orb_slots or e.channel or e.channel_per_enemy or e.channel_x:
+        _orb_effects(sim, e, tgt, x_energy)
     if getattr(e, "poison_mult", 0) and tgt is not None and not tgt.dead and tgt.poison:
         tgt.poison *= e.poison_mult            # Catalyst
     if e.draw and vuln_ok:
@@ -421,6 +432,101 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int],
 
 # ---------------------------------------------------------------- scoring
 
+# ---------------------------------------------------------------- Defect orbs
+
+ORB_BASE = {"Lightning": (3, 8), "Frost": (2, 5), "Dark": (6, 6), "Plasma": (1, 2)}   # (passive, evoke) at 0 Focus
+ORB_FUTURE = 0.7   # orbs keep paying every turn: their passives count for the rest of the fight, like Strength
+
+
+def _orb_new(kind: str, focus: int) -> list:
+    """[kind, evoke amount, passive amount] for a freshly channeled orb."""
+    passive, evoke = ORB_BASE[kind]
+    if kind in ("Lightning", "Frost"):
+        return [kind, max(0, evoke + focus), max(0, passive + focus)]
+    if kind == "Dark":
+        return [kind, evoke, max(0, passive + focus)]
+    return [kind, evoke, passive]
+
+
+def _orb_target(sim: Sim):
+    live = [m for m in sim.mons if not m.dead]
+    return max(live, key=lambda x: (x.prio, -x.hp)) if live else None
+
+
+def _lightning(sim: Sim, amount: int) -> None:
+    targets = [m for m in sim.mons if not m.dead] if sim.lightning_all else [_orb_target(sim)]
+    for m in targets:
+        if m is not None:
+            _hit(sim, m, amount)   # orb damage ignores Strength, Weak and Vulnerable
+
+
+def _evoke(sim: Sim, orb: list) -> None:
+    kind, amount = orb[0], orb[1]
+    if kind == "Lightning":
+        _lightning(sim, amount)
+    elif kind == "Frost":
+        sim.block += amount
+    elif kind == "Dark":
+        live = [m for m in sim.mons if not m.dead]
+        if live:
+            _hit(sim, min(live, key=lambda x: x.hp), amount)   # Dark evokes on the lowest-HP enemy
+    elif kind == "Plasma":
+        sim.energy += amount
+
+
+def _channel(sim: Sim, kind: str) -> None:
+    if sim.orb_slots <= 0 or kind not in ORB_BASE:
+        return
+    if len(sim.orbs) >= sim.orb_slots:
+        _evoke(sim, sim.orbs.pop(0))   # full: the oldest orb is evoked to make room
+    sim.orbs.append(_orb_new(kind, sim.focus))
+
+
+def _orb_effects(sim: Sim, e, tgt, x_energy: int) -> None:
+    """Focus, orb slots, evoke and channel effects of one card, in the order the game applies them."""
+    if e.focus:
+        sim.focus += e.focus
+        sim.perm_focus += e.focus
+        for o in sim.orbs:
+            if o[0] in ("Lightning", "Frost"):
+                o[1] = max(0, o[1] + e.focus)
+                o[2] = max(0, o[2] + e.focus)
+            elif o[0] == "Dark":
+                o[2] = max(0, o[2] + e.focus)
+    if e.orb_slots:
+        sim.orb_slots = max(0, sim.orb_slots + e.orb_slots)
+        del sim.orbs[sim.orb_slots:]
+    if e.lightning_all:
+        sim.lightning_all = True
+    if e.per_orb and tgt is not None and len(sim.orbs) > 1:
+        per = int((e.damage + sim.str) * (0.75 if sim.weak else 1.0) * (1.5 if tgt.vuln > 0 else 1.0))
+        for _ in range(len(sim.orbs) - 1):   # Barrage: the first hit was the card's own damage
+            if not tgt.dead:
+                _hit(sim, tgt, per)
+    times = x_energy if e.evoke == -1 else e.evoke
+    if times and sim.orbs:
+        orb = sim.orbs.pop(0)
+        for _ in range(times):
+            _evoke(sim, orb)
+        if e.recursion:
+            _channel(sim, orb[0])
+    live = sum(1 for m in sim.mons if not m.dead)
+    for kind in list(e.channel) + [e.channel_per_enemy] * (live if e.channel_per_enemy else 0) + \
+            [e.channel_x] * (x_energy if e.channel_x else 0):
+        _channel(sim, kind)
+
+
+def _orb_passives(sim: Sim) -> None:
+    """End of turn, before the enemies act: Lightning hits, Frost blocks, Dark grows."""
+    for o in sim.orbs:
+        if o[0] == "Lightning":
+            _lightning(sim, o[2])
+        elif o[0] == "Frost":
+            sim.block += o[2]
+        elif o[0] == "Dark":
+            o[1] += o[2]
+
+
 def incoming(sim: Sim) -> tuple[float, int]:
     total, hits = 0.0, 0
     for m in sim.mons:
@@ -439,6 +545,9 @@ def incoming(sim: Sim) -> tuple[float, int]:
 
 
 def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
+    if sim.orbs:
+        sim = sim.copy()
+        _orb_passives(sim)   # they trigger before the enemies act: Frost blocks this turn's hits
     v = 0.0
     dealt = 0.0
     kills = 0
@@ -512,6 +621,16 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
         v -= 500.0
     fight = 1.0 + min(2.0, enemy_left / 40.0)
     v += P["strength"] * sim.perm_str * fight
+    if sim.orbs or sim.perm_focus:
+        # orbs and Focus keep working every turn for the rest of the fight
+        live = max(1, sum(1 for m in sim.mons if not m.dead))
+        light = sum(o[2] for o in sim.orbs if o[0] == "Lightning") * (live if sim.lightning_all else 1)
+        frost = sum(o[2] for o in sim.orbs if o[0] == "Frost")
+        dark = sum(1 for o in sim.orbs if o[0] == "Dark")
+        plasma = sum(1 for o in sim.orbs if o[0] == "Plasma")
+        v += (P["damage"] * light + P["block"] * frost + P["damage"] * 3.0 * dark
+              + P["energy"] * 0.5 * plasma) * fight * ORB_FUTURE
+        v += P["block"] * sim.perm_focus * max(1, len(sim.orbs)) * fight * 0.5
     # Dexterity lasts the fight like Strength: +1 block on each block card, ~1.5 of them a turn (Footwork sat
     # in hand valued only as a generic power, and the Silent learned to skip it: taken 5 times in 68 offers)
     v += P["block"] * sim.perm_dex * fight * DEX_BLOCK_CARDS
