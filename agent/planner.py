@@ -76,7 +76,8 @@ class Sim:
     __slots__ = ("energy", "block", "str", "dex", "weak", "frail", "mons", "self_loss", "card_loss",
                  "perm_str", "turn_str", "turn_block", "turn_energy", "turn_dmg", "powers",
                  "draw_value", "enrage", "curiosity", "played", "junk", "self_vuln", "self_weak",
-                 "self_frail", "thorns_back", "ended", "retal")
+                 "self_frail", "thorns_back", "ended", "retal", "intangible", "double_atk", "double_skill",
+                 "heal")
 
     def copy(self) -> "Sim":
         n = Sim.__new__(Sim)
@@ -88,7 +89,8 @@ class Sim:
     def key(self) -> tuple:
         return (self.energy, self.block, self.str, self.dex, self.played,
                 tuple((m.hp, m.block, m.vuln, m.weak, m.down, m.artifact, m.poison) for m in self.mons),
-                round(self.draw_value, 2), self.perm_str, self.powers, self.self_loss)
+                round(self.draw_value, 2), self.perm_str, self.powers, self.self_loss,
+                self.double_atk, self.double_skill, self.intangible, round(self.heal, 1))
 
 
 @dataclass
@@ -153,6 +155,10 @@ def build(message, deck_names: list[str]) -> tuple[Sim, Ctx]:
     sim.junk = 0
     sim.self_vuln = sim.self_weak = sim.self_frail = 0
     sim.thorns_back = 0
+    sim.intangible = pw(p.powers, "Intangible", "IntangiblePlayer") > 0
+    sim.double_atk = pw(p.powers, "Double Tap")
+    sim.double_skill = pw(p.powers, "Burst")
+    sim.heal = 0.0
     sim.ended = False
     sim.mons = []
     for i, m in enumerate(c.monsters):
@@ -255,14 +261,25 @@ def _debuff(m: Mon, vuln: int, weak: int) -> None:
             m.new_weak += n
 
 
-def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int]) -> None:
-    """Apply one card to the simulated turn; `remaining` is the hand before it (read only)."""
+def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int],
+         _echo: bool = False, _x: int = 0) -> None:
+    """Apply one card to the simulated turn; `remaining` is the hand before it (read only).
+    _echo: the free second copy from Double Tap / Burst (no energy, same X)."""
     card, e = ctx.hand[idx], ctx.effects[idx]
     ctype = card.type.value
-    x_energy = sim.energy
-    cost = sim.energy if card.cost == -1 else max(card.cost, 0)
+    x_energy = _x if _echo else sim.energy
+    cost = 0 if _echo else (sim.energy if card.cost == -1 else max(card.cost, 0))
     sim.energy -= cost
-    sim.played += 1
+    if not _echo:
+        sim.played += 1
+    echo = False
+    if not _echo and ctype == "ATTACK" and sim.double_atk > 0:
+        sim.double_atk -= 1
+        echo = True
+    elif not _echo and ctype == "SKILL" and sim.double_skill > 0:
+        sim.double_skill -= 1
+        echo = True
+    hp_before = sum(m.hp for m in sim.mons)
     tgt = next((m for m in sim.mons if m.i == target), None)
     if ctx.beat_of_death:
         sim.self_loss += ctx.beat_of_death
@@ -385,6 +402,16 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int])
         sim.turn_block += e.per_turn_block
         sim.turn_energy += e.per_turn_energy
         sim.turn_dmg += e.per_turn_damage
+    if getattr(e, "intangible", 0):
+        sim.intangible = True
+    if getattr(e, "double_attack", 0):
+        sim.double_atk += e.double_attack
+    if getattr(e, "double_skill", 0):
+        sim.double_skill += e.double_skill
+    if getattr(e, "heal_unblocked", False):
+        sim.heal += max(0, hp_before - sum(m.hp for m in sim.mons))   # Reaper
+    if echo:
+        play(sim, ctx, idx, target, remaining, _echo=True, _x=x_energy)
 
 
 # ---------------------------------------------------------------- scoring
@@ -444,6 +471,11 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
         if m.poison:
             v += P["damage"] * min(m.hp, m.poison * 2.5)
     taken = max(0.0, inc - sim.block)
+    if sim.intangible:
+        taken = min(taken, float(inc_hits))   # Intangible: every hit deals 1
+    if sim.heal:
+        # Reaper: healing is worth as much as HP not lost (only up to the HP missing)
+        v += P["hp_cost"] * min(sim.heal, max(0, ctx.max_hp - ctx.hp + taken))
     v -= P["block"] * taken
     v += P["surplus_block"] * max(0.0, sim.block - inc) * (6 if ctx.barricade else 1)
     hp_frac = ctx.hp / max(1, ctx.max_hp)

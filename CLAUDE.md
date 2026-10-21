@@ -183,6 +183,12 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
 26. Overnight Silent (34 runs: act 1 boss 76%, act 2 boss 3%): low-HP path rule in every act (<40% HP: M/E
     down, R/?/$ up; x2 under 25%); hp_budget left the A/B (always on); never auto Smoke Bomb (escape aborted a
     run); act 2 elites need 70% HP for non-Ironclad; Velvet Choker counts Shiv makers (relics.profile shiv_makers).
+27. Turn + macro analysis (35 Silent, 60 Ironclad runs): incoming-damage prediction is exact, ~6% of turns end with
+    energy + a playable card, but strong cards sat in hand (Wraith Form 12%, Corruption 17%, Double Tap 16%,
+    Reaper 17%). Planner now models player Intangible (hits deal 1), Double Tap / Burst (echo play), Reaper heal.
+    Silent deep runs had 2x the area damage and the poison or Accuracy+Cloak engines: synergy.py gained Silent
+    tags/RULES/NEEDS (poison_src/pay, shiv_src/pay, discard_src/pay), area poison counts as 'aoe', Silent/Defect/
+    Watcher starters excluded as feeders, Quick Slash prior 0.6. The Spireseer mod's planner lacks these (update later).
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

@@ -38,8 +38,8 @@ TIERS["THE_SILENT"] = {
           "Blur", "Terror", "Bullet Time", "After Image", "Accuracy", "Burst", "Glass Knife", "Die Die Die",
           "Predator", "Deadly Poison", "Bouncing Flask", "Cloak and Dagger", "Corpse Explosion", "Crippling Cloud",
           "Riddle with Holes", "Tools of the Trade", "Calculated Gamble", "Heel Hook", "Skewer", "Dagger Spray",
-          "Sucker Punch", "Quick Slash", "A Thousand Cuts"],
-    0.6: ["Poisoned Stab", "Dagger Throw", "Slice", "Sneaky Strike", "Flying Knee", "Prepared", "Outmaneuver",
+          "Sucker Punch", "A Thousand Cuts"],
+    0.6: ["Quick Slash", "Poisoned Stab", "Dagger Throw", "Slice", "Sneaky Strike", "Flying Knee", "Prepared", "Outmaneuver",
           "Deflect", "Caltrops", "Infinite Blades", "Storm of Steel", "Eviscerate", "Unload", "Finisher", "Reflex",
           "Tactician", "Expertise", "Choke", "All-Out Attack", "Phantasmal Killer", "Nightmare", "Alchemize",
           "Backstab", "Bane", "Concentrate", "Doppelganger"],
@@ -295,7 +295,8 @@ class Effects:
                  "conditional_strength", "self_vuln", "self_weak", "self_frail", "enemy_str_down",
                  "enemy_str_down_temp", "poison", "per_strike", "exhaust_hand", "block_per_exhaust",
                  "damage_per_exhaust", "if_vuln", "per_turn_strength", "per_turn_block",
-                 "per_turn_energy", "per_turn_damage", "thorns", "dex", "known", "shivs", "poison_mult")
+                 "per_turn_energy", "per_turn_damage", "thorns", "dex", "known", "shivs", "poison_mult",
+                 "intangible", "double_attack", "double_skill", "heal_unblocked")
 
     def __init__(self):
         self.damage = 0; self.hits = 1; self.aoe = False; self.random_target = False
@@ -312,6 +313,10 @@ class Effects:
         self.per_turn_damage = 0; self.thorns = 0; self.dex = 0; self.known = False
         self.shivs = 0   # Silent: Shivs added to the hand (0 cost, 4 damage each)
         self.poison_mult = 0   # Catalyst: multiply the target's Poison
+        self.intangible = 0    # Wraith Form / Apparition: incoming hits deal 1
+        self.double_attack = 0  # Double Tap: next N Attacks played twice
+        self.double_skill = 0   # Burst: next N Skills played twice
+        self.heal_unblocked = False  # Reaper: heal the unblocked damage it deals
 
 
 def _int(pattern: str, text: str, default: int = 0) -> int:
@@ -371,6 +376,15 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
             e.enemy_str_down = int(m.group(1))
         e.aoe_debuff = e.aoe_debuff or "ALL enemies" in m.group(0)
     e.poison = _int(r"Apply (\d+) Poison", t)
+    e.intangible = _int(r"Gain (\d+) Intangible", t)
+    m = re.search(r"next (\d+ )?(Attack|Skill)s? (?:is|are) played twice", t, re.I)
+    if m:
+        n = int(m.group(1)) if m.group(1) else 1
+        if m.group(2).lower() == "attack":
+            e.double_attack = n
+        else:
+            e.double_skill = n
+    e.heal_unblocked = bool(re.search(r"Heal HP equal to unblocked damage", t, re.I))
     m = re.search(r"(Double|Triple) the enemy's Poison", t, re.I)
     if m:
         e.poison_mult = 2 if m.group(1).lower() == "double" else 3
@@ -426,8 +440,8 @@ def effects(card) -> Effects:
 def roles(card) -> set[str]:
     e = effects(card)
     out = set()
-    if e.aoe and e.damage:
-        out.add("aoe")
+    if (e.aoe and e.damage) or (e.poison and (e.aoe or e.aoe_debuff)):
+        out.add("aoe")   # area poison (Crippling Cloud) answers multi-enemy fights too
     if e.damage * max(e.hits, 1) >= 9 or e.block_scaling:
         out.add("damage")
     if e.block >= 7 or e.double_block:

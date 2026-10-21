@@ -91,6 +91,32 @@ RULES = [
     ("searing->upgrades", "upgrade_pay", {"upgrade"}, 0.4, 2),
 ]
 
+# ---------------------------------------------------------------- the Silent's engines
+# (deeper overnight Silent runs had the poison core or Accuracy + Cloak and Dagger; shallow ones didn't)
+CARD_TAGS.update({
+    "Deadly Poison": {"poison_src"}, "Poisoned Stab": {"poison_src"}, "Bouncing Flask": {"poison_src"},
+    "Crippling Cloud": {"poison_src", "aoe"}, "Noxious Fumes": {"poison_src", "power"}, "Envenom": {"poison_src", "power"},
+    "Corpse Explosion": {"poison_pay", "poison_src", "aoe"}, "Bane": {"poison_pay"}, "Catalyst": {"poison_pay"},
+    "Blade Dance": {"shiv_src"}, "Cloak and Dagger": {"shiv_src"}, "Infinite Blades": {"shiv_src", "power"},
+    "Storm of Steel": {"shiv_src"}, "Accuracy": {"shiv_pay", "power"}, "Finisher": {"shiv_pay"},
+    "After Image": {"shiv_pay", "power"}, "A Thousand Cuts": {"shiv_pay", "power"},
+    "Acrobatics": {"discard_src", "draw"}, "Prepared": {"discard_src"}, "Calculated Gamble": {"discard_src"},
+    "Concentrate": {"discard_src"}, "Dagger Throw": {"discard_src"}, "Tools of the Trade": {"discard_src", "power"},
+    "Gambling Chip": set(), "Reflex": {"discard_pay"}, "Tactician": {"discard_pay"}, "Eviscerate": {"discard_pay"},
+    "Sneaky Strike": {"discard_pay"},
+})
+RELIC_TAGS.update({"Snecko Skull": {"poison_src"}, "Twisted Funnel": {"poison_src"}, "Tough Bandages": {"discard_pay"},
+                   "Tingsha": {"discard_pay"}, "Ninja Scroll": {"shiv_src"}, "Kunai": {"skill_pay", "shiv_pay"},
+                   "Shuriken": {"attack_pay", "shiv_pay"}, "Ornamental Fan": {"attack_pay", "shiv_pay"}})
+RULES += [
+    ("poison->payoff", "poison_pay", {"poison_src"}, 0.35, 4),
+    ("payoff->poison", "poison_src", {"poison_pay"}, 0.25, 3),
+    ("shiv->payoff", "shiv_pay", {"shiv_src"}, 0.4, 3),
+    ("payoff->shiv", "shiv_src", {"shiv_pay"}, 0.3, 3),
+    ("discard->payoff", "discard_pay", {"discard_src"}, 0.35, 4),
+    ("payoff->discard", "discard_src", {"discard_pay"}, 0.2, 3),
+]
+
 # payoff cards that are close to dead without an enabler: (card tag, enabler tags, penalty)
 NEEDS = [
     ("str_mult", {"str_src"}, -1.2),          # Limit Break with no Strength
@@ -99,12 +125,17 @@ NEEDS = [
     ("block_pay", {"block_engine", "block_gen", "block_big"}, -0.5),
     ("selfdmg_pay", {"selfdmg"}, -0.4),
     ("vuln_pay", {"vuln_src"}, -0.4),
+    ("poison_pay", {"poison_src"}, -0.8),      # Catalyst / Bane with no poison
+    ("shiv_pay", {"shiv_src"}, -0.6),          # Accuracy / Finisher with no Shivs
+    ("discard_pay", {"discard_src"}, -0.6),    # Reflex / Tactician with nothing to discard them
 ]
 
 
 NEED_TEXT = {"str_mult": "needs a Strength source (none yet)", "exhaust_need": "needs exhausted cards to return",
              "status_pay": "no status cards to trigger it yet", "block_pay": "needs block makers",
-             "selfdmg_pay": "no self-damage cards yet", "vuln_pay": "no Vulnerable source yet"}
+             "selfdmg_pay": "no self-damage cards yet", "vuln_pay": "no Vulnerable source yet",
+             "poison_pay": "no poison source yet", "shiv_pay": "no Shiv makers yet",
+             "discard_pay": "nothing to discard it with yet"}
 
 
 def base(name: str) -> str:
@@ -121,7 +152,7 @@ def card_tags(name: str) -> set[str]:
 
 # Starter Strikes/Defends are about to be removed: they never count as synergy feeders
 # (they made Body Slam and Perfected Strike look like synergy picks in a starter deck).
-STARTERS = {"Strike", "Defend"}
+STARTERS = {"Strike", "Defend", "Survivor", "Neutralize", "Zap", "Dualcast", "Eruption", "Vigilance"}
 
 
 def deck_tags(deck_names: list[str], relic_names: list[str] = ()) -> Counter:

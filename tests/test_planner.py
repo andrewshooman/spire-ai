@@ -37,6 +37,8 @@ CARDS = {
     "Blade Dance": ("Blade Dance", "SKILL", 1, False), "Survivor": ("Survivor", "SKILL", 1, False),
     "Catalyst": ("Catalyst", "SKILL", 1, True), "Bouncing Flask": ("Bouncing Flask", "SKILL", 2, False),
     "Deadly Poison": ("Deadly Poison", "SKILL", 1, True),
+    "Wraith Form": ("Wraith Form", "POWER", 3, False), "Double Tap": ("Double Tap", "SKILL", 1, False),
+    "Reaper": ("Reaper", "ATTACK", 2, False),
 }
 
 
@@ -479,6 +481,18 @@ def main() -> None:
     iron = NS(act=1, floor=5, current_hp=70, max_hp=70, gold=99, relics=[], deck=real_deck, character="IRONCLAD")
     check("Silent starter deck avoids act 1 elites; Ironclad still takes them",
           policy.PolicyAgent()._map_rules(early).get("E", 0) < 0 < policy.PolicyAgent()._map_rules(iron).get("E", 0))
+    # cards the planner used to undervalue (they sat in hand: Wraith Form 12%, Double Tap 16%, Reaper 17%)
+    msg = state(["Wraith Form", "Defend", "Defend", "Defend"], [monster("Book of Stabbing", 120, 6, 6)], hp=40, energy=3)
+    plan = planner.plan_turn(msg, P, [])
+    check("Wraith Form against a 36-damage turn", names(plan, msg) == ["Wraith Form"], ", ".join(names(plan, msg)))
+    msg = state(["Double Tap", "Heavy Blade"], [monster("Jaw Worm", 60, 0)], energy=3)
+    plan = planner.plan_turn(msg, P, [])
+    check("Double Tap before Heavy Blade hits twice", names(plan, msg) == ["Double Tap", "Heavy Blade"]
+          and plan.summary["dealt"] >= 28, plan.describe(msg.game_state.combat_state.hand, msg.game_state.combat_state.monsters))
+    hurt = planner.plan_turn(state(["Reaper"], [monster("Louse", 12, 0), monster("Louse", 12, 0)], hp=30, energy=2), P, [])
+    full = planner.plan_turn(state(["Reaper"], [monster("Louse", 12, 0), monster("Louse", 12, 0)], hp=80, energy=2), P, [])
+    check("Reaper's healing counts when hurt", (hurt.value - hurt.base) > (full.value - full.base) + 5,
+          f"{hurt.value - hurt.base:+.1f} vs {full.value - full.base:+.1f}")
     # overnight Silent runs: low-HP pathing everywhere, Velvet Choker vs Shiv decks, no auto Smoke Bomb
     low = NS(act=1, floor=9, current_hp=20, max_hp=70, gold=99, relics=[], deck=real_deck, character="THE_SILENT")
     r = policy.PolicyAgent()._map_rules(low)
