@@ -56,14 +56,14 @@ def monster(name: str, hp: int, dmg: int, hits: int = 1, block: int = 0, powers=
             "powers": [{"id": p, "name": p, "amount": a} for p, a in powers]}
 
 
-def state(hand: list[str], monsters: list[dict], hp: int = 70, energy: int = 3, potions=(), room="MonsterRoom"):
+def state(hand: list[str], monsters: list[dict], hp: int = 70, energy: int = 3, potions=(), room="MonsterRoom", turn=2):
     s = copy.deepcopy(json.loads((FIX / "none-1.json").read_text()))
     g = s["game_state"]
     g.update({"class": "IRONCLAD", "room_type": room, "current_hp": hp, "max_hp": 80, "floor": 20, "act": 2})
     c = g["combat_state"]
     c["hand"] = [card(n, i) for i, n in enumerate(hand)]
     c["monsters"] = monsters
-    c["turn"] = 2
+    c["turn"] = turn
     c["player"].update(current_hp=hp, max_hp=80, energy=energy, block=0, orbs=[], powers=[])
     g["relics"] = [{"id": "Burning Blood", "name": "Burning Blood", "counter": -1}]
     g["deck"] = [card(n, i) for i, n in enumerate(["Strike"] * 5 + ["Defend"] * 4 + ["Bash"])]
@@ -173,6 +173,15 @@ def main() -> None:
                 room="MonsterRoomBoss")
     action, note = first(msg)
     check("uses buff potions early in boss fights", isinstance(action, UsePotion), note)
+    # act 2: potions are for the boss -- no elite opener at good HP with a free slot; with a full belt, yes
+    msg = state(["Strike"], [monster("Gremlin Nob", 90, 14)], hp=70, potions=["Strength Potion", "Fire Potion"],
+                room="MonsterRoomElite", turn=1)
+    action, note = first(msg)
+    check("act 2 elite at good HP: keeps potions for the boss", not isinstance(action, UsePotion), note)
+    msg = state(["Strike"], [monster("Gremlin Nob", 90, 14)], hp=70,
+                potions=["Strength Potion", "Fire Potion", "Swift Potion"], room="MonsterRoomElite", turn=1)
+    action, note = first(msg)
+    check("act 2 elite with a full belt: opener (a new drop would be wasted)", isinstance(action, UsePotion), note)
 
     # playbook: per-topic sections keep the learned lessons
     book = (ROOT / "agent" / "strategy_baseline.md").read_text(encoding="utf-8").replace(

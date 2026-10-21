@@ -360,8 +360,10 @@ class PolicyAgent:
             choice, why = pick(["buff", "tempo", "damage"], keep_one=True), "boss fight: potions are free power"
         elif boss and hp_frac < 0.5:
             choice, why = pick(["heal", "defense", "buff", "damage", "tempo"]), "boss fight, HP low"
-        elif elite and c.turn == 1 and used_now == 0 and (len(usable) >= 2 or hp_frac < 0.6) \
-                and g.floor % 17 < 12:  # close to the boss: keep them for it
+        elif elite and c.turn == 1 and used_now == 0 and g.floor % 17 < 12 and (
+                hp_frac < 0.6 or (len(usable) >= 2 if g.act == 1 else empty == 0)):
+            # act 2+: potions are for the boss (Ironclad act 2 boss: 53% beaten arriving with 3 potions, 23-29%
+            # with 1-2; act 2 elite openers had spent 23 of them) -- open only when hurt or the belt is full
             choice, why = pick(["buff", "damage", "tempo"]), "elite opener"
         elif hp_frac < P["potion_hp"] and taken > 0:
             choice, why = pick(["defense", "heal"]), "low HP"
@@ -767,7 +769,22 @@ class PolicyAgent:
         pull = 1.4 if g.gold >= 250 else (0.6 if g.gold >= 170 else -0.4)
         if curses:
             pull += 1.4
+        if _boss_prep(g) and g.gold >= 120 and any(p.id == EMPTY_POTION for p in getattr(g, "potions", [])):
+            pull += 0.6   # runs reached the act 2 boss with ~170 unspent gold and a free potion slot
         return pull
+
+    @staticmethod
+    def _boss_potion(g, labels, prices, potion_names: set) -> int | None:
+        """Before the boss with a free slot: the shop option of the most useful affordable potion (or None)."""
+        if not _boss_prep(g) or not any(p.id == EMPTY_POTION for p in g.potions):
+            return None
+        rank = {"defense": 0, "heal": 0, "buff": 1, "damage": 2, "tempo": 3}
+        best = None
+        for k, (lab, _) in enumerate(labels):
+            kind = potion_kind(lab) if lab in potion_names else None
+            if kind in rank and prices[k] <= g.gold and (best is None or rank[kind] < best[0]):
+                best = (rank[kind], k)
+        return best[1] if best else None
 
     def _map_rules(self, g) -> dict[str, float]:
         """Playbook rules on top of the learned path weights."""
@@ -923,7 +940,7 @@ class PolicyAgent:
                 f.update({"shop:relic": 1.0, "shop:price": (relic.price or 0) / 100})
                 add(f, relic.name, choices.index(n), relic.price or 0, quality)
         if any(p.id == EMPTY_POTION for p in g.potions):
-            late = 1.0 if g.act >= 3 or g.floor in (14, 15, 31, 32, 48, 49) else 0.0
+            late = 1.0 if g.act >= 3 or _boss_prep(g) else 0.0
             for potion in s.potions:
                 n = potion.name.lower()
                 if n in choices:
@@ -950,8 +967,11 @@ class PolicyAgent:
                 purge = next((k for k, (lab, _) in enumerate(labels) if lab == "remove a card"), None)
                 card_names = {c.name for c in s.cards}
                 basics = sum(1 for d in g.deck if C.base_name(d.name) in C.BASIC)
+                pot = self._boss_potion(g, labels, prices, {p.name for p in s.potions})
                 if purge is not None and not removed and (curses or strikes >= 3 or basics >= 5):
                     idx, by = purge, "rule: remove first"   # the LLM kept skipping removal
+                elif pot is not None and (not wish or wish[0] not in {lab for lab, _ in labels}):
+                    idx, by = pot, "rule: potion for the boss"
                 else:
                     while wish:
                         item = wish.pop(0)
@@ -1578,6 +1598,12 @@ PATH_RELIC = {
 def path_relic_prior(key: str) -> float:
     _, relic, sym = key.split(":", 2)
     return PATH_RELIC.get(relic, {}).get(sym, 0.0)
+
+
+def _boss_prep(g) -> bool:
+    """The last stretch before an act boss, when potions are worth buying and keeping."""
+    act, floor = getattr(g, "act", 0), getattr(g, "floor", 0)
+    return (act == 1 and floor >= 10) or (act == 2 and floor >= 24) or act >= 3
 
 
 def _expert_rates(game_char: str) -> dict:
