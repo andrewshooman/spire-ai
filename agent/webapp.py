@@ -11,7 +11,9 @@ API (all GET unless noted; ?char=ironclad|silent|defect|watcher):
     /api/runs              compact list of every run
     /api/run?n=N           one run in full (picks, shops, events, fights, LLM calls, HP...)
     /api/live              what the bot sees right now (live.json)
+    /api/best              best cards and synergies by wins (act 2 boss beaten / won), bot and experts
     /api/sim               simulator bench, training curve, calibration
+    /api/restart           GET: restart pending?  POST: request (or cancel) a restart after the current run
     /api/settings          run settings;  POST /api/settings  saves them (next run applies them)
 
 Only listens on 127.0.0.1.
@@ -24,6 +26,7 @@ import http.server
 import json
 import sys
 import threading
+import time
 import urllib.parse
 from pathlib import Path
 
@@ -139,6 +142,10 @@ class Handler(http.server.BaseHTTPRequestHandler):
             if url.path == "/api/live":
                 p = EVOLVE / char / "live.json"
                 return self._send(200, p.read_bytes() if p.exists() else b"{}", "application/json")
+            if url.path == "/api/restart":
+                return self._json({"pending": (EVOLVE / "restart.request").exists()})
+            if url.path == "/api/best":
+                return self._json(stats.best(char))
             if url.path == "/api/human":
                 return self._json(stats.human_summary(char))
             if url.path == "/api/sim":
@@ -150,6 +157,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
             self._json({"error": f"{type(exc).__name__}: {exc}"}, 500)
 
     def do_POST(self) -> None:  # noqa: N802
+        if urllib.parse.urlparse(self.path).path == "/api/restart":
+            # the bot restarts after the current run (evolve.py checks between runs); a second click cancels
+            f = EVOLVE / "restart.request"
+            if f.exists():
+                f.unlink()
+                return self._json({"pending": False, "note": "Restart cancelled."})
+            f.write_text(time.strftime("%Y-%m-%d %H:%M:%S"), encoding="utf-8")
+            return self._json({"pending": True, "note": "The bot restarts with the current code after this run "
+                                                        "(the game is relaunched; the page reconnects by itself)."})
         if urllib.parse.urlparse(self.path).path != "/api/settings":
             return self._json({"error": "not found"}, 404)
         try:

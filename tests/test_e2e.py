@@ -315,6 +315,10 @@ def main() -> None:
         coach_background=True, llm_shop=True, llm_gap=99.0, llm_cache=True, event_model=None,
         llm_cards=True, llm_share=0.7,
         strategy_baseline=str(ROOT / "agent" / "strategy_baseline.md"))
+    # never touch the real game or the real restart flag from a test
+    killed = []
+    evolve.kill_game = lambda: killed.append(1)
+    evolve.RESTART_FLAG = work / "restart.request"
     with HarnessServer(port=0) as server:
         game = FakeSpire(server.port, random.Random(7))
         game.start()
@@ -354,6 +358,17 @@ def main() -> None:
     notes = [r["note"] for r in csv.DictReader((ws / "progress.csv").open(encoding="utf-8")) if r.get("note")]
     assert notes and all(n.startswith(("measuring", "champion", "kept", "reverted")) for n in notes), notes
     assert (ws / "dashboard.html").exists()
+    # "Restart the bot" (web page): between runs the bot saves, closes the game and exits with RESTART_EXIT
+    n_before = len(list((ws / "runs").glob("run_*.json")))
+    evolve.RESTART_FLAG.write_text("now")
+    args.max_runs = n_before + 5
+    with HarnessServer(port=0) as server:
+        game = FakeSpire(server.port, random.Random(8))
+        game.start()
+        rc2 = evolve.run_loop(args, server=server, log_dir=work / "logs")
+    assert rc2 == evolve.RESTART_EXIT and killed and not evolve.RESTART_FLAG.exists(), (rc2, killed)
+    assert len(list((ws / "runs").glob("run_*.json"))) == n_before, "restart must happen before another run starts"
+    print("restart request: exit", rc2, "game closed, no new run")
     print("E2E OK")
 
 

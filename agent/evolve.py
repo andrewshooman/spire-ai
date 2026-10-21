@@ -544,12 +544,27 @@ def connect(server: HarnessServer, step_timeout: float | None = None) -> tuple[C
     return env, router
 
 
-def relaunch_game() -> None:
-    """Kill only the modded Slay the Spire java process (never other java apps) and start it again."""
+# the web page's "Restart the bot" button drops this file; the bot restarts between runs (start.bat reruns it
+# on exit code RESTART_EXIT and relaunches the game, whose relay can't reconnect to a new bot process)
+RESTART_FLAG = HERE.parent / "evolve" / "restart.request"
+RESTART_EXIT = 75
+
+
+def kill_game() -> None:
+    """Kill only the modded Slay the Spire java process (never other java apps)."""
     ps = ("Get-CimInstance Win32_Process -Filter \"Name like 'java%'\" | "
           "Where-Object { $_.CommandLine -match 'ModTheSpire|desktop-1.0.jar' } | "
           "ForEach-Object { Stop-Process -Id $_.ProcessId -Force }")
     subprocess.run(["powershell", "-NoProfile", "-Command", ps], capture_output=True, timeout=60)
+
+
+def restart_requested() -> bool:
+    return RESTART_FLAG.exists()
+
+
+def relaunch_game() -> None:
+    """Kill only the modded Slay the Spire java process (never other java apps) and start it again."""
+    kill_game()
     time.sleep(3)
     subprocess.Popen(["powershell", "-NoProfile", "-ExecutionPolicy", "Bypass", "-File",
                       str(HERE.parent / "launch-game.ps1"), "-DelaySeconds", "2"])
@@ -899,10 +914,22 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                 s = apply_web_settings(args)
                 if s.get("pause"):
                     say("paused from the web page; waiting at the main menu")
-                    while webapp.load_settings().get("pause"):
+                    while webapp.load_settings().get("pause") and not restart_requested():
                         time.sleep(3)
                     say("resumed")
                     s = apply_web_settings(args)
+            if restart_requested():
+                # between runs: everything is saved; start.bat relaunches the game and reruns the bot on the new code
+                try:
+                    RESTART_FLAG.unlink()
+                except OSError:
+                    pass
+                save_cache(ws, llm_cache)
+                ws.save()
+                say("restart requested from the web page: closing the game and restarting with the current code")
+                kill_game()
+                return RESTART_EXIT
+            if web:
                 want = s.get("character", args.character)
                 if want != args.character:
                     save_cache(ws, llm_cache)

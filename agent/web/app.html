@@ -86,6 +86,8 @@ select,input{font:inherit;background:#1a1612;color:var(--ink);border:1px solid v
 .part{display:inline-block;font-size:11px;padding:0 6px;border-radius:8px;margin:1px 3px 1px 0;background:#2a241c;font-weight:400}
 .part.pos{color:var(--green)} .part.neg{color:var(--red)}
 .whygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:8px}
+.liftbar{display:inline-block;height:8px;border-radius:4px;vertical-align:middle;margin-right:6px}
+.best td{font-size:13px} .best td:nth-child(4){white-space:nowrap} .best .cards{font-size:11px;color:var(--muted)}
 .tag{display:inline-block;font-size:11px;padding:0 6px;border-radius:8px;border:1px solid var(--edge);color:var(--muted);margin-right:3px}
 .map svg{width:100%;max-width:320px;display:block;margin:0 auto}
 .enemy{display:inline-block;min-width:150px;margin:0 8px 8px 0;padding:8px;border:1px solid var(--edge);border-radius:8px;background:#1a1612;vertical-align:top}
@@ -103,7 +105,7 @@ select,input{font:inherit;background:#1a1612;color:var(--ink);border:1px solid v
 <section id=t-overview>
  <div class=kpis id=kpis></div>
  <div class="card" id=current></div>
- <div class="card" id=humancard></div>
+ <div class="card" id=bestcard></div>
  <div class="grid g2">
   <div class=card><h2>Floor reached, every run</h2><div id=trend></div>
    <div class="small muted">dots: grey training, gold bench, green win &middot; line: 20-run average &middot; dashed: act bosses</div></div>
@@ -177,6 +179,11 @@ select,input{font:inherit;background:#1a1612;color:var(--ink);border:1px solid v
   <p class="small muted">Saved to evolve/settings.json and applied at the start of the next run.</p>
   <div class=form id=form></div>
   <p><button class=btn id=save>Save</button> <span id=saved class="small muted"></span></p></div>
+ <div class=card><h2>Restart the bot</h2>
+  <p class="small muted">After a code change: the bot finishes the current run, saves, closes the game and starts again on the
+   new code (the game is relaunched; this page reconnects by itself). Click again to cancel. Needs the bot started with
+   Spire start (start.bat).</p>
+  <p><button class=btn id=restart>Restart after this run</button> <span id=restartnote class="small muted"></span></p></div>
 </section>
 </main>
 <script>
@@ -193,7 +200,7 @@ function setChar(c, picked) {
   if (c === CHAR) return;
   CHAR = c; RUNS = []; SUM = null; lastWins = null; LIVE = null;
   document.body.dataset.char = CHAR; $("#who").textContent = "\u00b7 " + NAME(CHAR);
-  for (const id of ["#kpis", "#trend", "#milestones", "#reach", "#killers", "#recent", "#humancard", "#current"])
+  for (const id of ["#kpis", "#trend", "#milestones", "#reach", "#killers", "#recent", "#bestcard", "#current"])
     if ($(id)) $(id).innerHTML = `<p class=loading>Loading ${NAME(CHAR)}...</p>`;
   header(); refresh();
 }
@@ -320,22 +327,28 @@ function overview(s) {
   if (lastWins !== null && s.wins > lastWins) celebrate(`Victory! Win #${s.wins}`);
   lastWins = s.wins;
 }
-function humanCard(h) {
-  const el = $("#humancard");
-  if (!h.runs) {
-    el.innerHTML = `<h2>You vs the bot</h2><p class=muted>Play on your own profile (main menu → profile) and finished runs
-      are imported before the bot's next run; it learns your card picks, boss relics and rest choices.
-      Steam Deck: copy its <code>runs</code> folder over and run <code>import_runs.bat &lt;folder&gt;</code>.</p>`;
-    return;
-  }
-  const row = (label, a, b, f = pct) => `<tr><td>${label}</td><td><b>${f(a)}</b></td><td>${f(b)}</td></tr>`;
-  el.innerHTML = `<h2>You vs the bot <span class=muted>${h.runs} of your runs · ${h.learned} learned from</span></h2>
-   <div class="grid g2"><div><table><tr><th></th><th>You</th><th>Bot (last ${h.bot_runs})</th></tr>
-    ${row("Win rate", h.you.win, h.bot.win)}${row("Beat act 1 boss", h.you.act1, h.bot.act1)}${row("Beat act 2 boss", h.you.act2, h.bot.act2)}
-    ${row("Avg floor", h.you.avg_floor, h.bot.avg_floor, v => fmt(v))}${row("Card rewards skipped", h.skip_rate, h.bot_skip_rate)}</table></div>
-   <div><div class=small><b>Your favorite picks:</b> ${h.top_picks.map(([c, n]) => `<span class=tag>${esc(c)} ×${n}</span>`).join(" ")}</div>
-    <div class=small style="margin-top:6px"><b>Your boss relics:</b> ${h.boss_relics.map(([c, n]) => `<span class=tag>${esc(c)} ×${n}</span>`).join(" ")}</div>
-    <div class=small style="margin-top:6px"><b>Recent:</b> ${h.recent.map(r => `<span class=tag style="${r.victory ? "color:var(--green)" : ""}">${r.victory ? "WIN" : "F" + r.floor}${r.ascension ? " A" + r.ascension : ""}</span>`).join(" ")}</div></div></div>`;
+function bestCard(b) {
+  const el = $("#bestcard");
+  if (!b.runs) { el.innerHTML = "<h2>Best cards and synergies</h2><p class=muted>Needs runs first.</p>"; return; }
+  // lift = how much more often runs with it beat the act 2 boss (shrunk toward the average)
+  const bar = v => v == null ? "" : `<span class=liftbar style="width:${Math.min(60, Math.round(Math.abs(v) * 300))}px;background:var(${v >= 0 ? "--green" : "--red"})"></span>`;
+  const signed = v => v == null ? "-" : `<span class="${v >= 0 ? "up" : "down"}">${v > 0 ? "+" : ""}${Math.round(100 * v)}</span>`;
+  const cards = (b.cards || []).map(c => `<tr><td><b>${esc(c.card)}</b></td>
+      <td>${pct(c.taken_rate)} <span class=muted>of ${c.taken}</span></td><td>${pct(c.passed_rate)} <span class=muted>of ${c.passed}</span></td>
+      <td>${bar(c.lift)}${signed(c.lift)}</td><td>${pct(c.expert_pick)}</td></tr>`).join("");
+  const syn = (b.synergies || []).map(x => `<tr><td><b>${esc(x.label)}</b><div class=cards>${x.cards.map(esc).join(", ")}</div></td>
+      <td>${pct(x.rate)} <span class=muted>of ${x.decks}</span></td><td>${pct(x.rate_without)}</td><td>${bar(x.lift)}${signed(x.lift)}</td>
+      <td>${x.expert_decks ? `${pct(x.expert_win)} <span class=muted>vs ${pct(x.expert_win_without)}</span>` : "-"}</td></tr>`).join("");
+  el.innerHTML = `<h2>Best cards and synergies <span class=muted>by wins, not floors: how often runs beat the act 2 boss (act 3 picks: won)</span></h2>
+   <div class="grid g2 best">
+    <div><h3 class=small>Cards: runs that took it vs runs offered it that passed (same act)</h3>
+     ${cards ? `<table><tr><th>Card</th><th>Took</th><th>Passed</th><th>Lift</th><th>Experts take</th></tr>${cards}</table>` : "<p class=muted>Needs more runs (6+ takes and passes per card).</p>"}</div>
+    <div><h3 class=small>Synergies working at the start of act 2: decks with it vs without</h3>
+     ${syn ? `<table><tr><th>Synergy</th><th>With</th><th>Without</th><th>Lift</th><th>Experts won</th></tr>${syn}</table>` : "<p class=muted>Needs more runs.</p>"}</div>
+   </div>
+   <div class="small muted" style="margin-top:6px">Bot: ${b.runs} runs, act 2 boss beaten ${pct(b.bot_rate)} of ${b.bot_decks} act 2 decks.
+    Experts (A20 run files): ${b.expert_decks} act 2 decks, ${pct(b.expert_win)} won. Lift is in percentage points and pulled toward the
+    average so a few lucky runs can't top the list; it shows what goes with winning, not proof that the card causes it.</div>`;
 }
 function currentRun() {
   const el = $("#current");
@@ -500,6 +513,19 @@ $("#save").onclick = async () => {
   $("#saved").textContent = r.error ? r.error : "Saved. " + r.note;
 };
 
+async function restartState() {
+  try {
+    const r = await fetch("/api/restart", {cache: "no-store"}).then(r => r.json());
+    $("#restart").textContent = r.pending ? "Cancel restart" : "Restart after this run";
+    if (r.pending) $("#restartnote").textContent = "Restart pending: it happens when the current run ends.";
+  } catch (e) { /* the bot is restarting: the page comes back by itself */ }
+}
+$("#restart").onclick = async () => {
+  const r = await fetch("/api/restart", {method: "POST"}).then(r => r.json());
+  $("#restartnote").textContent = r.note || "";
+  restartState();
+};
+
 // ---------------------------------------------------------------- refresh loop
 async function refresh() {
   try {
@@ -510,9 +536,9 @@ async function refresh() {
         if (!SUM) $("#kpis").innerHTML = `<div class=card><p class=loading>Loading ${NAME(CHAR)} runs...</p></div>`;
         loadingSum = true;
         try {
-          const s = await api("summary"), h = await api("human");
+          const s = await api("summary"), b = await api("best");
           if (want !== CHAR) return;
-          SUM = s; SUM._t = Date.now(); overview(SUM); humanCard(h);
+          SUM = s; SUM._t = Date.now(); overview(SUM); bestCard(b);
         } finally { loadingSum = false; }
       }
       if (SUM) currentRun();
@@ -521,7 +547,7 @@ async function refresh() {
     if (TAB === "runs" && !location.hash.startsWith("#run=")) { RUNS = await api("runs"); runTable(); }
     if (TAB === "insights") { SUM = await api("summary"); SUM._t = Date.now(); insights(SUM); }
     if (TAB === "sim") sim();
-    if (TAB === "settings") settings();
+    if (TAB === "settings") { settings(); restartState(); }
   } catch (e) { $("#status").textContent = "Can't reach the bot's web server"; }
 }
 header(); route();

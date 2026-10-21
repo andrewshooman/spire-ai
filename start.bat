@@ -36,5 +36,13 @@ timeout /t 5 /nobreak >nul
 :run
 if /i not "%OPEN_LIVE_VIEW%"=="no" start "" /min cmd /c "timeout /t 8 /nobreak >nul & start http://127.0.0.1:8765/"
 if /i "%AUTO_LAUNCH_GAME%"=="yes" start "" /min powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0launch-game.ps1" -DelaySeconds 6
+rem exit code 75 = "Restart the bot" from the web page: the bot closed the game after a run; relaunch it and
+rem start the bot again on the current code
+:bot
 "%PY%" agent\evolve.py %FLAGS% %*
+if %errorlevel%==75 (
+  echo Restarting the bot with the current code...
+  start "" /min powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0launch-game.ps1" -DelaySeconds 6
+  goto bot
+)
 pause
