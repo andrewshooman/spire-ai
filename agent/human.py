@@ -398,6 +398,16 @@ def sync(char: str = "ironclad", model: Model | None = None, say=print, source: 
     return counts
 
 
+def current_reward(char: str, source: str, item: dict) -> float:
+    """A queued run's reward on the current scale (queues written before a reward change keep the old one)."""
+    p = _home(char, source) / "runs" / f"{item.get('play_id')}.json"
+    try:
+        r = json.loads(p.read_text(encoding="utf-8"))
+        return Model.outcome(r["floor"], bool(r.get("victory")))
+    except (OSError, KeyError, json.JSONDecodeError):
+        return item["reward"]
+
+
 _RATES: dict[str, dict] = {}
 
 

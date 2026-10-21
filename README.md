@@ -3,8 +3,9 @@
 A fast learned policy plays every move (no LLM per move). Combat is a whole-turn search
 (`planner.py`) that simulates card orders against the enemies' intents and mechanics. After each run,
 REINFORCE moves the choice weights (card picks/skips, path, rest vs smith, shop, boss relics) toward
-choices from runs that went deeper; evolution strategies tune the combat parameters. Reward =
-floor/50, +1 for winning. An LLM (Ollama) only handles events/Neow/boss relics and a coach review every
+choices from runs that won or beat bosses; evolution strategies tune the combat parameters. Reward =
+bosses beaten and wins, never floors: act 1 boss 0.1, act 2 boss 0.5, a win 2.0 (reaching a boss to lose
+to it is worth no more than dying earlier going for a stronger deck). An LLM (Ollama) only handles events/Neow/boss relics and a coach review every
 few runs (notes, weight nudges, playbook lessons). Cycles: explore runs learn; bench runs on fixed
 seeds pick the champion.
 

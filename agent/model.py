@@ -162,16 +162,19 @@ class Model:
 
     # -------------------------------------------------------------- learning
 
-    REWARD_VERSION = 3
+    REWARD_VERSION = 4
+    # what a run is worth: bosses beaten and wins, never floors. Reaching the act 2 boss to lose to it is
+    # worth no more than dying on floor 20 going for a stronger deck (v3 paid 0.94 vs 0.64 for that).
+    MILESTONES = ((17, 0.1), (34, 0.4))   # (floor reached = that act's boss beaten, reward added)
+    WIN = 1.5                             # beating the act 3 boss: a win is worth 4x an act 2 boss kill
 
-    @staticmethod
-    def outcome(floor: int, victory: bool, elites: int = 0) -> float:
-        """Convex in depth so the learner takes risks that power a run up: dying on floor 8
-        instead of 16 costs little, while every floor past the Act 1 and Act 2 bosses is worth
-        much more; each elite killed (relics, rare cards) adds about three early floors."""
-        f = min(floor, 55)
-        depth = f / 50.0 + 0.6 * max(0, f - 17) / 34.0 + 0.8 * max(0, f - 34) / 17.0
-        return depth + 0.06 * min(elites, 6) + (1.0 if victory else 0.0)
+    @classmethod
+    def outcome(cls, floor: int, victory: bool, elites: int = 0) -> float:
+        """Win-focused: act 1 boss beaten 0.1, act 2 boss beaten +0.4, a win +1.5 (2.0 in all).
+        Floors in between and elites count for nothing by themselves; they pay only through the
+        bosses they help beat. (`elites` is kept for callers; it no longer changes the reward.)"""
+        r = sum(v for f, v in cls.MILESTONES if floor >= f or victory)
+        return round(r + (cls.WIN if victory else 0.0), 3)
 
     VALUE_MIN_RUNS = 20   # runs before the learned value estimate replaces the per-act baselines
 

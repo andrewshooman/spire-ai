@@ -3,7 +3,7 @@
     analyze.bat [--since N] [--last N]
 
 Reads evolve/<character>/runs/*.json (read only) and prints: throughput, how far runs
-get (act reach rates), what kills them, depth by risk level, who decided card picks
+get (wins, bosses beaten, the win-focused score), what kills them, results by risk level, who decided card picks
 (LLM vs policy) and how those runs went, shop spending, LLM latency, aborted runs.
 Also writes evolve/<character>/analysis.json for comparing nights.
 """
@@ -21,6 +21,28 @@ from statistics import mean, median
 
 HERE = Path(__file__).resolve().parent
 EVOLVE = HERE.parent / "evolve"
+sys.path.insert(0, str(HERE))
+from model import Model  # noqa: E402
+
+
+def score(r: dict) -> float:
+    """The win-focused reward (bosses beaten and wins, no floors), whatever scale the run was saved with."""
+    return Model.outcome(r["floor"], bool(r.get("victory")))
+
+
+def boss2(rs: list) -> int:
+    return sum(r["floor"] >= 34 or bool(r.get("victory")) for r in rs)
+
+
+def ztest(a: list, b: list) -> str:
+    """Two-proportion z for 'act 2 boss beaten' between two groups ('' when too small to say anything)."""
+    na, nb = len(a), len(b)
+    if na < 8 or nb < 8:
+        return ""
+    pa, pb = boss2(a) / na, boss2(b) / nb
+    p = (boss2(a) + boss2(b)) / (na + nb)
+    se = (p * (1 - p) * (1 / na + 1 / nb)) ** 0.5
+    return f"z={(pa - pb) / se:+.1f}" if se > 0 else ""
 
 
 def pct(a: float, b: float) -> str:
@@ -69,13 +91,18 @@ def main() -> None:
     # depth
     floors = [r["floor"] for r in runs]
     reach = {k: sum(f >= v for f in floors) for k, v in (("act1 boss beaten", 17), ("act2 boss beaten", 34), ("reached act3", 35), ("act3 boss beaten", 51))}
-    print(f"\nDepth: avg floor {mean(floors):.1f}, best {max(floors)}, wins {sum(r['victory'] for r in runs)}")
+    wins = sum(bool(r["victory"]) for r in runs)
+    print(f"\nResults: wins {wins} ({pct(wins, n)}), act 2 boss beaten {pct(boss2(runs), n)}, "
+          f"score {mean(score(r) for r in runs):.3f} (win-focused reward: act 1 boss 0.1, act 2 boss 0.5, win 2.0)")
+    print(f"Depth (for reference, not the goal): avg floor {mean(floors):.1f}, best {max(floors)}")
     for k, v in reach.items():
         print(f"  {k:17} {v:4}  {pct(v, n)}")
     for kind in ("explore", "bench"):
         fl = [r["floor"] for r in runs if r.get("kind") == kind]
         if fl:
-            print(f"  {kind:7} runs: {len(fl):3}, avg floor {mean(fl):.1f}")
+            ks = [r for r in runs if r.get("kind") == kind]
+            print(f"  {kind:7} runs: {len(fl):3}, score {mean(score(r) for r in ks):.3f}, act 2 boss beaten "
+                  f"{pct(boss2(ks), len(ks))}, wins {sum(bool(r['victory']) for r in ks)}")
     out.update({"avg_floor": round(mean(floors), 2), "best": max(floors), **{k.replace(" ", "_"): v for k, v in reach.items()}})
 
     # killers
@@ -88,13 +115,13 @@ def main() -> None:
     # risk appetite (explore runs record it)
     risky = [r for r in runs if "risk" in r and r.get("kind") == "explore"]
     if risky:
-        print("\nDepth by risk level (explore runs; extra pull toward act 1-2 elites):")
+        print("\nBy risk level (explore runs; extra pull toward act 1-2 elites):")
         by = collections.defaultdict(list)
         for r in risky:
             by[r["risk"]].append(r)
-        table([(k, len(v), f"{mean(x['floor'] for x in v):.1f}", f"{mean(x.get('elites_killed', 0) for x in v):.1f}",
-                pct(sum(x['floor'] >= 17 for x in v), len(v)), pct(sum(x['floor'] >= 35 for x in v), len(v)))
-               for k, v in sorted(by.items())], ("risk", "runs", "avg floor", "elites", "act1 cleared", "act3"))
+        table([(k, len(v), f"{mean(score(x) for x in v):.3f}", f"{mean(x.get('elites_killed', 0) for x in v):.1f}",
+                pct(sum(x['floor'] >= 17 for x in v), len(v)), pct(boss2(v), len(v)), sum(bool(x['victory']) for x in v))
+               for k, v in sorted(by.items())], ("risk", "runs", "score", "elites", "act1 boss", "act2 boss", "wins"))
         out["risk"] = {str(k): round(mean(x["floor"] for x in v), 2) for k, v in by.items()}
 
     # A/B switches (explore runs): each feature on vs off
@@ -106,23 +133,24 @@ def main() -> None:
             for val in (True, False):
                 g = [r for r in abr if r["ab"].get(key) is val]
                 if g:
-                    rows.append((key, "on" if val else "off", len(g), f"{mean(x['floor'] for x in g):.1f}",
-                                 pct(sum(x["floor"] >= 17 for x in g), len(g)), pct(sum(x["floor"] >= 34 for x in g), len(g)),
-                                 sum(x["victory"] for x in g)))
-        table(rows, ("switch", "", "runs", "avg floor", "act1 cleared", "act2 cleared", "wins"))
+                    other = [r for r in abr if r["ab"].get(key) is (not val)]
+                    rows.append((key, "on" if val else "off", len(g), f"{mean(score(x) for x in g):.3f}",
+                                 pct(sum(x["floor"] >= 17 for x in g), len(g)), pct(boss2(g), len(g)),
+                                 sum(bool(x["victory"]) for x in g), ztest(g, other) if val else ""))
+        table(rows, ("switch", "", "runs", "score", "act1 boss", "act2 boss", "wins", "act2 boss on vs off"))
         out["ab"] = {f"{r[0]}={r[1]}": float(r[3]) for r in rows}
 
     # build flavor tried early (explore runs)
     flav = [r for r in runs if r.get("kind") == "explore" and "flavor" in r]
     if flav:
-        print("\nDepth by early build flavor (explore runs):")
+        print("\nBy early build flavor (explore runs):")
         by = collections.defaultdict(list)
         for r in flav:
             by[r["flavor"] or "(none)"].append(r)
-        table([(k, len(v), f"{mean(x['floor'] for x in v):.1f}", pct(sum(x['floor'] >= 34 for x in v), len(v)),
-                sum(x["victory"] for x in v), (v[-1].get("plan") or {}).get("archetype", ""))
-               for k, v in sorted(by.items())], ("flavor", "runs", "avg floor", "act2 cleared", "wins", "last plan"))
-        out["flavor"] = {k: round(mean(x["floor"] for x in v), 2) for k, v in by.items()}
+        table([(k, len(v), f"{mean(score(x) for x in v):.3f}", pct(boss2(v), len(v)),
+                sum(bool(x["victory"]) for x in v), (v[-1].get("plan") or {}).get("archetype", ""))
+               for k, v in sorted(by.items())], ("flavor", "runs", "score", "act2 boss", "wins", "last plan"))
+        out["flavor"] = {k: round(mean(score(x) for x in v), 3) for k, v in by.items()}
 
     # who picked cards
     pick_src = collections.Counter()

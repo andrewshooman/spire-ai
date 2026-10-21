@@ -5,19 +5,19 @@ so survivorship doesn't fake a signal (cards taken late only appear in runs that
 already deep):
 
   cards        runs that TOOK a card vs runs OFFERED it in the same act that passed:
-               average final floor of each group
+               how often each group beat the act 2 boss, and how many won
   events       each choice of an event vs the other choices of that event
   boss relics  each relic taken vs every boss relic taken at the same act
   shop items   runs that BOUGHT an item vs runs where it was on sale and not bought
 
-Only groups with enough samples are shown ("taken 12x -> floor 34 | passed 9x -> 26").
+Only groups with enough samples are shown ("taken 12x -> act 2 boss 33%, 1 win | passed 9x -> 11%").
+Floors aren't the measure: a choice that reaches the act 2 boss only to lose there isn't a better one.
 """
 
 from __future__ import annotations
 
 import re
 from collections import defaultdict
-from statistics import mean
 
 MIN_N = 3
 
@@ -37,7 +37,8 @@ def build(runs: list[dict]) -> dict:
     for r in runs:
         if r.get("aborted"):
             continue
-        fl = r["floor"] + (20 if r.get("victory") else 0)
+        # outcome per run: 2 = won, 1 = beat the act 2 boss, 0 = neither (floors reached don't count)
+        fl = 2 if r.get("victory") else 1 if r["floor"] >= 34 else 0
         for p in r.get("picks", []):
             act = 1 + max(0, (p["floor"] - 1) // 17)
             chosen = _base(p["chosen"])
@@ -62,13 +63,17 @@ def build(runs: list[dict]) -> dict:
             "runs": len(runs)}
 
 
+def _pct(xs: list) -> str:
+    return f"{sum(x >= 1 for x in xs) / len(xs):.0%}"
+
+
 def _fmt(xs: list) -> str:
-    return f"{len(xs)}x -> avg floor {mean(xs):.0f}"
+    wins = sum(x == 2 for x in xs)
+    return f"{len(xs)}x -> act 2 boss {_pct(xs)}" + (f", {wins} win{'s' if wins > 1 else ''}" if wins else "")
 
 
 def card(e: dict | None, name: str, act: int) -> str:
-    """'[history: taken 12x -> avg floor 34 | passed 9x -> 26]' or '' when too few samples.
-    (Wins count as floor 70 so a win weighs more than reaching the last boss.)"""
+    """'[history act 1: taken 12x -> act 2 boss 33% | passed 9x -> act 2 boss 11%]' or '' when too few samples."""
     if not e:
         return ""
     t, p = e["taken"].get((_base(name), act), []), e["passed"].get((_base(name), act), [])
@@ -103,7 +108,7 @@ def boss_relic(e: dict | None, name: str, act: int) -> str:
         return ""
     if len(passed) >= MIN_N:  # like with like: runs offered this relic that took another one
         return f"[history: taken {_fmt(xs)} | passed {_fmt(passed)}]"
-    return f"[history: taken {_fmt(xs)} vs all boss relics {mean(all_):.0f}]"
+    return f"[history: taken {_fmt(xs)} vs all boss relics {_pct(all_)}]"
 
 
 def shop(e: dict | None, name: str) -> str:
@@ -113,7 +118,8 @@ def shop(e: dict | None, name: str) -> str:
     return f"[history: bought {_fmt(xs)}]" if len(xs) >= MIN_N else ""
 
 
-NOTE = ("History numbers are this bot's own earlier runs (average final floor; a win counts as 70): "
+NOTE = ("History numbers are this bot's own earlier runs: how often runs that made that choice beat the act 2 "
+        "boss, and how many won (the goal is winning runs, not reaching later floors): "
         "prefer options with a clearly better record when the samples are decent, but small samples are noisy. "
         "'human player's runs' numbers come from an experienced human playing the same character: what they "
         "take often is a good example to follow. 'expert A20 players' numbers come from strong players' runs at the "

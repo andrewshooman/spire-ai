@@ -63,9 +63,11 @@ def main() -> None:
     champ = json.loads((ws.root / "champion_model.json").read_text())
     champ["weights"]["skip:a2"] = -5.5
     (ws.root / "champion_model.json").write_text(json.dumps(champ))
-    bad = [cycle(ws, args, [("BENCHA1", 12), ("BENCHB2", 6)]) for _ in range(2)]
-    check("one clearly bad stretch is not enough", bad[0].startswith("kept") and "once" in bad[0], bad[0])
-    check("two clearly bad cycles in a row -> reverted", bad[1].startswith("reverted"), bad[1])
+    # rewards step at boss kills (v4), so the 6-run window needs two bad cycles to sit clearly below
+    bad = [cycle(ws, args, [("BENCHA1", 12), ("BENCHB2", 6)]) for _ in range(3)]
+    check("one clearly bad stretch is not enough", bad[0].startswith("kept") and bad[1].startswith("kept")
+          and "once" in bad[1], f"{bad[0]} / {bad[1]}")
+    check("two clearly bad cycles in a row -> reverted", bad[2].startswith("reverted"), bad[2])
     check("reverted model migrated to the current bounds", ws.model.w("skip:a2") >= -1.5, f"{ws.model.w('skip:a2')}")
     check("after a revert the model is measured afresh", ws.state["bench_window"] == [])
     check("champion score is seed-relative", abs(champ_score) < 0.5, f"{champ_score:+.2f}")

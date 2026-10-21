@@ -455,15 +455,14 @@ def plan_run(index: int, args) -> tuple[str, str]:
 
 
 def bench_history(ws: Workspace) -> dict:
-    """seed -> rewards of every bench run on it (all models), to know how hard each seed is."""
+    """seed -> rewards of every bench run on it (all models), to know how hard each seed is.
+    Always re-scored with the current reward (stored rewards may be on an older scale)."""
     hist = ws.state.get("bench_hist")
     if hist is None:
         hist = {}
         for r in ws.runs():
             if r.get("kind") == "bench" and not r.get("aborted"):
-                rw = r.get("reward")
-                if rw is None:
-                    rw = Model.outcome(r["floor"], r.get("victory", False), r.get("elites_killed", 0))
+                rw = Model.outcome(r["floor"], r.get("victory", False), r.get("elites_killed", 0))
                 hist.setdefault(r["seed"], []).append(round(rw, 3))
         ws.state["bench_hist"] = hist
     return hist
@@ -703,7 +702,58 @@ def migrate(ws: Workspace) -> None:
         ws.model.meta.update({"reward_version": Model.REWARD_VERSION, "baseline": None, "var": 0.04,
                               "es_baseline": None, "es_var": 0.01, "act_baseline": {}})
         ws.state["es_pair"] = None
-        say(f"reward v{Model.REWARD_VERSION}: convex depth + elites, per-act credit; baselines reset")
+        rescored = rescore_replay(ws)
+        # champion selection restarts on the new scale: bench history re-scored, window and champion measured anew
+        ws.state.update({"bench_hist": None, "bench_window": [], "champion": None, "below": 0,
+                         "cycle_bench": [], "cycle_bench_reward": [], "cycle_bench_seed": []})
+        say(f"reward v{Model.REWARD_VERSION}: bosses beaten and wins only (no floors); baselines reset, "
+            f"value estimate refit on {rescored} replayed runs, champion selection restarted")
+
+
+def rescore_replay(ws: Workspace) -> int:
+    """Re-score the replay buffer with the current reward (from each run's file) and refit the value
+    estimate on it, so learning continues on the new scale instead of starting from nothing."""
+    path = ws.root / "replay.jsonl"
+    if not path.exists():
+        ws.model.meta.update({"value_w": {"bias": 0.0}, "value_runs": 0, "value_var": 0.04})
+        return 0
+    runs = {r.get("run"): r for r in ws.runs()}
+    out, items = [], []
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line.strip():
+            continue
+        it = json.loads(line)
+        r = runs.get(it.get("run"))
+        if r is None:
+            continue
+        it["reward"] = Model.outcome(r["floor"], r.get("victory", False))
+        items.append(it)
+        out.append(json.dumps(it, separators=(",", ":")))
+    path.write_text("\n".join(out) + ("\n" if out else ""), encoding="utf-8")
+    ws.model.meta.update({"value_w": {"bias": 0.0}, "value_runs": 0, "value_var": 0.04})
+    pairs = [(e["state"], it["reward"]) for it in items for e in it["events"] if e.get("state")]
+    if len(items) < Model.VALUE_MIN_RUNS or not pairs:
+        return len(items)   # too few: per-act baselines until the value estimate has enough runs
+    # shuffled SGD over every decision state (in run order the last runs dominated and the fit lost to a
+    # constant), started at the mean reward
+    mean_r = sum(r for _, r in pairs) / len(pairs)
+    vw = {"bias": mean_r}
+    rng = random.Random(0)
+    for epoch in range(12):
+        rng.shuffle(pairs)
+        lr = 0.01 / (1 + epoch * 0.5)
+        for st, r in pairs:
+            err = r - (vw["bias"] + sum(vw.get(k, 0.0) * x for k, x in st.items()))
+            vw["bias"] += lr * err
+            for k, x in st.items():
+                vw[k] = vw.get(k, 0.0) + lr * err * x
+    mse = sum((r - (vw["bias"] + sum(vw.get(k, 0.0) * x for k, x in st.items()))) ** 2 for st, r in pairs) / len(pairs)
+    const = sum((r - mean_r) ** 2 for _, r in pairs) / len(pairs)
+    if mse < const:
+        ws.model.meta.update({"value_w": vw, "value_runs": len(items), "value_var": mse})
+    else:   # no better than the average: per-act baselines until it has learned more
+        ws.model.meta.update({"value_w": {"bias": mean_r}, "value_runs": 0, "value_var": const})
+    return len(items)
 
 
 # settings the web page may change (evolve/settings.json), applied before each run
@@ -748,7 +798,8 @@ def learn_human_runs(ws, args) -> dict | None:
         for it in items:
             # a light data point, not something to copy: low weight and a capped push per decision
             # (a win would otherwise push every choice of that run at the maximum)
-            ws.model.learn(it["events"], it["reward"], lr=args.lr * getattr(args, "human_lr", 0.1), replay=True,
+            ws.model.learn(it["events"], human.current_reward(args.character, "human", it),
+                           lr=args.lr * getattr(args, "human_lr", 0.1), replay=True,
                            adv_cap=1.0)
         if items:
             ws.model.meta["human_runs_learned"] = ws.model.meta.get("human_runs_learned", 0) + len(items)
@@ -773,7 +824,8 @@ def learn_expert_runs(ws, args) -> dict | None:
             # card picks and boss relics only: their decks lose little HP, so they smith where this bot must rest
             # (expert rests would have pulled rest:h1 from +1.5 to +0.4; the Silent dies of act 2 attrition)
             events = [e for e in it["events"] if e.get("kind") != "rest"]
-            ws.model.learn(events, it["reward"], lr=args.lr * lr, replay=True, adv_cap=1.0)
+            ws.model.learn(events, human.current_reward(args.character, "expert", it), lr=args.lr * lr,
+                           replay=True, adv_cap=1.0)
         if items:
             ws.model.meta["expert_runs_learned"] = ws.model.meta.get("expert_runs_learned", 0) + len(items)
             ws.save()

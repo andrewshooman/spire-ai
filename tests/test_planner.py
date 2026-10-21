@@ -306,7 +306,7 @@ def main() -> None:
             for i, (fl, ch) in enumerate([(40, "Clothesline")] * 3 + [(20, "Strike")] * 3)]
     e = evidence.build(runs)
     check("track record: taken vs passed", evidence.card(e, "Clothesline", 1)
-          == "[history act 1: taken 3x -> avg floor 40 | passed 3x -> avg floor 20]", evidence.card(e, "Clothesline", 1))
+          == "[history act 1: taken 3x -> act 2 boss 100% | passed 3x -> act 2 boss 0%]", evidence.card(e, "Clothesline", 1))
     check("track record hides thin samples", evidence.card(e, "Bash", 1) == "")
 
     # 3: value estimate learns which states lead deeper; 2: replay leaves baselines alone

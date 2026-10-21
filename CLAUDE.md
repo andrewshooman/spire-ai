@@ -205,6 +205,12 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     experts' picks: Ironclad 49 -> 52%, Silent 25 -> 30%. Ironclad map: act 1 +0.5 elite pull until 2 elites
     (HP 60%+), act 2 M -0.4 and E +0.3 at 70%+ HP. sts-bench caps raised (max_decisions 3000, max_steps
     8000): two deep runs had aborted at 1000. syn_notes always on; LLM card advice off by default.
+30. Goal = won runs, not floors. Reward v4 (Model.outcome): act 1 boss 0.1, act 2 boss 0.5, win 2.0; floors
+    and elites count for nothing by themselves. On the version change migrate() re-scores replay.jsonl and
+    refits the value estimate (shuffled SGD; kept only if it beats the mean), resets baselines, bench history
+    (always re-scored), window and champion. Imported human/expert runs re-scored when learned
+    (human.current_reward). analyze.bat leads with wins / act 2 boss / score, A/B with a z-test on act 2 boss
+    beaten; LLM track records (evidence.py) give act 2 boss % and wins instead of average floor.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.
