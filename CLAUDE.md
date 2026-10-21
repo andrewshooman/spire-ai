@@ -264,6 +264,13 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     the cycles (history/model_c*.json, TRACKED), card / synergy / boss relic / feature weights (diverging bars),
     map room x HP and room x act, boss x role needs and rest-site heatmaps, card pairs played together and play
     rates (cardutil). The Overview keeps the current run card.
+40. Watcher stances (the game state has no stance: Eruption -> Wrath, then the bot blocked for good and lost to
+    a Cultist on floor 1). PolicyAgent tracks the stance (Neutral at fight start, Divinity ends next turn,
+    planner.stance_after per played card); parse_text: Enter Wrath/Calm/Divinity, Exit your Stance, Inner Peace,
+    Indignation, Fear No Evil, Mantra, Halt, Meditate (ends turn), Blasphemy (die next turn); planner: attacks x2
+    in Wrath / x3 in Divinity, leaving Calm +2 energy, Divinity +3, incoming rescaled from the start stance to the
+    end stance (the game's numbers include Wrath), Calm at the end worth 2 energy x0.6, Blasphemy -500 unless the
+    fight ends. Spireseer's Java brain lacks stances.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

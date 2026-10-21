@@ -171,6 +171,7 @@ def _attack(monster) -> int:
 
 class PolicyAgent:
     def __init__(self, provider=None, **kwargs):
+        self._stance, self._stance_at = "Neutral", (None, 0)   # Watcher stance (the game state lacks it)
         self._provider = provider
         self._skipped_rewards: dict[int, int] = {}
         self._shop_visited: set[int] = set()
@@ -287,7 +288,16 @@ class PolicyAgent:
             self._stall = (sig, (self._stall[1] + 1) if stalled else 0)
             self._stall_turn = c.turn
         stall = self._stall[1] if self._stall and self._stall[0] == sig else 0
-        plan = planner.plan_turn(message, P, self._deck_names(g), stall=stall)
+        # Watcher: the game state carries no stance -- track it. A fight starts Neutral; Divinity ends when the
+        # next turn starts (the bot had entered Wrath with Eruption and then blocked for good, unaware it dealt
+        # double and took double: it lost to a Cultist on floor 1)
+        key = (g.floor, c.turn)
+        if self._stance_at[0] != g.floor or (c.turn <= 1 and self._stance_at[1] > 1):
+            self._stance = "Neutral"
+        elif c.turn != self._stance_at[1] and self._stance == "Divinity":
+            self._stance = "Neutral"
+        self._stance_at = key
+        plan = planner.plan_turn(message, P, self._deck_names(g), stall=stall, stance=self._stance)
         note = plan.describe(c.hand, c.monsters) + (f" | stalled {stall} turns" if stall else "")
         potion = self._potion(message, plan)
         if potion is not None:
@@ -296,6 +306,12 @@ class PolicyAgent:
         if not plan.steps or plan.value - plan.base < threshold:
             return EndTurn(), note + " -> end turn"
         i, t = plan.steps[0]
+        try:
+            self._stance = planner.stance_after(message, self._deck_names(g), self._stance, (i, t))
+        except Exception:
+            pass
+        if self._stance != "Neutral":
+            note += f" | stance {self._stance}"
         return PlayCard(card_index=i, target_index=t), note
 
     def _potion(self, message, plan):

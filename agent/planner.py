@@ -81,7 +81,7 @@ class Sim:
                  "draw_value", "enrage", "curiosity", "played", "junk", "self_vuln", "self_weak",
                  "self_frail", "thorns_back", "ended", "retal", "intangible", "double_atk", "double_skill",
                  "heal", "orbs", "orb_slots", "focus", "perm_focus", "lightning_all",
-                 "next_block", "next_energy", "next_draw")
+                 "next_block", "next_energy", "next_draw", "stance", "stance0", "mantra", "doomed")
 
     def copy(self) -> "Sim":
         n = Sim.__new__(Sim)
@@ -167,6 +167,10 @@ def build(message, deck_names: list[str]) -> tuple[Sim, Ctx]:
     sim.double_skill = pw(p.powers, "Burst")
     sim.heal = 0.0
     sim.next_block = sim.next_energy = sim.next_draw = 0
+    # Watcher: the game doesn't report the stance, the policy tracks it (plan_turn(stance=...))
+    sim.stance = sim.stance0 = "Neutral"
+    sim.mantra = pw(p.powers, "Mantra")
+    sim.doomed = False
     # Defect orbs: the game reports each orb's evoke/passive amounts with Focus already applied
     orbs = getattr(p, "orbs", None) or []
     sim.orb_slots = len(orbs)
@@ -350,6 +354,8 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int],
         per = base + sim.str * e.strength_mult
         if sim.weak:
             per *= 0.75
+        if ctype == "ATTACK":
+            per *= STANCE_DEALT.get(sim.stance, 1.0)   # Wrath x2, Divinity x3
         live = [m for m in sim.mons if not m.dead]
         if e.aoe:
             victims = [(m, 1.0) for m in live]
@@ -370,6 +376,8 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int],
         group = [m for m in sim.mons if not m.dead] if (e.aoe_debuff or e.aoe) else ([tgt] if tgt else [])
         for m in group:
             _debuff(m, e.vuln, weak)
+    if e.stance or e.mantra or e.wrath_block:
+        _stance_effects(sim, e, tgt)
     sim.next_block += e.next_block
     sim.next_energy += e.next_energy
     sim.next_draw += e.next_draw
@@ -533,6 +541,46 @@ def _orb_passives(sim: Sim) -> None:
             o[1] += o[2]
 
 
+# ---------------------------------------------------------------- Watcher stances
+
+STANCE_DEALT = {"Wrath": 2.0, "Divinity": 3.0}     # attack damage dealt
+STANCE_TAKEN = {"Wrath": 2.0}                      # attack damage taken
+
+
+def _set_stance(sim: Sim, new: str) -> None:
+    if new == sim.stance:
+        return
+    if sim.stance == "Calm":
+        sim.energy += 2            # leaving Calm
+    if new == "Divinity":
+        sim.energy += 3
+    sim.stance = new
+
+
+def _stance_effects(sim: Sim, e, tgt) -> None:
+    if e.wrath_block and sim.stance == "Wrath":
+        sim.block += e.wrath_block                     # Halt
+    if e.stance_cond == "calm_draw" and sim.stance == "Calm":
+        sim.draw_value += e.cond_n * (1.0 if sim.energy > 0 else 0.4)   # Inner Peace in Calm
+    elif e.stance_cond == "wrath_vuln" and sim.stance == "Wrath":
+        for m in sim.mons:
+            if not m.dead:
+                _debuff(m, e.cond_n, 0)                # Indignation in Wrath
+    elif e.stance_cond == "if_attacking" and not (tgt is not None and tgt.atk > 0):
+        pass                                           # Fear No Evil: only when the target attacks
+    elif e.stance:
+        _set_stance(sim, e.stance)
+    if e.mantra:
+        sim.mantra += e.mantra
+        if sim.mantra >= 10:
+            sim.mantra -= 10
+            _set_stance(sim, "Divinity")
+    if e.die_next_turn:
+        sim.doomed = True                              # Blasphemy
+    if e.ends_turn:
+        sim.ended = True                               # Meditate
+
+
 def incoming(sim: Sim) -> tuple[float, int]:
     total, hits = 0.0, 0
     for m in sim.mons:
@@ -547,7 +595,17 @@ def incoming(sim: Sim) -> tuple[float, int]:
             per *= 0.75
         total += int(per) * m.hits
         hits += m.hits
+    total *= STANCE_TAKEN.get(sim.stance, 1.0) / STANCE_TAKEN.get(sim.stance0, 1.0)
     return total, hits
+
+
+def stance_after(message, deck_names: list[str], stance: str, step: tuple) -> str:
+    """The stance after playing one card (the policy tracks the stance; the game state doesn't carry it)."""
+    sim, ctx = build(message, deck_names)
+    sim.stance = sim.stance0 = stance or "Neutral"
+    i, t = step
+    play(sim, ctx, i, t, list(range(len(ctx.hand))))
+    return sim.stance
 
 
 def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
@@ -627,6 +685,10 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
         v -= 500.0
     fight = 1.0 + min(2.0, enemy_left / 40.0)
     v += P["strength"] * sim.perm_str * fight
+    if sim.stance == "Calm":
+        v += P["energy"] * 2 * 0.6        # Calm banked: leaving it next turn gives 2 energy
+    if sim.doomed and not all(m.dead for m in sim.mons):
+        v -= 500.0                        # Blasphemy: you die next turn unless the fight ends now
     # "Next turn, ..." riders: next turn's block / energy / draw, a little less than now
     v += 0.8 * (P["block"] * sim.next_block + P["energy"] * sim.next_energy) + 0.5 * P["draw"] * sim.next_draw
     if sim.orbs or sim.perm_focus:
@@ -671,8 +733,10 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
 
 # ---------------------------------------------------------------- search
 
-def plan_turn(message, P: dict, deck_names: list[str], max_nodes: int = MAX_NODES, stall: int = 0) -> Plan:
+def plan_turn(message, P: dict, deck_names: list[str], max_nodes: int = MAX_NODES, stall: int = 0,
+              stance: str = "Neutral") -> Plan:
     sim, ctx = build(message, deck_names)
+    sim.stance = sim.stance0 = stance or "Neutral"
     ctx.stall = stall
     ctx.inc0 = incoming(sim.copy())[0]
     champ = next((m for m in message.game_state.combat_state.monsters if m.name == "The Champ" and alive(m)), None)

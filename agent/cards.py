@@ -307,7 +307,8 @@ class Effects:
                  "per_turn_energy", "per_turn_damage", "thorns", "dex", "known", "shivs", "poison_mult",
                  "intangible", "double_attack", "double_skill", "heal_unblocked",
                  "channel", "channel_per_enemy", "channel_x", "evoke", "focus", "orb_slots", "recursion",
-                 "per_orb", "lightning_all", "next_block", "next_energy", "next_draw", "x_str_down", "x_weak")
+                 "per_orb", "lightning_all", "next_block", "next_energy", "next_draw", "x_str_down", "x_weak",
+                 "stance", "stance_cond", "cond_n", "mantra", "die_next_turn", "ends_turn", "wrath_block")
 
     def __init__(self):
         self.damage = 0; self.hits = 1; self.aoe = False; self.random_target = False
@@ -341,6 +342,10 @@ class Effects:
         # "Next turn, ..." riders (Dodge and Roll, Outmaneuver, Flying Knee, Predator): not this turn's resources
         self.next_block = 0; self.next_energy = 0; self.next_draw = 0
         self.x_str_down = False; self.x_weak = False   # Malaise: X Strength loss and X Weak
+        # Watcher stances: "Wrath" / "Calm" / "Divinity" / "Neutral" (exit); conditional versions:
+        # calm_draw (Inner Peace), wrath_vuln (Indignation), if_attacking (Fear No Evil)
+        self.stance = ""; self.stance_cond = ""; self.cond_n = 0
+        self.mantra = 0; self.die_next_turn = False; self.ends_turn = False; self.wrath_block = 0
 
 
 def _int(pattern: str, text: str, default: int = 0) -> int:
@@ -449,6 +454,30 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
         e.weak = _int(r"Apply (\d+) Weak", t)
     # keep "ALL enemies lose N Strength" (Piercing Wail) found above: this line used to overwrite it
     e.aoe_debuff = e.aoe_debuff or bool(re.search(r"(?:Vulnerable|Weak)[^.]*to ALL enemies", t))
+    # Watcher stances
+    m = re.search(r"If you are in Calm, draw (\d+) cards?, otherwise enter Calm", t, re.I)
+    if m:
+        e.stance, e.stance_cond, e.cond_n = "Calm", "calm_draw", int(m.group(1))
+        e.draw = 0
+    m = re.search(r"If you are in Wrath, apply (\d+) Vulnerable to ALL enemies, otherwise enter Wrath", t, re.I)
+    if m:
+        e.stance, e.stance_cond, e.cond_n = "Wrath", "wrath_vuln", int(m.group(1))
+        e.vuln = 0
+    if not e.stance:
+        if re.search(r"If the enemy intends to Attack, enter Calm", t, re.I):
+            e.stance, e.stance_cond = "Calm", "if_attacking"
+        elif re.search(r"Exit your Stance", t, re.I):
+            e.stance = "Neutral"
+        else:
+            m = re.search(r"\bEnter (Wrath|Calm|Divinity)", t, re.I)
+            if m:
+                e.stance = m.group(1).title()
+    e.mantra = _int(r"Gain (\d+) Mantra", t)
+    e.die_next_turn = bool(re.search(r"Die next turn", t, re.I))
+    e.ends_turn = bool(re.search(r"End your turn", t, re.I))
+    m = re.search(r"Gain (\d+) Block\. If you are in Wrath, gain (\d+) additional Block", t, re.I)
+    if m:
+        e.wrath_block = int(m.group(2))
     e.x_str_down = bool(re.search(r"loses? X Strength", t, re.I))
     e.x_weak = bool(re.search(r"Apply X Weak", t, re.I))
     e.draw = _int(r"Draw (\d+) cards?", t)
@@ -486,6 +515,8 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
     e.lightning_all = bool(re.search(r"Lightning now hits ALL enemies", full, flags=re.IGNORECASE))
     if e.block_per_exhaust:
         e.block = 0
+    if e.stance_cond == "calm_draw":
+        e.draw = 0          # Inner Peace draws only when already in Calm (planner: _stance_effects)
     return e
 
 

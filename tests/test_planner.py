@@ -44,6 +44,9 @@ CARDS = {
     "Coolheaded": ("Coolheaded", "SKILL", 1, False), "Defend_B": ("Defend_B", "SKILL", 1, False),
     "Defragment": ("Defragment", "POWER", 1, False),
     "Piercing Wail": ("PiercingWail", "SKILL", 1, False), "Outmaneuver": ("Outmaneuver", "SKILL", 1, False),
+    "Eruption": ("Eruption", "ATTACK", 2, True), "Vigilance": ("Vigilance", "SKILL", 2, False),
+    "Strike_P": ("Strike_P", "ATTACK", 1, True), "Defend_P": ("Defend_P", "SKILL", 1, False),
+    "Empty Body": ("EmptyBody", "SKILL", 1, False), "Blasphemy": ("Blasphemy", "SKILL", 1, False),
 }
 
 
@@ -641,6 +644,28 @@ def main() -> None:
     planner.play(sim, ctx, 0, None, [0, 1, 2])
     check("Outmaneuver's energy comes next turn, not now", sim.energy == 0 and sim.next_energy == 2,
           f"energy {sim.energy} next {sim.next_energy}")
+    # Watcher stances: Wrath deals and takes double, Calm banks energy, Blasphemy kills you next turn
+    msg = state(["Strike_P", "Strike_P", "Defend_P"], [monster("Cultist", 48, 6)], energy=3)
+    plan = planner.plan_turn(msg, P, [], stance="Wrath")
+    check("Watcher in Wrath: Strikes deal 12 each", plan.summary["dealt"] >= 24, plan.describe(msg.game_state.combat_state.hand, msg.game_state.combat_state.monsters))
+    msg = state(["Empty Body", "Defend_P"], [monster("Cultist", 48, 24)], energy=1, hp=40)
+    plan = planner.plan_turn(msg, P, [], stance="Wrath")   # the game shows 24 incoming: 12 doubled by Wrath
+    check("Watcher in Wrath facing a big hit: Empty Body leaves Wrath (halves the hit) and blocks",
+          names(plan, msg) == ["Empty Body"] and plan.summary["taken"] == 5, plan.describe(msg.game_state.combat_state.hand, msg.game_state.combat_state.monsters))
+    msg = state(["Vigilance", "Eruption"], [monster("Jaw Worm", 40, 0)], energy=2)
+    sim, ctx = planner.build(msg, [])
+    planner.play(sim, ctx, 0, None, [0, 1])
+    sim2, _ = planner.build(msg, [])
+    sim2.stance = sim2.stance0 = "Calm"
+    planner.play(sim2, ctx, 1, 0, [0, 1])   # Eruption from Calm: pays 2, gets 2 back, ends in Wrath
+    check("Vigilance enters Calm; leaving Calm gives 2 energy", sim.stance == "Calm" and sim2.energy == 2
+          and sim2.stance == "Wrath", f"{sim.stance} energy {sim2.energy} {sim2.stance}")
+    msg = state(["Blasphemy", "Defend_P"], [monster("Jaw Worm", 40, 5)], energy=1)
+    check("Blasphemy is never played when the fight goes on (you die next turn)",
+          "Blasphemy" not in names(planner.plan_turn(msg, P, []), msg))
+    msg = state(["Eruption", "Strike_P"], [monster("Jaw Worm", 40, 0)], energy=3)
+    check("the stance after a card is tracked (Eruption -> Wrath)",
+          planner.stance_after(msg, [], "Neutral", (0, 0)) == "Wrath")
     # overnight Silent runs: low-HP pathing everywhere, Velvet Choker vs Shiv decks, no auto Smoke Bomb
     low = NS(act=1, floor=9, current_hp=20, max_hp=70, gold=99, relics=[], deck=real_deck, character="THE_SILENT")
     r = policy.PolicyAgent()._map_rules(low)
