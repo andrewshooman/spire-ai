@@ -71,6 +71,12 @@ def main() -> None:
     check("reverted model migrated to the current bounds", ws.model.w("skip:a2") >= -1.5, f"{ws.model.w('skip:a2')}")
     check("after a revert the model is measured afresh", ws.state["bench_window"] == [])
     check("champion score is seed-relative", abs(champ_score) < 0.5, f"{champ_score:+.2f}")
+    # the run counter never reuses a run number already on disk (a restored older state.json overwrote runs)
+    (ws.root / "runs").mkdir(exist_ok=True)
+    (ws.root / "runs" / "run_0090.json").write_text("{}")
+    ws.state["run"] = 40
+    check("run counter behind the files continues after the highest run", evolve.next_run_index(ws) == 90
+          and ws.state["run"] == 90)
     # warm start: a young Silent model takes the Ironclad's character-neutral weights, not its card weights
     iron = Model(tmp / "iron.json", "IRONCLAD")
     iron.weights.update({"node:E:h2": 1.7, "rest:h0": 2.2, "card:Bash": 3.0})

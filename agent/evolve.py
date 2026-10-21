@@ -801,6 +801,21 @@ def wait_for_bot_slot() -> None:
         say(f"game is back on the bot's save slot {want}")
 
 
+def next_run_index(ws) -> int:
+    """The run counter, never behind the run files already on disk: on 2026-10-20 the storage move brought
+    back an older state.json (run 223) and the next runs overwrote run_0224..0236. Continue after the
+    highest file instead of reusing its number."""
+    hi = 0
+    for p in (ws.root / "runs").glob("run_*.json"):   # finished runs only: an aborted run's number is retried
+        m = re.match(r"run_(\d+)", p.name)
+        if m:
+            hi = max(hi, int(m.group(1)))
+    if ws.state["run"] < hi:
+        say(f"run counter {ws.state['run']} is behind the run files (up to {hi}): continuing at {hi + 1}")
+        ws.state["run"] = hi
+    return ws.state["run"]
+
+
 def learn_imported(ws, args, source: str, lr: float, skip_kinds: tuple = ()) -> int:
     """Learn every imported run (yours or experts') this model hasn't learned yet. The model keeps the ids it
     learned (meta learned_ids); a champion restored from before an import lacks them, so a revert can no
@@ -964,7 +979,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                 expert_ev = learn_expert_runs(ws, args) if args.expert_lr > 0 else None
             else:
                 human_ev = expert_ev = None
-            index = ws.state["run"]
+            index = next_run_index(ws)
             kind, seed = plan_run(index, args)
             explore = kind == "explore"
             rng = random.Random()
