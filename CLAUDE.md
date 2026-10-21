@@ -239,6 +239,12 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     Low-HP deaths: under 40% HP the bot took a safe room when offered (57/59) but met fight-only choices 28
     times -> route look-ahead projects HP along each route (ROOM_HP_COST per act; rest +30% under 60%) and
     scores later rooms with the learned weights and map rules at that projected HP (ROUTE_RULE_SHARE 0.6).
+36. 65 runs since 243: first 3 Ironclad wins (273, 274, 283; Fusion Hammer in all 3, Strength 2 of 3), act 2 boss
+    26%. Act 1 boss deaths: 8 of 11 had upgraded at the pre-boss campfire; shared rest:h1/smith:h1 swung by +-2
+    in hours and out-voted the +4 rest bonus -> pre-boss rest under the threshold is a hard rule, that campfire
+    learns restboss/smithboss weights, rest/smith bounded -1.5..2.5. Centurion deaths are HP: under 30% entry
+    13/30 die, 50%+ 1/134 (route HP projection covers it; Mystic already priority 1.4). Act 1 boss relics vs
+    act 2 boss (taken vs passed, small n): Black Star 0/5 vs 7/19, Runic Pyramid 0/7, Snecko Eye 5/8.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.
