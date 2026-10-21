@@ -130,6 +130,43 @@ RULES += [
     ("payoff->discard", "discard_src", {"discard_pay"}, 0.2, 3),
 ]
 
+# ---------------------------------------------------------------- the Defect's and the Watcher's engines
+CARD_TAGS.update({
+    # Defect: orbs feed Focus and orb payoffs
+    "Zap": {"orb_src"}, "Ball Lightning": {"orb_src"}, "Cold Snap": {"orb_src"}, "Coolheaded": {"orb_src", "draw"},
+    "Glacier": {"orb_src"}, "Chill": {"orb_src"}, "Doom and Gloom": {"orb_src", "aoe"}, "Darkness": {"orb_src"},
+    "Fusion": {"orb_src"}, "Meteor Strike": {"orb_src", "big_hit"}, "Tempest": {"orb_src", "xcost"},
+    "Rainbow": {"orb_src"}, "Electrodynamics": {"orb_src", "power"}, "Storm": {"orb_src", "power"}, "Chaos": {"orb_src"},
+    "Defragment": {"focus", "power"}, "Consume": {"focus"}, "Biased Cognition": {"focus", "power"},
+    "Loop": {"orb_pay", "power"}, "Capacitor": {"orb_pay", "power"}, "Dualcast": {"orb_pay"}, "Multi-Cast": {"orb_pay", "xcost"},
+    "Recursion": {"orb_pay"}, "Barrage": {"orb_pay"}, "Compile Driver": {"orb_pay", "draw"}, "Fission": {"orb_pay"},
+    "Thunder Strike": {"orb_pay"},
+    # Watcher: stance changers feed stance payoffs; Mantra and Scry engines
+    "Eruption": {"stance_src"}, "Vigilance": {"stance_src"}, "Tantrum": {"stance_src", "multi"},
+    "Crescendo": {"stance_src"}, "Tranquility": {"stance_src"}, "Inner Peace": {"stance_src", "draw"},
+    "Fear No Evil": {"stance_src"}, "Empty Body": {"stance_src"}, "Empty Fist": {"stance_src"},
+    "Empty Mind": {"stance_src", "draw"}, "Indignation": {"stance_src"}, "Meditate": {"stance_src"},
+    "Simmering Fury": {"stance_src"},
+    "Rushdown": {"stance_pay", "draw", "power"}, "Mental Fortress": {"stance_pay", "power"},
+    "Flurry of Blows": {"stance_pay"}, "Like Water": {"stance_pay", "power"},
+    "Prostrate": {"mantra_src"}, "Worship": {"mantra_src"}, "Pray": {"mantra_src"}, "Devotion": {"mantra_src", "power"},
+    "Brilliance": {"mantra_pay"},
+    "Third Eye": {"scry_src"}, "Cut Through Fate": {"scry_src", "draw"}, "Just Lucky": {"scry_src"},
+    "Foresight": {"scry_src", "power"}, "Weave": {"scry_pay"}, "Nirvana": {"scry_pay", "power"},
+})
+RELIC_TAGS.update({"Frozen Core": {"orb_src"}, "Nuclear Battery": {"orb_src"}, "Inserter": {"orb_pay"},
+                   "Violet Lotus": {"stance_pay"}, "Damaru": {"mantra_src"}, "Golden Eye": {"scry_pay"},
+                   "Teardrop Locket": {"stance_src"}})
+RULES += [
+    ("focus->orbs", "focus", {"orb_src"}, 0.35, 5),
+    ("orbs->focus", "orb_src", {"focus", "orb_pay"}, 0.2, 4),
+    ("orbs->payoff", "orb_pay", {"orb_src"}, 0.3, 4),
+    ("stance->payoff", "stance_pay", {"stance_src"}, 0.4, 5),
+    ("payoff->stance", "stance_src", {"stance_pay"}, 0.25, 3),
+    ("mantra->payoff", "mantra_pay", {"mantra_src"}, 0.3, 3),
+    ("scry->payoff", "scry_pay", {"scry_src"}, 0.35, 3),
+]
+
 # payoff cards that are close to dead without an enabler: (card tag, enabler tags, penalty)
 NEEDS = [
     ("str_mult", {"str_src"}, -1.2),          # Limit Break with no Strength
@@ -141,6 +178,11 @@ NEEDS = [
     ("poison_pay", {"poison_src"}, -0.8),      # Catalyst / Bane with no poison
     ("shiv_pay", {"shiv_src"}, -0.6),          # Accuracy / Finisher with no Shivs
     ("discard_pay", {"discard_src"}, -0.6),    # Reflex / Tactician with nothing to discard them
+    ("focus", {"orb_src"}, -0.8),              # Defragment with no orbs to boost
+    ("orb_pay", {"orb_src"}, -0.6),            # Loop / Dualcast / Barrage with no orbs
+    ("stance_pay", {"stance_src"}, -0.8),      # Rushdown / Mental Fortress with no stance changes
+    ("mantra_pay", {"mantra_src"}, -0.8),      # Brilliance with no Mantra
+    ("scry_pay", {"scry_src"}, -0.6),          # Weave / Nirvana with nothing that Scrys
 ]
 
 
@@ -148,7 +190,9 @@ NEED_TEXT = {"str_mult": "needs a Strength source (none yet)", "exhaust_need": "
              "status_pay": "no status cards to trigger it yet", "block_pay": "needs block makers",
              "selfdmg_pay": "no self-damage cards yet", "vuln_pay": "no Vulnerable source yet",
              "poison_pay": "no poison source yet", "shiv_pay": "no Shiv makers yet",
-             "discard_pay": "nothing to discard it with yet"}
+             "discard_pay": "nothing to discard it with yet", "focus": "no orbs to boost yet",
+             "orb_pay": "no orbs to use yet", "stance_pay": "no stance changers yet", "mantra_pay": "no Mantra yet",
+             "scry_pay": "nothing that Scrys yet"}
 
 
 def base(name: str) -> str:
@@ -165,7 +209,7 @@ def card_tags(name: str) -> set[str]:
 
 # Starter Strikes/Defends are about to be removed: they never count as synergy feeders
 # (they made Body Slam and Perfected Strike look like synergy picks in a starter deck).
-STARTERS = {"Strike", "Defend", "Survivor", "Neutralize", "Zap", "Dualcast", "Eruption", "Vigilance"}
+STARTERS = {"Strike", "Defend", "Survivor", "Neutralize"}   # Zap/Dualcast/Eruption/Vigilance feed orbs and stances
 
 
 def deck_tags(deck_names: list[str], relic_names: list[str] = ()) -> Counter:

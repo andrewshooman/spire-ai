@@ -271,6 +271,13 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     in Wrath / x3 in Divinity, leaving Calm +2 energy, Divinity +3, incoming rescaled from the start stance to the
     end stance (the game's numbers include Wrath), Calm at the end worth 2 energy x0.6, Blasphemy -500 unless the
     fight ends. Spireseer's Java brain lacks stances.
+41. Defect + Watcher data: cards.TIERS["DEFECT"/"WATCHER"] (1.6/1.2/0.6/0.0 starting values; expert pick rates and
+    learning refine them); synergy tags orb_src/focus/orb_pay and stance_src/stance_pay/mantra_src/mantra_pay/
+    scry_src/scry_pay with RULES (focus->orbs, orbs->payoff, stance->payoff, mantra->payoff, scry->payoff) and
+    dead-payoff NEEDS; Zap/Dualcast/Eruption/Vigilance now count as feeders (STARTERS = Strike/Defend/Survivor/
+    Neutralize). relics.boss_fit + GUIDE_BOSS_RELIC for Nuclear Battery, Frozen Core, Inserter, Holy Water,
+    Violet Lotus, Ring of the Serpent, Wrist Blade, Hovering Kite (profile gains orb_src/focus/discard_src/calm_src).
+    Expert Watcher decks with stance changers + a payoff won 71% vs 55% without.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

@@ -47,6 +47,35 @@ TIERS["THE_SILENT"] = {
     0.0: ["Sadistic Nature", "Envenom", "Grand Finale", "Flechettes", "Distraction", "Setup", "Masterful Stab",
           "Endless Agony"],
 }
+# Defect: Focus and Frost carry A0 runs; orb payoffs only with orbs (synergy NEEDS)
+TIERS["DEFECT"] = {
+    1.6: ["Defragment", "Glacier", "Coolheaded", "Echo Form", "Biased Cognition", "Buffer", "Electrodynamics",
+          "Loop", "Seek", "Hologram", "Skim", "Machine Learning", "Ball Lightning", "Cold Snap", "Meteor Strike",
+          "Fusion", "Self Repair", "Core Surge", "Genetic Algorithm", "Creative AI"],
+    1.2: ["Doom and Gloom", "Darkness", "Chill", "Tempest", "Multi-Cast", "Recursion", "Consume", "Capacitor",
+          "Storm", "Heatsinks", "Sunder", "Hyperbeam", "Thunder Strike", "Leap", "Charge Battery", "Equilibrium",
+          "Reinforced Body", "Auto-Shields", "Sweeping Beam", "Turbo", "Double Energy", "Rainbow", "Go for the Eyes",
+          "Compile Driver", "Boot Sequence", "Melter", "Reprogram", "Fission", "All for One", "Claw"],
+    0.6: ["Barrage", "Rebound", "Stack", "Steam Barrier", "Streamline", "Beam Cell", "Rip and Tear", "Overclock",
+          "White Noise", "Aggregate", "Static Discharge", "FTL", "Scrape", "Hello World", "Force Field", "Amplify",
+          "Blizzard", "Recycle", "Lock-On", "Chaos"],
+    0.0: ["Reboot", "Redo"],
+}
+# Watcher: stance dancing (Rushdown, Mental Fortress, Tantrum, Inner Peace) and Scrawl/Vault/Wallop
+TIERS["WATCHER"] = {
+    1.6: ["Rushdown", "Mental Fortress", "Talk to the Hand", "Tantrum", "Inner Peace", "Fear No Evil",
+          "Cut Through Fate", "Wallop", "Empty Mind", "Ragnarok", "Scrawl", "Vault", "Lesson Learned",
+          "Wreath of Flame", "Deva Form", "Like Water"],
+    1.2: ["Empty Fist", "Empty Body", "Flurry of Blows", "Crescendo", "Tranquility", "Third Eye", "Sanctity",
+          "Halt", "Battle Hymn", "Devotion", "Worship", "Prostrate", "Protect", "Weave", "Wheel Kick",
+          "Carve Reality", "Conclude", "Consecrate", "Foresight", "Study", "Spirit Shield", "Swivel",
+          "Simmering Fury", "Windmill Strike", "Reach Heaven", "Meditate", "Indignation", "Alpha", "Wish",
+          "Omniscience", "Brilliance", "Judgment", "Master Reality", "Nirvana", "Fasting", "Wave of the Hand",
+          "Deceive Reality", "Follow-Up", "Bowling Bash", "Crush Joints", "Establishment", "Collect"],
+    0.6: ["Sash Whip", "Just Lucky", "Pray", "Perseverance", "Evaluate", "Flying Sleeves", "Signature Move",
+          "Sands of Time", "Blasphemy", "Conjure Blade", "Foreign Influence"],
+    0.0: ["Pressure Points", "Discipline", "Unraveling"],
+}
 BASIC = {"Strike": -1.0, "Defend": -0.6}
 DEFAULT_CARD_PRIOR = 0.3
 
@@ -207,6 +236,11 @@ GUIDE_BOSS_RELIC = {
     "Runic Cube": (-0.4, "low impact"), "Calling Bell": (-0.3, "low impact, 3 curses"), "Black Blood": (-0.3, "low impact"),
     "Empty Cage": (-0.2, "low impact"), "Sacred Bark": (-0.4, "low impact"), "Black Star": (-0.3, "nothing now"),
     "Tiny House": (-0.4, "weakest"),
+    # class boss relics (A0): energy-like starters upgrades and deck-dependent ones
+    "Nuclear Battery": (0.5, "Plasma every fight: energy each turn"), "Frozen Core": (0.3, "Frost when a slot is empty"),
+    "Inserter": (0.2, "an orb slot every 2 turns"), "Holy Water": (0.2, "3 Miracles a fight"),
+    "Violet Lotus": (0.2, "+1 energy leaving Calm"), "Ring of the Serpent": (0.4, "draw 1 more every turn"),
+    "Wrist Blade": (0.0, "0-cost attacks +4"), "Hovering Kite": (-0.1, "energy on the first discard"),
 }
 
 # Shop relic values from the guide (price taken into account), overriding SHOP_RELIC_PRIOR.

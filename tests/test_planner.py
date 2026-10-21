@@ -666,6 +666,24 @@ def main() -> None:
     msg = state(["Eruption", "Strike_P"], [monster("Jaw Worm", 40, 0)], energy=3)
     check("the stance after a card is tracked (Eruption -> Wrath)",
           planner.stance_after(msg, [], "Neutral", (0, 0)) == "Wrath")
+    # Defect and Watcher: card tiers, engine synergies with dead-payoff needs, class boss relics
+    check("class card tiers: Glacier / Rushdown top, Reboot / Pressure Points low",
+          C.card_prior("DEFECT", "Glacier") == 1.6 and C.card_prior("WATCHER", "Rushdown") == 1.6
+          and C.card_prior("DEFECT", "Reboot") == 0.0 and C.card_prior("WATCHER", "Pressure Points") == 0.0)
+    sf, _ = synergy.explain("Defragment", ["Zap", "Glacier", "Coolheaded"])
+    sn, _ = synergy.explain("Rushdown", ["Strike", "Defend"])
+    sw, _ = synergy.explain("Mental Fortress", ["Eruption", "Vigilance", "Tantrum"])
+    check("Defect: Focus pays with orb cards; Watcher: Rushdown is dead with no stance changers, Mental Fortress pays with them",
+          sf.get("synrule:focus->orbs", 0) >= 3 and sn.get("synneed:stance_pay") == 1.0
+          and sw.get("synrule:stance->payoff", 0) >= 3, f"{sf} {sn} {sw}")
+    import relics as R
+    dfx = NS(deck=[human.card_from_id(c) for c in ["Strike_B"] * 4 + ["Zap", "Glacier", "Coolheaded", "Cold Snap", "Defragment"]],
+             relics=[NS(name="Cracked Core")], act=1, floor=17, gold=100, current_hp=60, max_hp=75,
+             potions=[], character="DEFECT")
+    prof = R.profile(dfx)
+    nb, fz, ins = R.boss_fit("Nuclear Battery", prof)[0], R.boss_fit("Frozen Core", prof)[0], R.boss_fit("Inserter", prof)[0]
+    check("Defect boss relics judged against an orb deck (Nuclear Battery, Frozen Core, Inserter > 0)",
+          prof["orb_src"] >= 4 and nb > 0 and fz > 0 and ins > 0, f"orb_src {prof['orb_src']} nb {nb} fz {fz} ins {ins}")
     # overnight Silent runs: low-HP pathing everywhere, Velvet Choker vs Shiv decks, no auto Smoke Bomb
     low = NS(act=1, floor=9, current_hp=20, max_hp=70, gold=99, relics=[], deck=real_deck, character="THE_SILENT")
     r = policy.PolicyAgent()._map_rules(low)

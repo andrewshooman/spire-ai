@@ -272,6 +272,11 @@ SYN_GROUP = {
     "poison->payoff": "Poison + payoffs (Catalyst, Bane...)", "payoff->poison": "Poison + payoffs (Catalyst, Bane...)",
     "shiv->payoff": "Shivs + payoffs (Accuracy, Finisher...)", "payoff->shiv": "Shivs + payoffs (Accuracy, Finisher...)",
     "discard->payoff": "Discard + payoffs (Reflex, Tactician...)", "payoff->discard": "Discard + payoffs (Reflex, Tactician...)",
+    "focus->orbs": "Orbs + Focus (Defragment, Consume...)", "orbs->focus": "Orbs + Focus (Defragment, Consume...)",
+    "orbs->payoff": "Orbs + orb payoffs (Loop, Capacitor, Dualcast...)",
+    "stance->payoff": "Stance changes + payoffs (Rushdown, Mental Fortress...)",
+    "payoff->stance": "Stance changes + payoffs (Rushdown, Mental Fortress...)",
+    "mantra->payoff": "Mantra + Brilliance", "scry->payoff": "Scry + payoffs (Weave, Nirvana)",
 }
 
 

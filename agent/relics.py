@@ -72,6 +72,8 @@ def profile(g) -> dict:
     avg = sum(costs) / max(1, len(costs))
     base = [C.base_name(n) for n in names]
     return {
+        "orb_src": tags["orb_src"], "focus": tags["focus"], "discard_src": tags["discard_src"],
+        "calm_src": sum(1 for n in base if n in ("Vigilance", "Tranquility", "Inner Peace", "Fear No Evil", "Meditate")),
         "n": len(deck), "avg_cost": round(avg, 2),
         "high_cost": sum(1 for c in costs if c >= 2), "zero_cost": sum(1 for c in costs if c == 0),
         "xcost": sum(1 for d in playable if d.cost == -1),
@@ -182,6 +184,25 @@ def boss_fit(name: str, p: dict) -> tuple[float, list[str]]:
         add(0.3 if p["exhaust_outlets"] or "Omamori" in p["relics"] else -0.2, "3 relics + a curse")
     elif name == "Tiny House":
         add(-0.2, "small bundle of rewards")
+    # class boss relics
+    elif name == "Nuclear Battery":
+        add(0.2 + 0.05 * min(4, p.get("orb_src", 0)), "Plasma every fight (+1 energy a turn)")
+    elif name == "Frozen Core":
+        add(0.1 * min(4, p.get("orb_src", 0)) - 0.1, f"{p.get('orb_src', 0)} orb cards keep slots busy; Frost fills the rest")
+    elif name == "Inserter":
+        add(0.1 * min(4, p.get("orb_src", 0) + p.get("focus", 0)) - 0.2,
+            f"more slots pay with {p.get('orb_src', 0)} orb cards / {p.get('focus', 0)} Focus")
+    elif name == "Holy Water":
+        add(0.2, "3 Miracles (energy) each fight instead of 1")
+    elif name == "Violet Lotus":
+        add(0.1 * min(4, p.get("calm_src", 0)) - 0.1, f"{p.get('calm_src', 0)} ways into Calm")
+    elif name == "Ring of the Serpent":
+        add(0.3 if p["draw"] <= 3 else 0.15, "draw 1 more card every turn")
+    elif name == "Wrist Blade":
+        add(0.12 * min(5, p["zero_cost"] + 2 * p.get("shiv_makers", 0)) - 0.3,
+            f"{p['zero_cost']} 0-cost cards, {p.get('shiv_makers', 0)} Shiv makers")
+    elif name == "Hovering Kite":
+        add(0.15 * min(3, p.get("discard_src", 0)) - 0.2, f"{p.get('discard_src', 0)} discard cards")
     if name == "Coffee Dripper" and not p["healing"]:
         v = min(v, -2.0)   # energy never makes up for arriving at the next boss at ~25% HP
     cv, cw = conflict(name, p["relics"])
