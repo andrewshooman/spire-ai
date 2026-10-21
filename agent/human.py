@@ -452,6 +452,38 @@ def expert_rates(game_char: str) -> dict:
     return _RATES[char]
 
 
+def learned_items(char: str, source: str, model: Model | None = None) -> list[dict]:
+    """Every imported run's decisions, kept for good (learned.jsonl): the queue moves here, so a model that
+    hasn't learned a run (a champion restored from before it) can learn it again. Built once from the stored
+    records when the file doesn't exist yet (runs imported before this bookkeeping)."""
+    home = _home(char, source)
+    path = home / "learned.jsonl"
+    pend = take_pending(char, source)
+    if not path.exists():
+        items = []
+        recs = runs(char, source)
+        if recs:
+            model = model or Model(EVOLVE / char / "model.json", GAME_CHAR[char])
+            pending_ids = {str(p.get("play_id")) for p in pend}
+            for r in recs:
+                pid = str(r.get("play_id"))
+                if pid in pending_ids:
+                    continue
+                try:
+                    raw = json.loads(Path(r["file"]).read_text(encoding="utf-8", errors="replace"))
+                    _, events, reward = convert(raw, char, model, source)
+                except Exception:
+                    continue
+                items.append({"play_id": pid, "reward": reward, "events": events})
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("".join(json.dumps(it) + "\n" for it in items), encoding="utf-8")
+    if pend:
+        with path.open("a", encoding="utf-8") as fh:
+            for it in pend:
+                fh.write(json.dumps(it) + "\n")
+    return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
+
+
 def take_pending(char: str, source: str = "human") -> list[dict]:
     """Queued imported runs to learn from (and clears the queue)."""
     p = _home(char, source) / "pending.jsonl"

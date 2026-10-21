@@ -801,6 +801,31 @@ def wait_for_bot_slot() -> None:
         say(f"game is back on the bot's save slot {want}")
 
 
+def learn_imported(ws, args, source: str, lr: float, skip_kinds: tuple = ()) -> int:
+    """Learn every imported run (yours or experts') this model hasn't learned yet. The model keeps the ids it
+    learned (meta learned_ids); a champion restored from before an import lacks them, so a revert can no
+    longer silently throw that learning away -- the runs are simply learned again."""
+    items = human.learned_items(args.character, source, ws.model)
+    ids = ws.model.meta.setdefault("learned_ids", {})
+    done = set(ids.get(source, []))
+    count_key = f"{source}_runs_learned"
+    if not done and ws.model.meta.get(count_key):
+        # learned before ids were kept: the count says how many; they were the oldest ones
+        done = {it["play_id"] for it in items[:ws.model.meta[count_key]]}
+    todo = [it for it in items if it["play_id"] not in done]
+    for it in todo:
+        events = [e for e in it["events"] if e.get("kind") not in skip_kinds]
+        # capped push per decision: a won run would otherwise push every choice at the maximum
+        ws.model.learn(events, human.current_reward(args.character, source, it), lr=args.lr * lr,
+                       replay=True, adv_cap=1.0)
+        done.add(it["play_id"])
+    ids[source] = sorted(done)
+    ws.model.meta[count_key] = len(done)
+    if todo:
+        ws.save()
+    return len(todo)
+
+
 def learn_human_runs(ws, args) -> dict | None:
     """Import runs you played (other save slots / human_inbox) and learn from them at a lower weight.
     Returns their track record for the LLM prompts."""
@@ -810,17 +835,10 @@ def learn_human_runs(ws, args) -> dict | None:
         c = human.sync(args.character, ws.model, say=say)
         if c["new"]:
             say(f"imported {c['new']} of your runs ({c['total']} in total)")
-        items = human.take_pending(args.character)
-        for it in items:
-            # a light data point, not something to copy: low weight and a capped push per decision
-            # (a win would otherwise push every choice of that run at the maximum)
-            ws.model.learn(it["events"], human.current_reward(args.character, "human", it),
-                           lr=args.lr * getattr(args, "human_lr", 0.1), replay=True,
-                           adv_cap=1.0)
-        if items:
-            ws.model.meta["human_runs_learned"] = ws.model.meta.get("human_runs_learned", 0) + len(items)
-            ws.save()
-            say(f"learned from {len(items)} of your runs (weight {getattr(args, 'human_lr', 0.1):.2f})")
+        lr = getattr(args, "human_lr", 0.1)
+        n = learn_imported(ws, args, "human", lr)
+        if n:
+            say(f"learned from {n} of your runs (weight {lr:.2f})")
         runs = human.runs(args.character)
         return evidence.build(runs[-400:]) if runs else None
     except Exception as exc:  # your runs are a bonus; never stop the bot over them
@@ -829,23 +847,15 @@ def learn_human_runs(ws, args) -> dict | None:
 
 
 def learn_expert_runs(ws, args) -> dict | None:
-    """Other strong players' runs (import_runs.bat --expert <folder>): learned once at --expert-lr, kept apart
-    from your runs and the bot's stats. Returns their track record for the LLM prompts."""
+    """Other strong players' runs (import_runs.bat --expert <folder>), kept apart from your runs and the bot's
+    stats, learned at --expert-lr. Returns their track record for the LLM prompts."""
     lr = getattr(args, "expert_lr", 0.1)
     try:
-        items = human.take_pending(args.character, "expert")
-        for it in items:
-            # they reach far deeper than the bot, so nearly every choice has a positive advantage: in effect
-            # imitation of their picks, capped per decision and kept at a low weight
-            # card picks and boss relics only: their decks lose little HP, so they smith where this bot must rest
-            # (expert rests would have pulled rest:h1 from +1.5 to +0.4; the Silent dies of act 2 attrition)
-            events = [e for e in it["events"] if e.get("kind") != "rest"]
-            ws.model.learn(events, human.current_reward(args.character, "expert", it), lr=args.lr * lr,
-                           replay=True, adv_cap=1.0)
-        if items:
-            ws.model.meta["expert_runs_learned"] = ws.model.meta.get("expert_runs_learned", 0) + len(items)
-            ws.save()
-            say(f"learned from {len(items)} expert runs (weight {lr:.2f})")
+        # card picks and boss relics only: their decks lose little HP, so they smith where this bot must rest
+        # (expert rests would have pulled rest:h1 from +1.5 to +0.4; the Silent dies of act 2 attrition)
+        n = learn_imported(ws, args, "expert", lr, skip_kinds=("rest",))
+        if n:
+            say(f"learned from {n} expert runs (weight {lr:.2f})")
         runs = human.runs(args.character, "expert")
         return evidence.build(runs) if runs else None
     except Exception as exc:  # a bonus; never stop the bot over it

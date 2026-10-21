@@ -127,6 +127,29 @@ def main() -> None:
     check("Silent starter, Neow removal, Peace Pipe, Empty Cage rebuilt",
           tl.deck.count("Strike_G") == 2 and tl.deck.count("Defend_G") == 3 and "Neutralize" in tl.deck
           and "Footwork" in tl.deck and "AscendersBane" in tl.deck, str(tl.deck))
+    # learned imports survive a champion revert: the model keeps the ids it learned; missing ones are relearned
+    import argparse
+    import evolve
+    evolve.say = lambda *a, **k: None
+    (tmp / "ironclad" / "human").mkdir(parents=True, exist_ok=True)
+    (inbox / "e.run").write_text(json.dumps(fake_run("h5", 4242)))
+    human.sync("ironclad", m, say=lambda *_: None)
+    ws = argparse.Namespace(model=Model(tmp / "ironclad" / "model.json", "IRONCLAD"), save=lambda: None)
+    args = argparse.Namespace(character="ironclad", lr=0.08, human_lr=0.1, human_learn=True)
+    n1 = evolve.learn_imported(ws, args, "human", 0.1)
+    n2 = evolve.learn_imported(ws, args, "human", 0.1)
+    items = human.learned_items("ironclad", "human")
+    check("imported runs kept for good (learned.jsonl), learned once", n1 == 3 and n2 == 0 and len(items) == 3,
+          f"{n1} {n2} {len(items)}")
+    old = Model(tmp / "nowhere.json", "IRONCLAD")      # a champion from before the import
+    ws.model = old
+    check("after a revert to an older champion the imports are learned again",
+          evolve.learn_imported(ws, args, "human", 0.1) == 3)
+    pre = Model(tmp / "nowhere2.json", "IRONCLAD")     # learned under the old bookkeeping: a count, no ids
+    pre.meta["human_runs_learned"] = 3
+    ws.model = pre
+    check("runs counted as learned before ids were kept are not learned twice",
+          evolve.learn_imported(ws, args, "human", 0.1) == 0 and len(pre.meta["learned_ids"]["human"]) == 3)
     print("HUMAN OK")
 
 
