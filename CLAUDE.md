@@ -230,6 +230,10 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     aoe/block/draw/scaling/debuff; half strength in the first half of the act), priors cards.BOSS_NEEDS reset
     from Ironclad decks that beat each boss vs lost (Champ: scaling + draw, not block/debuff; Automaton:
     scaling, not AoE; Hexaghost: scaling; Guardian: damage).
+34. Run numbers never reused (evolve.next_run_index: continue after the highest finished run file; the
+    2026-10-20 storage move restored an older state.json and runs 224-236 overwrote that afternoon's files).
+    Settings "Rotate characters" (off / ironclad + silent / all 4): one random character per run, each with
+    its own workspace (evolve.rotation_pick, ROTATIONS); default off while the focus is Ironclad.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

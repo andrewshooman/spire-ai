@@ -77,6 +77,14 @@ def main() -> None:
     ws.state["run"] = 40
     check("run counter behind the files continues after the highest run", evolve.next_run_index(ws) == 90
           and ws.state["run"] == 90)
+    # Settings "Rotate characters": a random character per run from the chosen set
+    import random as _r
+    rng = _r.Random(1)
+    picks = {evolve.rotation_pick({"rotate": "all 4"}, rng) for _ in range(60)}
+    check("rotation picks among all 4 characters; off = the Character setting",
+          picks == {"ironclad", "silent", "defect", "watcher"} and evolve.rotation_pick({"rotate": "off"}, rng) is None
+          and evolve.rotation_pick({}, rng) is None
+          and {evolve.rotation_pick({"rotate": "ironclad + silent"}, rng) for _ in range(30)} == {"ironclad", "silent"})
     # warm start: a young Silent model takes the Ironclad's character-neutral weights, not its card weights
     iron = Model(tmp / "iron.json", "IRONCLAD")
     iron.weights.update({"node:E:h2": 1.7, "rest:h0": 2.2, "card:Bash": 3.0})

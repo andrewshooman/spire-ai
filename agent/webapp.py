@@ -42,6 +42,10 @@ SETTINGS_PATH = EVOLVE / "settings.json"
 SETTINGS_SCHEMA = {
     "character": {"type": "choice", "options": list(stats.CHARACTERS), "default": "ironclad",
                   "label": "Character", "help": "Switches to that character's own model and history at the next run."},
+    "rotate": {"type": "choice", "options": ["off", "ironclad + silent", "all 4"], "default": "off",
+               "label": "Rotate characters",
+               "help": "Each run picks a random character from this set (each keeps its own model, history and "
+                       "bench cycle); overrides Character. Off = always the Character above."},
     "ascension": {"type": "int", "min": 0, "max": 20, "default": 0, "label": "Ascension"},
     "llm_events": {"type": "bool", "default": True, "label": "LLM for Neow, events, boss relics",
                    "help": "Off = the learned policy decides alone (no Ollama needed)."},

@@ -772,6 +772,16 @@ def rescore_replay(ws: Workspace) -> int:
     return len(items)
 
 
+# Settings "Rotate characters": each run picks a random character from the set
+ROTATIONS = {"ironclad + silent": ("ironclad", "silent"), "all 4": ("ironclad", "silent", "defect", "watcher")}
+
+
+def rotation_pick(settings: dict, rng: random.Random) -> str | None:
+    """The character for the next run when rotation is on (None = off: use the Character setting)."""
+    pool = ROTATIONS.get(settings.get("rotate") or "off")
+    return rng.choice(pool) if pool else None
+
+
 # settings the web page may change (evolve/settings.json), applied before each run
 WEB_SETTINGS = ("ascension", "llm_events", "llm_cards", "llm_shop", "llm_share", "coach_every", "ab",
                 "human_learn", "human_lr", "expert_lr")
@@ -941,6 +951,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                 return 1
         say(f"connected; resuming at run {ws.state['run'] + 1} "
             f"({ws.model.meta['runs_trained']} runs trained, temperature {ws.model.temperature():.2f})")
+        rot_pick, rot_rng = None, random.Random()
         while args.max_runs <= 0 or ws.state["run"] < args.max_runs:
             if web:
                 s = apply_web_settings(args)
@@ -963,6 +974,9 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                 return RESTART_EXIT
             if web:
                 want = s.get("character", args.character)
+                if rot_pick is None:
+                    rot_pick = rotation_pick(s, rot_rng) or ""
+                want = rot_pick or want   # one pick per run, kept while the workspace switches
                 if want != args.character:
                     save_cache(ws, llm_cache)
                     ws.save()
@@ -974,6 +988,7 @@ def run_loop(args, server: HarnessServer | None = None, log_dir: Path | None = N
                     if viewer is not None:
                         viewer = live.LiveView(ws.root / "live.json")
                     continue  # re-check max_runs against the new workspace
+                rot_pick = None   # the next run picks again
                 wait_for_bot_slot()
                 human_ev = learn_human_runs(ws, args)
                 expert_ev = learn_expert_runs(ws, args) if args.expert_lr > 0 else None
