@@ -219,6 +219,13 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     and plays per turn, HP lost per fight); features cardplay (play rate when in hand vs average), cardfight
     (HP vs the encounter's usual when in the deck, z), cardpair (co-played with cards in the deck beyond
     their separate rates); priors 1.0/1.0/1.5, bounds 0..4; synced at start and after every run.
+32. Ironclad focus (then Silent). Imported runs survive reverts (human.learned_items -> <source>/learned.jsonl,
+    model meta learned_ids; evolve.learn_imported relearns missing ids). Act 2 boss prep (3 potions at the
+    boss -> 53% beaten vs 23-29% with 1-2): elite openers in act 2+ only under 60% HP or with a full belt;
+    potion buys before the boss (_boss_prep: act 1 floor 10+, act 2 floor 24+) incl. an override of the LLM
+    shop list; +0.6 shop pull with 120+ gold and a free slot. Champ (47 logged fights): losses start 26 HP
+    lower and deal 38 vs 51 damage a turn (Champ left at 163 HP), not a misplay problem -> BOSS_NEEDS Champ
+    gains damage; boss needs are the learnable feature bossneed (prior 1.0) instead of a fixed bonus.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

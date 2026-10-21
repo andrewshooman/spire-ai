@@ -391,7 +391,7 @@ class PolicyAgent:
     # ---------------------------------------------------------------- explain choices for the web app
 
     GROUPS = (("pathrelic", "your relics"), ("expertpick", "experts take it"), ("cardplay", "how it gets played"),
-              ("cardfight", "fight results with it"), ("cardpair", "plays well with your cards"), ("expertrelic", "experts take it"), ("synneed", "missing enabler"), ("synrule", "synergy"), ("cardctx", "fits now"), ("card", "card value"),
+              ("cardfight", "fight results with it"), ("cardpair", "plays well with your cards"), ("bossneed", "the act boss needs it"), ("expertrelic", "experts take it"), ("synneed", "missing enabler"), ("synrule", "synergy"), ("cardctx", "fits now"), ("card", "card value"),
               ("syn", "build"), ("tag", "build"), ("need", "deck needs it"), ("dup", "deck size"), ("dilute", "deck size"),
               ("upgraded", "card value"), ("skip", "skip"), ("relicfit", "fits the deck"), ("relicctx", "fits the deck"),
               ("relic", "relic value"), ("shoprelic", "relic value"), ("nodeact", "path"), ("node", "path"),
@@ -490,6 +490,9 @@ class PolicyAgent:
             f["need:draw"] = 1.0
         if "scaling" in roles and deck_roles.get("scaling", 0) < 2 and g.floor >= 6:
             f["need:scaling"] = 1.0
+        need = self._boss_need(card, g)
+        if need:
+            f["bossneed"] = round(need, 2)   # what this act's boss asks for (was a fixed bonus; now learned)
         if card.upgrades:
             f["upgraded"] = 1.0
         dup = sum(1 for d in g.deck if C.base_name(d.name) == name)
@@ -542,12 +545,17 @@ class PolicyAgent:
     @staticmethod
     def _boss_needs_now(g) -> dict:
         """The act boss's needs, stronger in the second half of the act when it is close."""
-        needs = C.BOSS_NEEDS.get(g.act_boss, {})
-        late = (g.floor % 17) >= 8 or g.floor % 17 == 0
+        needs = C.BOSS_NEEDS.get(getattr(g, "act_boss", None), {})
+        floor = getattr(g, "floor", 0)
+        late = (floor % 17) >= 8 or floor % 17 == 0
         return {k: v * (1.0 if late else 0.5) for k, v in needs.items()}
 
+    def _boss_need(self, card, g) -> float:
+        """How much of what this act's boss asks for (cards.BOSS_NEEDS) the card brings."""
+        return sum(v for r, v in self._boss_needs_now(g).items() if r in C.roles(card))
+
     def _card_bonus(self, card, g) -> float:
-        b = sum(v for r, v in self._boss_needs_now(g).items() if r in C.roles(card))
+        b = 0.0   # the boss's needs are a learnable feature now (bossneed in _card_features)
         if CONFIG.flavor and g.act <= 2 and C.base_name(card.name) in C.archetypes(g.character).get(CONFIG.flavor, {}):
             b += 1.0 if g.act == 1 else 0.6  # this run tests a build; learning sees how it goes
         return b

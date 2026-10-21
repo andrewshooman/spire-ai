@@ -292,7 +292,8 @@ def main() -> None:
     ag = policy.PolicyAgent()
     infl = parse_message(state(["Inflame"], [monster("Jaw Worm", 40, 0)])).game_state.combat_state.hand[0]
     strike = parse_message(state(["Strike"], [monster("Jaw Worm", 40, 0)])).game_state.combat_state.hand[0]
-    check("before the Champ, scaling cards get a boost", ag._card_bonus(infl, gq) > ag._card_bonus(strike, gq))
+    check("before the Champ, scaling cards score higher on the boss-need feature",
+          ag._boss_need(infl, gq) > ag._boss_need(strike, gq) and ag._boss_need(infl, gq) > 0)
     check("big act-2 deck leans toward skipping", ag._skip_bonus(gq) > 0)
     # Byrds: multi-hits knock a flying Byrd down (its attack never lands); single hits do half damage
     msg = state(["Twin Strike", "Strike"], [monster("Byrd", 30, 12, powers=[("Flight", 2)])], energy=1)
