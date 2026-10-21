@@ -88,6 +88,19 @@ select,input{font:inherit;background:#1a1612;color:var(--ink);border:1px solid v
 .whygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:8px}
 .liftbar{display:inline-block;height:8px;border-radius:4px;vertical-align:middle;margin-right:6px}
 .best td{font-size:13px} .best td:nth-child(4){white-space:nowrap} .best .cards{font-size:11px;color:var(--muted)}
+.pipe{display:flex;flex-wrap:wrap;align-items:stretch;gap:6px;margin:6px 0 10px}
+.pipe .step{flex:1 1 150px;border:1px solid var(--edge);border-radius:8px;padding:8px 10px;background:#1a1612}
+.pipe .step b{display:block;color:var(--gold);font-size:13px;margin-bottom:2px} .pipe .step span{font-size:12px;color:var(--muted)}
+.pipe i{align-self:center;color:var(--gold2);font-style:normal}
+.dv{display:grid;grid-template-columns:minmax(0,1.3fr) minmax(0,2fr) 44px;gap:6px;align-items:center;font-size:12.5px;padding:2px 0}
+.dv .t{position:relative;height:10px} .dv .t:before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;border-left:1px solid var(--edge2)}
+.dv .t i{position:absolute;top:0;height:100%;border-radius:4px} .dv b{text-align:right;font-weight:600}
+.heat{border-collapse:separate;border-spacing:2px;font-size:12px;width:100%} .heat td,.heat th{padding:4px 6px;text-align:center;border:none}
+.heat th{color:var(--muted);font-weight:500;cursor:default} .heat td{border-radius:4px;color:var(--ink)}
+.multi{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:8px}
+.multi .sm{border:1px solid var(--line);border-radius:6px;padding:6px 8px;background:#1a1612} .multi .sm b{font-size:12px} .multi .sm span{font-size:11px;color:var(--muted)}
+.stack{position:relative;height:12px;margin-top:2px} .stack:before{content:"";position:absolute;left:50%;top:-2px;bottom:-2px;border-left:1px solid var(--edge2)}
+.stack i{position:absolute;top:0;height:100%;border-radius:3px}
 .tag{display:inline-block;font-size:11px;padding:0 6px;border-radius:8px;border:1px solid var(--edge);color:var(--muted);margin-right:3px}
 .map svg{width:100%;max-width:320px;display:block;margin:0 auto}
 .enemy{display:inline-block;min-width:150px;margin:0 8px 8px 0;padding:8px;border:1px solid var(--edge);border-radius:8px;background:#1a1612;vertical-align:top}
@@ -98,7 +111,7 @@ select,input{font:inherit;background:#1a1612;color:var(--ink);border:1px solid v
  <span class=pill id=status>connecting...</span>
 </div>
 <nav class=tabs id=tabs>
- <a data-t=overview>Overview</a><a data-t=live>Live run</a><a data-t=runs>Runs</a><a data-t=insights>Insights</a>
+ <a data-t=overview>Overview</a><a data-t=model>Model</a><a data-t=runs>Runs</a><a data-t=insights>Insights</a>
  <a data-t=sim>Simulator</a><a data-t=settings>Settings</a>
 </nav>
 
@@ -118,20 +131,51 @@ select,input{font:inherit;background:#1a1612;color:var(--ink);border:1px solid v
  </div>
 </section>
 
-<section id=t-live class=hide>
- <div class=card><div id=livehud class=hud>Waiting for the bot...</div><div id=livejourney></div></div>
- <div class="grid g3">
-  <div class=card><h2>HP this run</h2><div id=livehp></div><div id=livestats class=small></div></div>
-  <div class=card><h2>LLM decisions (newest first)</h2><div id=livellm style="max-height:520px;overflow:auto"></div></div>
-  <div class=card><h2 id=livedecktitle>Deck</h2><div id=livedeck class=deck></div><h2 style="margin-top:12px">Plan</h2><div id=liveplan class=small></div></div>
- </div>
- <div class="grid g2">
-  <div class="card map"><h2>Act map</h2><div id=livemap></div></div>
-  <div class=card><h2 id=livescreen>Now</h2><div id=livenow class=small></div><h2 style="margin-top:12px">Last decisions</h2><div id=livelog class=small style="max-height:360px;overflow:auto"></div></div>
- </div>
- <div class=card><h2>Why it chose (score breakdown, newest first)</h2>
-  <div class="small muted" style="margin-bottom:6px">Each option's score = learned weights + rule bonuses, split by reason; % = chance the policy gave it. Highlighted = what was taken.</div>
-  <div id=livewhy class=whygrid></div></div>
+<section id=t-model class=hide>
+ <div class=card><h2>How a decision is made</h2>
+  <div class=pipe>
+   <div class=step><b>Game state</b><span>deck, relics, HP, gold, act, boss, map, the offer</span></div><i>&rarr;</i>
+   <div class=step><b>Features</b><span>card, act &amp; build context, synergies, boss needs, expert pick rate, how the bot plays it, relics, room &amp; HP</span></div><i>&rarr;</i>
+   <div class=step><b>&times; learned weights + rules</b><span>one weight per feature (below), plus playbook rules that can't be outvoted (rest before a boss&hellip;)</span></div><i>&rarr;</i>
+   <div class=step><b>Score &rarr; softmax</b><span>scores become chances; training runs sample (temperature <em id=mtemp>-</em>), benchmark runs take the best</span></div><i>&rarr;</i>
+   <div class=step><b>Choice</b><span>card / path / rest / shop / relic / event; the LLM advises events, shops and upgrades</span></div>
+  </div>
+  <p class="small muted">Combat is different: a whole-turn search tries card orders within the turn's energy and scores where each leaves you
+   (damage, kills, block vs the enemies' intents, debuffs, Strength, orbs...) with learned combat weights.</p>
+  <h3 class=small>Latest choices, split by reason <span class=muted>(green pushes an option up, red down; hover a segment)</span></h3>
+  <div id=mwhy class=whygrid></div></div>
+
+ <div class=card><h2>How it trains <span class=muted id=mtrain></span></h2>
+  <div class="grid g2">
+   <div><h3 class=small>Score per run (bosses beaten / wins), 20-run average</h3><div id=mscore></div>
+    <div class="small muted">score: act 1 boss 0.1, act 2 boss 0.5, win 2.0 &middot; dots: grey training, gold benchmark, green win</div></div>
+   <div><h3 class=small>Combat weights: learned vs starting value</h3><div id=mcombat></div></div>
+  </div>
+  <h3 class=small>Key weights over the training cycles <span class=muted>(a model snapshot every 10 runs)</span></h3>
+  <div id=mhist class=multi></div>
+  <p class="small muted">Each run: the choices it made are pushed toward (or away from) what it took to beat bosses and win, against what
+   the value estimate expected from that position (REINFORCE). Combat weights move by mirrored trials on the same seed. Every 10 runs two
+   benchmark runs on fixed seeds decide whether the model stays the champion.</p></div>
+
+ <div class=card><h2>What it has learned</h2>
+  <div class="grid g3">
+   <div><h3 class=small>Card weights: highest and lowest</h3><div id=mcards></div></div>
+   <div><h3 class=small>Synergy rules</h3><div id=msyn></div><h3 class=small style="margin-top:10px">Boss relics</h3><div id=mrelics></div></div>
+   <div><h3 class=small>Feature weights</h3><div id=mscal></div></div>
+  </div>
+  <div class="grid g2" style="margin-top:10px">
+   <div><div class="grid g2"><div class=scroll><h3 class=small>Map: room &times; HP</h3><div id=mnode></div></div>
+     <div class=scroll><h3 class=small>Map: room &times; act</h3><div id=mnodeact></div></div></div>
+    <div class=scroll><h3 class=small style="margin-top:8px">Rest sites</h3><div id=mrest></div></div></div>
+   <div class=scroll><h3 class=small>Boss needs: what each act boss asks of the deck</h3><div id=mboss></div></div>
+  </div></div>
+
+ <div class=card><h2>Best cards &amp; combos</h2>
+  <div class="grid g2">
+   <div><h3 class=small>Played together <span class=muted>(same turn, beyond their separate play rates)</span></h3><div id=mpairs></div></div>
+   <div><h3 class=small>How often a card gets played when it's in hand <span class=muted id=mbase></span></h3><div id=mplay></div></div>
+  </div>
+  <p class="small muted">Win-based best cards and synergies are on the Overview.</p></div>
 </section>
 
 <section id=t-runs class=hide>
@@ -360,57 +404,100 @@ function currentRun() {
      <span>Floor <b>${d.floor}</b> &middot; Act ${d.act}</span><span>Boss: <b>${esc(d.act_boss)}</b></span>
      <span>Deck <b>${(d.deck || []).length}</b></span><span>Relics <b>${(d.relics || []).length}</b></span>
      <span class=muted>${Math.floor((s.elapsed || 0) / 60)}:${String((s.elapsed || 0) % 60).padStart(2, "0")} elapsed</span>
-     <a href="#live">Watch live →</a></div>
+     <a href="#model">How it decides →</a></div>
     ${last ? `<div class=why><span class=topic>${esc(last.topic)}</span> ${esc(last.choice ?? "(policy decided)")} &mdash; ${esc((last.answer || "").split("|").slice(1).join("|").trim() || last.q)}</div>` : ""}`;
 }
 
 // ---------------------------------------------------------------- live tab
 const ICON = {M: "⚔", E: "☠", R: "♨", "$": "$", "?": "?", T: "▣"};
-function liveTab() {
-  const d = LIVE;
-  if (!d || !d.updated) { $("#livehud").textContent = "Waiting for the bot..."; return; }
-  $("#livehud").innerHTML = `<span><span class=heart>❤</span> <b>${d.hp}</b>/${d.max_hp}</span><span><b>${d.gold}</b> gold</span><span>Floor <b>${d.floor}</b> &middot; Act ${d.act} &middot; boss ${esc(d.act_boss)}</span>
-    <span>Run ${d.run ?? "?"} &middot; ${esc(d.kind || "")} &middot; seed ${esc(d.seed || "")}</span>
-    <span class=small>${(d.relics || []).map(r => `<span class=tag>${esc(r[0])}</span>`).join("")}</span>
-    <span class=small>Potions: ${esc((d.potions || []).filter(p => p !== "Potion Slot").join(", ") || "none")}</span>`;
-  $("#livejourney").innerHTML = journey(d.floor);
-  const tr = d.hp_track || [];
-  $("#livehp").innerHTML = lineChart(tr.map(t => [t[0], t[1]]), {w: 420, h: 150, ymax: Math.max(...tr.map(t => t[2]), 1), color: "var(--red)"});
-  const s = d.stats || {};
-  $("#livestats").innerHTML = `Decisions ${s.decisions ?? 0} &middot; LLM calls ${s.llm_calls ?? 0} (${s.llm_s ?? 0} s) &middot; potions used ${s.potions_used ?? 0} &middot; picks ${(s.picks ?? 0) - (s.skips ?? 0)}/${s.picks ?? 0}${(s.bought || []).length ? " &middot; bought " + esc(s.bought.join(", ")) : ""}`;
-  $("#livellm").innerHTML = (d.llm || []).map(c => `<div class="call ${c.choice == null ? "fail" : ""}"><span class=topic>${esc(c.topic)}</span><span class=muted>F${c.floor} &middot; ${c.ms ? (c.ms / 1000).toFixed(1) + "s" : ""}</span><div>${esc(c.q)}</div><div class=c>→ ${esc(c.choice ?? "policy decided")}</div><div class=muted>${esc(c.answer || "")}</div></div>`).join("") || "<p class=muted>No LLM calls yet.</p>";
-  const counts = {};
-  for (const c of d.deck || []) { const k = c.name + "|" + c.type; counts[k] = (counts[k] || 0) + 1; }
-  $("#livedecktitle").textContent = `Deck (${(d.deck || []).length})`;
-  $("#livedeck").innerHTML = Object.entries(counts).sort().map(([k, n]) => { const [nm, t] = k.split("|"); return `<span class="dchip ${esc(t)}">${esc(nm)}${n > 1 ? " ×" + n : ""}</span>`; }).join("");
-  const p = d.plan || {};
-  $("#liveplan").innerHTML = `<b>${esc(p.archetype || "Undecided")}</b>${d.flavor ? ` &middot; testing ${esc(d.flavor)}` : ""}<br>Core: ${esc((p.core || []).join(", ") || "-")}<br>Wanted: ${esc((p.wanted || []).join(", ") || "-")}`;
-  // map
-  const nodes = (d.map && d.map.nodes) || [];
-  if (nodes.length) {
-    const maxY = Math.max(...nodes.map(n => n[1])), W = 300, H = 60 + (maxY + 1) * 34, X = x => 30 + x * 40, Y = y => H - 22 - y * 34;
-    const key = (x, y) => x + "," + y, has = new Set(nodes.map(n => key(n[0], n[1]))), route = d.map.route || [], on = new Set(route.map(r => key(r[0], r[1])));
-    let s = `<svg viewBox="0 0 ${W} ${H}">`;
-    for (const [x, y, sy, ch] of nodes) for (const [cx, cy] of ch) s += `<line x1=${X(x)} y1=${Y(y)} x2=${has.has(key(cx, cy)) ? X(cx) : W / 2} y2=${has.has(key(cx, cy)) ? Y(cy) : 26} stroke="#5a4d3a" stroke-dasharray="3 4" />`;
-    for (let i = 1; i < route.length; i++) s += `<line x1=${X(route[i - 1][0])} y1=${Y(route[i - 1][1])} x2=${X(route[i][0])} y2=${Y(route[i][1])} stroke="var(--gold)" stroke-width=3 />`;
-    for (const [x, y, sy] of nodes) s += `<g><circle cx=${X(x)} cy=${Y(y)} r=12 fill="${on.has(key(x, y)) ? "#5a4520" : "#2b251d"}" stroke="${on.has(key(x, y)) ? "var(--gold)" : "#6b5b42"}" /><text x=${X(x)} y=${Y(y) + 4} text-anchor=middle fill="${sy === "E" ? "#ff8c7a" : "#ebe2cc"}" font-size=13>${ICON[sy] || sy}</text></g>`;
-    s += `<circle cx=${W / 2} cy=26 r=17 fill="#2b1a16" stroke="var(--red)" /><text x=${W / 2} y=31 text-anchor=middle fill="var(--red)" font-size=17>♛</text></svg>`;
-    $("#livemap").innerHTML = s;
-  }
-  const c = d.combat;
-  if (c && d.screen === "COMBAT") {
-    $("#livescreen").textContent = `Combat · turn ${c.turn} · energy ${c.energy} · block ${c.block}`;
-    $("#livenow").innerHTML = c.monsters.filter(m => !m.gone).map(m => `<div class=enemy><b>${esc(m.name)}</b><div class=bar><i style="width:${100 * m.hp / Math.max(1, m.max_hp)}%;background:var(--red)"></i></div>${m.hp}/${m.max_hp}${m.block ? " ⛨" + m.block : ""}<br><span class=muted>${esc(m.intent)}${m.dmg > 0 ? " " + m.dmg + (m.hits > 1 ? "×" + m.hits : "") : ""}</span></div>`).join("") +
-      `<div class=deck style="margin-top:6px">${c.hand.map(h => `<span class="dchip ${esc(h.type)}">${esc(h.name)} (${h.cost < 0 ? "X" : h.cost})</span>`).join("")}</div>`;
-  } else { $("#livescreen").textContent = (d.screen || "").replace(/_/g, " ").toLowerCase(); $("#livenow").innerHTML = ""; }
-  $("#livewhy").innerHTML = (d.choices || []).map(c => {
-    const rows = (c.options || []).map((o, k) => ({...o, k})).sort((a, b) => (b.p ?? 0) - (a.p ?? 0) || b.score - a.score);
-    return `<div class=why><span class=topic>${esc(c.kind)}</span><span class=muted>F${c.floor} &middot; by ${esc(c.by || "policy")} &middot; ${esc(c.t || "")}</span><table>${rows.map(o => `<tr class="${o.k === c.chosen ? "pick" : ""}"><td>${o.k === c.chosen ? "&#9654; " : ""}${esc(o.label)}<div>${Object.entries(o.parts || {}).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([n, v]) => `<span class="part ${v >= 0 ? "pos" : "neg"}">${esc(n)} ${v >= 0 ? "+" : ""}${v.toFixed(2)}</span>`).join("")}</div></td><td class=num>${o.score >= 0 ? "+" : ""}${o.score.toFixed(2)}</td><td class=pb><div class=num>${o.p != null ? Math.round(o.p * 100) + "%" : ""}</div><div class=bar><i style="width:${Math.round((o.p ?? 0) * 100)}%"></i></div></td></tr>`).join("")}</table></div>`;
-  }).join("") || "<p class=muted>No scored choices yet this session.</p>";
-  $("#livelog").innerHTML = (d.decisions || []).map(x => `<div><span class=muted>F${x.floor} ${esc(x.screen.toLowerCase())}</span> <b>${esc(x.action)}</b>${x.why ? `<div class=muted>${esc(x.why)}</div>` : ""}</div>`).join("");
+// ---------------------------------------------------------------- Model tab
+let MODEL = null;
+const POS = "var(--green)", NEG = "var(--red)";
+function divbars(rows, {fmtv = v => (v > 0 ? "+" : "") + (+v).toFixed(2), tip = r => ""} = {}) {
+  // diverging bars around zero: green right, red left; the scale is the largest magnitude shown
+  if (!rows.length) return "<p class=muted>Nothing learned yet.</p>";
+  const m = Math.max(...rows.map(r => Math.abs(r[1])), 0.01);
+  return rows.map(r => {
+    const v = r[1], w = 50 * Math.abs(v) / m;
+    const pos = v >= 0 ? `left:50%;width:${w}%;background:${POS}` : `left:${50 - w}%;width:${w}%;background:${NEG}`;
+    return `<div class=dv title="${esc(r[0] + ": " + fmtv(v) + (tip(r) ? " · " + tip(r) : ""))}"><span>${esc(r[0])}</span><span class=t><i style="${pos}"></i></span><b>${fmtv(v)}</b></div>`;
+  }).join("");
+}
+function heat(matrix, rowNames, colNames, {fmtv = v => (v > 0 ? "+" : "") + (+v).toFixed(1)} = {}) {
+  // diverging cells: green for positive, red for negative, neutral near zero; value printed in the cell
+  const m = Math.max(...matrix.flat().map(Math.abs), 0.01);
+  const cell = v => {
+    const a = Math.min(1, Math.abs(v) / m) * 0.75;
+    const bg = v >= 0 ? `rgba(127,184,95,${a})` : `rgba(210,71,58,${a})`;
+    return `<td style="background:${bg}" title="${(+v).toFixed(2)}">${fmtv(v)}</td>`;
+  };
+  return `<table class=heat><tr><th></th>${colNames.map(c => `<th>${esc(c)}</th>`).join("")}</tr>` +
+    matrix.map((row, i) => `<tr><th style="text-align:right">${esc(rowNames[i])}</th>${row.map(cell).join("")}</tr>`).join("") + "</table>";
+}
+function spark(points, {w = 160, h = 46} = {}) {
+  // a small line over the cycles with its zero line; points = [[x, y]] (y may be null)
+  const pts = points.filter(p => p[1] != null);
+  if (pts.length < 2) return "<span class=muted>-</span>";
+  const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+  const x0 = Math.min(...xs), x1 = Math.max(...xs), y0 = Math.min(0, ...ys), y1 = Math.max(0, ...ys, y0 + 0.01);
+  const X = x => 2 + (w - 4) * (x - x0) / Math.max(1, x1 - x0), Y = y => h - 3 - (h - 6) * (y - y0) / (y1 - y0);
+  return `<svg class=chart viewBox="0 0 ${w} ${h}"><line x1=0 x2=${w} y1=${Y(0)} y2=${Y(0)} stroke="var(--edge2)" stroke-dasharray="3 3"/>` +
+    `<polyline fill=none stroke="var(--gold)" stroke-width=2 points="${pts.map(p => X(p[0]).toFixed(1) + "," + Y(p[1]).toFixed(1)).join(" ")}"/>` +
+    pts.map(p => `<circle cx=${X(p[0])} cy=${Y(p[1])} r=5 fill=transparent><title>cycle ${p[0]}: ${(+p[1]).toFixed(2)}</title></circle>`).join("") + "</svg>";
+}
+function whyChoices() {
+  const cs = (LIVE && LIVE.choices) || [];
+  $("#mwhy").innerHTML = cs.slice(0, 6).map(c => {
+    const rows = (c.options || []).map((o, k) => ({...o, k})).sort((a, b) => (b.p ?? 0) - (a.p ?? 0));
+    const m = Math.max(...rows.map(o => Math.max(Object.values(o.parts || {}).filter(v => v > 0).reduce((a, b) => a + b, 0),
+                                                 -Object.values(o.parts || {}).filter(v => v < 0).reduce((a, b) => a + b, 0))), 0.5);
+    return `<div class=why><span class=topic>${esc(c.kind)}</span><span class=muted>F${c.floor} &middot; by ${esc(c.by || "policy")}</span>` +
+      rows.map(o => {
+        let posx = 50, negx = 50, seg = "";
+        for (const [g, v] of Object.entries(o.parts || {}).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1]))) {
+          const w = 50 * Math.abs(v) / m;
+          if (v >= 0) { seg += `<i style="left:${posx}%;width:${Math.max(0, w - 0.4)}%;background:${POS}"><title>${esc(g)} +${v.toFixed(2)}</title></i>`; posx += w; }
+          else { negx -= w; seg += `<i style="left:${negx}%;width:${Math.max(0, w - 0.4)}%;background:${NEG}"><title>${esc(g)} ${v.toFixed(2)}</title></i>`; }
+        }
+        return `<div style="margin-top:5px" class="${o.k === c.chosen ? "pick" : ""}"><div class=small>${o.k === c.chosen ? "&#9654; " : ""}<b>${esc(o.label)}</b>
+          <span class=muted>${o.p != null ? Math.round(o.p * 100) + "%" : ""} &middot; score ${o.score >= 0 ? "+" : ""}${o.score.toFixed(1)}</span></div><div class=stack>${seg}</div></div>`;
+      }).join("") + `</div>`;
+  }).join("") || "<p class=muted>Choices show up here while the bot plays.</p>";
+}
+function modelTab(d) {
+  if (!d || !d.ok) { $("#mtrain").textContent = "no model yet"; return; }
+  const t = d.training;
+  $("#mtemp").textContent = t.temperature;
+  $("#mtrain").textContent = `${t.runs_trained} runs trained · ${t.weights} weights · value estimate from ${t.value_runs} runs · ` +
+    `${t.expert_learned} expert + ${t.human_learned} of your runs learned · ${t.cycles} cycles`;
+  // score per run with a 20-run average
+  const sc = d.series, avg = [];
+  for (let i = 0; i < sc.length; i++) { const w = sc.slice(Math.max(0, i - 19), i + 1); avg.push([sc[i].run, w.reduce((a, r) => a + r.score, 0) / w.length]); }
+  $("#mscore").innerHTML = lineChart(avg, {ymax: Math.max(0.6, ...sc.map(r => r.score)), marks: [[0.1, "act 1 boss"], [0.5, "act 2 boss"]],
+    dots: sc.map(r => [r.run, r.score, r.win ? "var(--green)" : r.kind === "bench" ? "var(--gold)" : "#8a8170",
+      `run ${r.run}: ${r.win ? "WIN" : "floor " + r.floor} (score ${r.score})`])});
+  $("#mcombat").innerHTML = divbars(d.combat.filter(c => c.start).map(c => [c.name, (c.learned - c.start) / c.start]),
+    {fmtv: v => (v > 0 ? "+" : "") + Math.round(100 * v) + "%", tip: r => { const c = d.combat.find(x => x.name === r[0]); return `${c.start} → ${c.learned}`; }});
+  $("#mhist").innerHTML = d.tracked.map(k => `<div class=sm><b>${esc(k)}</b> <span>${(d.history.at(-1)?.w[k] ?? "-")}</span>${spark(d.history.map(h => [h.cycle, h.w[k]]))}</div>`).join("");
+  $("#mcards").innerHTML = divbars(d.cards);
+  $("#msyn").innerHTML = divbars(d.synrule);
+  $("#mrelics").innerHTML = divbars(d.relics);
+  $("#mscal").innerHTML = divbars(Object.entries(d.scalars), {tip: r => ({expertpick: "how much experts' pick rates count", cardplay: "how often the bot plays the card when drawn",
+    cardfight: "HP saved in fights with the card", cardpair: "played together with your cards", "relicfit:boss": "boss relic fits the deck"})[r[0]] || ""});
+  const RN = {M: "fight", E: "elite", R: "rest", "$": "shop", "?": "event", T: "chest"};
+  $("#mnode").innerHTML = heat(d.node, d.rooms.map(r => RN[r] || r), ["HP <40%", "40-70%", "70%+"]);
+  $("#mnodeact").innerHTML = heat(d.nodeact, d.rooms.map(r => RN[r] || r), ["act 1", "act 2", "act 3"]);
+  $("#mboss").innerHTML = heat(d.bossneed, d.bosses, d.roles);
+  const rr = d.rest;
+  $("#mrest").innerHTML = heat([["rest", "smith"].map(a => [0, 1, 2].map(b => rr[`${a}:h${b}`])), ["restboss", "smithboss"].map(a => [0, 1, 2].map(b => rr[`${a}:h${b}`]))].flat(),
+    ["rest (mid-act)", "upgrade (mid-act)", "rest (before boss)", "upgrade (before boss)"], ["HP <40%", "40-70%", "70%+"]) +
+    `<p class="small muted">Before a boss, under the threshold (65% HP, 55% for Hexaghost, 85% in act 2+) a rule always rests.</p>`;
+  $("#mpairs").innerHTML = divbars(d.pairs.map(p => [`${p.a} + ${p.b}`, p.lift, p.turns]), {fmtv: v => "+" + Math.round(100 * v) + "%", tip: r => `${r[2]} turns with both in hand`});
+  const pr = d.playrate || {};
+  $("#mbase").textContent = pr.base != null ? `(average ${Math.round(100 * pr.base)}%)` : "";
+  $("#mplay").innerHTML = divbars([...(pr.high || []), ...(pr.low || [])], {fmtv: v => (v > 0 ? "+" : "") + Math.round(100 * v) + "%"});
 }
 
-// ---------------------------------------------------------------- runs tab
 function runTable() {
   const k = $("#fkind").value, o = $("#fout").value, q = $("#fq").value.toLowerCase();
   const rows = RUNS.filter(r => (!k || r.kind === k) &&
@@ -530,7 +617,7 @@ $("#restart").onclick = async () => {
 async function refresh() {
   try {
     const want = CHAR;   // a slow answer for a character no longer on screen is dropped
-    if (["overview", "live"].includes(TAB)) { const l = await api("live"); if (want !== CHAR) return; LIVE = l; status(); }
+    if (["overview", "model"].includes(TAB)) { const l = await api("live"); if (want !== CHAR) return; LIVE = l; status(); }
     if (TAB === "overview") {
       if ((!SUM || Date.now() - (SUM._t || 0) > 20000) && !loadingSum) {
         if (!SUM) $("#kpis").innerHTML = `<div class=card><p class=loading>Loading ${NAME(CHAR)} runs...</p></div>`;
@@ -543,7 +630,12 @@ async function refresh() {
       }
       if (SUM) currentRun();
     }
-    if (TAB === "live") liveTab();
+    if (TAB === "model") {
+      if (!MODEL || MODEL._char !== CHAR || Date.now() - (MODEL._t || 0) > 20000) {
+        const m = await api("model"); if (want !== CHAR) return; MODEL = m; MODEL._t = Date.now(); MODEL._char = CHAR; modelTab(MODEL);
+      }
+      whyChoices();
+    }
     if (TAB === "runs" && !location.hash.startsWith("#run=")) { RUNS = await api("runs"); runTable(); }
     if (TAB === "insights") { SUM = await api("summary"); SUM._t = Date.now(); insights(SUM); }
     if (TAB === "sim") sim();
@@ -551,6 +643,6 @@ async function refresh() {
   } catch (e) { $("#status").textContent = "Can't reach the bot's web server"; }
 }
 header(); route();
-setInterval(() => { if (["overview", "live"].includes(TAB)) refresh(); }, 2000);
+setInterval(() => { if (["overview", "model"].includes(TAB)) refresh(); }, 2000);
 setInterval(header, 30000);
 </script></body></html>

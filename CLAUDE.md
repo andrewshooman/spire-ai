@@ -259,6 +259,11 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     riders are next turn's (Outmaneuver had given 2 energy now; next_block/energy/draw valued 0.8/0.8/0.5),
     Malaise X Strength + X Weak, After Image (+3 block/turn), Noxious Fumes (+2x/turn). The Spireseer Java brain
     lacks orbs and these fixes.
+39. Web app: the Live run tab is replaced by Model (stats.model_view, /api/model): decision pipeline + the latest
+    choices as stacked reason bars (live.json choices), score per run, combat weights vs start, key weights over
+    the cycles (history/model_c*.json, TRACKED), card / synergy / boss relic / feature weights (diverging bars),
+    map room x HP and room x act, boss x role needs and rest-site heatmaps, card pairs played together and play
+    rates (cardutil). The Overview keeps the current run card.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

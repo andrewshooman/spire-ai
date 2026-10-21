@@ -11,6 +11,7 @@ API (all GET unless noted; ?char=ironclad|silent|defect|watcher):
     /api/runs              compact list of every run
     /api/run?n=N           one run in full (picks, shops, events, fights, LLM calls, HP...)
     /api/live              what the bot sees right now (live.json)
+    /api/model             learned weights, their path over cycles, combat weights, score per run, card pairs
     /api/best              best cards and synergies by wins (act 2 boss beaten / won), bot and experts
     /api/sim               simulator bench, training curve, calibration
     /api/restart           GET: restart pending?  POST: request (or cancel) a restart after the current run
@@ -148,6 +149,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                 return self._send(200, p.read_bytes() if p.exists() else b"{}", "application/json")
             if url.path == "/api/restart":
                 return self._json({"pending": (EVOLVE / "restart.request").exists()})
+            if url.path == "/api/model":
+                return self._json(stats.model_view(char))
             if url.path == "/api/best":
                 return self._json(stats.best(char))
             if url.path == "/api/human":

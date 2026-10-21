@@ -401,6 +401,93 @@ def best(char: str) -> dict:
     return out
 
 
+# ---------------------------------------------------------------- Model tab: what it learned, how it trains
+
+TRACKED = ("rest:h1", "smith:h1", "restboss:h1", "skip:a1", "skip:a2", "expertpick", "cardplay", "cardfight",
+           "cardpair", "relicfit:boss", "node:E:h2", "node:M:h1")
+
+
+def model_view(char: str) -> dict:
+    """Everything the Model tab draws: learned weights by kind, their path over the training cycles, the
+    combat weights vs their starting values, the score per run, and the card pairs played together."""
+    import sys
+    sys.path.insert(0, str(HERE))
+    from model import COMBAT_DEFAULTS, Model
+    mp = EVOLVE / char / "model.json"
+    if not mp.exists():
+        return {"ok": False}
+    m = Model(mp, char.upper())
+    w = m.weights
+
+    def top(prefix: str, n: int, strip: bool = True) -> list:
+        rows = [(k[len(prefix):] if strip else k, round(v, 2)) for k, v in w.items() if k.startswith(prefix)]
+        rows.sort(key=lambda r: -r[1])
+        if len(rows) <= 2 * n:
+            return rows
+        return rows[:n] + rows[-n:]
+
+    rooms = ["M", "E", "R", "$", "?", "T"]
+    node = [[round(m.w(f"node:{r}:h{b}"), 2) for b in (0, 1, 2)] for r in rooms]
+    nodeact = [[round(m.w(f"nodeact:{r}:a{a}"), 2) for a in (1, 2, 3)] for r in rooms]
+    import cards as C
+    bosses = list(C.BOSS_NEEDS)
+    roles = list(C.BOSS_ROLES)
+    bossneed = [[round(m.w(f"bossneed:{b}:{r}"), 2) for r in roles] for b in bosses]
+    rest = {k: round(m.w(k), 2) for k in (f"{a}:h{b}" for a in ("rest", "smith", "restboss", "smithboss") for b in (0, 1, 2))}
+    scalars = {k: round(m.w(k), 2) for k in ("expertpick", "expertrelic", "cardplay", "cardfight", "cardpair",
+                                              "relicfit:boss", "upgraded", "dup", "dilute", "need:aoe", "need:block",
+                                              "need:damage", "need:draw", "need:scaling")}
+    combat = [{"name": k, "learned": round(v, 3), "start": COMBAT_DEFAULTS.get(k)} for k, v in m.params.items()
+              if k in COMBAT_DEFAULTS and k != "energy_cost"]
+    # weights across the training cycles (a model snapshot is kept every cycle)
+    hist = []
+    for hp in sorted((EVOLVE / char / "history").glob("model_c*.json")):
+        try:
+            hm = json.loads(hp.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            continue
+        hw = hm.get("weights", {})
+        hist.append({"cycle": int(re.sub(r"\D", "", hp.stem) or 0), "runs": hm.get("meta", {}).get("runs_trained"),
+                     "w": {k: round(hw[k], 2) if k in hw else None for k in TRACKED}})
+    # score per run (the win-focused reward) and temperature
+    runs = [r for r in load_runs(char) if not r.get("aborted")]
+    series = [{"run": r["run"], "score": Model.outcome(r["floor"], bool(r.get("victory"))), "kind": r.get("kind"),
+               "win": bool(r.get("victory")), "temp": r.get("temperature"), "floor": r["floor"]} for r in runs]
+    # card pairs the planner plays together (cardutil): lift over their separate play rates
+    pairs = []
+    try:
+        import cardutil
+        st = cardutil.stats(char)
+        files = sorted((EVOLVE / char / "carduse").glob("run_*.json"))[-cardutil.RECENT:]
+        seen = Counter()
+        for fp in files:
+            seen.update(json.loads(fp.read_text(encoding="utf-8"))["pair_seen"])
+        basics = {"Strike", "Defend"}
+        for k, lift in sorted(st.get("pair", {}).items(), key=lambda kv: -kv[1]):
+            a, b = k.split("|")
+            if a in basics or b in basics:
+                continue   # pairs with a basic card are mostly "both were in hand"
+            pairs.append({"a": a, "b": b, "lift": lift, "turns": seen.get(k, 0)})
+            if len(pairs) >= 15:
+                break
+        play = sorted(st.get("play", {}).items(), key=lambda kv: -kv[1])
+        playrate = {"high": play[:8], "low": play[-8:][::-1], "base": st.get("base_play")}
+    except Exception:
+        playrate = {}
+    meta = m.meta
+    return {
+        "ok": True, "char": char,
+        "cards": top("card:", 12), "synrule": top("synrule:", 8), "relics": top("relic:", 8),
+        "rooms": rooms, "node": node, "nodeact": nodeact, "bosses": bosses, "roles": roles, "bossneed": bossneed,
+        "rest": rest, "scalars": scalars, "combat": combat, "history": hist, "tracked": list(TRACKED),
+        "series": series, "pairs": pairs, "playrate": playrate,
+        "training": {"runs_trained": meta.get("runs_trained"), "weights": len(w), "value_runs": meta.get("value_runs"),
+                     "temperature": round(m.temperature(), 3), "reward_version": meta.get("reward_version"),
+                     "expert_learned": meta.get("expert_runs_learned", 0), "human_learned": meta.get("human_runs_learned", 0),
+                     "cycles": len(hist)},
+    }
+
+
 def runs_list(char: str) -> list[dict]:
     return [run_row(r) for r in load_runs(char)][::-1]
 
