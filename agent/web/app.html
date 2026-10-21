@@ -79,6 +79,13 @@ select,input{font:inherit;background:#1a1612;color:var(--ink);border:1px solid v
 @keyframes fall{to{transform:translateY(80vh) rotate(540deg);opacity:0}}
 .hide{display:none!important}
 .small{font-size:12px}
+.why{border:1px solid var(--line);border-radius:6px;padding:7px 10px;background:#1a1612;font-size:13px}
+.why table{width:100%;border-collapse:collapse;margin-top:4px} .why td{padding:2px 4px;vertical-align:top}
+.why tr.pick td{color:var(--gold);font-weight:600} .why .pb{width:70px} .why .pb .bar{margin-top:5px;height:7px}
+.why .num{text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+.part{display:inline-block;font-size:11px;padding:0 6px;border-radius:8px;margin:1px 3px 1px 0;background:#2a241c;font-weight:400}
+.part.pos{color:var(--green)} .part.neg{color:var(--red)}
+.whygrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:8px}
 .tag{display:inline-block;font-size:11px;padding:0 6px;border-radius:8px;border:1px solid var(--edge);color:var(--muted);margin-right:3px}
 .map svg{width:100%;max-width:320px;display:block;margin:0 auto}
 .enemy{display:inline-block;min-width:150px;margin:0 8px 8px 0;padding:8px;border:1px solid var(--edge);border-radius:8px;background:#1a1612;vertical-align:top}
@@ -120,6 +127,9 @@ select,input{font:inherit;background:#1a1612;color:var(--ink);border:1px solid v
   <div class="card map"><h2>Act map</h2><div id=livemap></div></div>
   <div class=card><h2 id=livescreen>Now</h2><div id=livenow class=small></div><h2 style="margin-top:12px">Last decisions</h2><div id=livelog class=small style="max-height:360px;overflow:auto"></div></div>
  </div>
+ <div class=card><h2>Why it chose (score breakdown, newest first)</h2>
+  <div class="small muted" style="margin-bottom:6px">Each option's score = learned weights + rule bonuses, split by reason; % = chance the policy gave it. Highlighted = what was taken.</div>
+  <div id=livewhy class=whygrid></div></div>
 </section>
 
 <section id=t-runs class=hide>
@@ -380,6 +390,10 @@ function liveTab() {
     $("#livenow").innerHTML = c.monsters.filter(m => !m.gone).map(m => `<div class=enemy><b>${esc(m.name)}</b><div class=bar><i style="width:${100 * m.hp / Math.max(1, m.max_hp)}%;background:var(--red)"></i></div>${m.hp}/${m.max_hp}${m.block ? " ⛨" + m.block : ""}<br><span class=muted>${esc(m.intent)}${m.dmg > 0 ? " " + m.dmg + (m.hits > 1 ? "×" + m.hits : "") : ""}</span></div>`).join("") +
       `<div class=deck style="margin-top:6px">${c.hand.map(h => `<span class="dchip ${esc(h.type)}">${esc(h.name)} (${h.cost < 0 ? "X" : h.cost})</span>`).join("")}</div>`;
   } else { $("#livescreen").textContent = (d.screen || "").replace(/_/g, " ").toLowerCase(); $("#livenow").innerHTML = ""; }
+  $("#livewhy").innerHTML = (d.choices || []).map(c => {
+    const rows = (c.options || []).map((o, k) => ({...o, k})).sort((a, b) => (b.p ?? 0) - (a.p ?? 0) || b.score - a.score);
+    return `<div class=why><span class=topic>${esc(c.kind)}</span><span class=muted>F${c.floor} &middot; by ${esc(c.by || "policy")} &middot; ${esc(c.t || "")}</span><table>${rows.map(o => `<tr class="${o.k === c.chosen ? "pick" : ""}"><td>${o.k === c.chosen ? "&#9654; " : ""}${esc(o.label)}<div>${Object.entries(o.parts || {}).sort((a, b) => Math.abs(b[1]) - Math.abs(a[1])).map(([n, v]) => `<span class="part ${v >= 0 ? "pos" : "neg"}">${esc(n)} ${v >= 0 ? "+" : ""}${v.toFixed(2)}</span>`).join("")}</div></td><td class=num>${o.score >= 0 ? "+" : ""}${o.score.toFixed(2)}</td><td class=pb><div class=num>${o.p != null ? Math.round(o.p * 100) + "%" : ""}</div><div class=bar><i style="width:${Math.round((o.p ?? 0) * 100)}%"></i></div></td></tr>`).join("")}</table></div>`;
+  }).join("") || "<p class=muted>No scored choices yet this session.</p>";
   $("#livelog").innerHTML = (d.decisions || []).map(x => `<div><span class=muted>F${x.floor} ${esc(x.screen.toLowerCase())}</span> <b>${esc(x.action)}</b>${x.why ? `<div class=muted>${esc(x.why)}</div>` : ""}</div>`).join("");
 }
 

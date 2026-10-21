@@ -34,6 +34,7 @@ class LiveView:
         self.info = dict(info or {})
         self.decisions: collections.deque = collections.deque(maxlen=40)
         self.llm: collections.deque = collections.deque(maxlen=40)   # LLM calls, newest first, across runs
+        self.choices: collections.deque = collections.deque(maxlen=8)  # scored choices with their breakdown
         self.route: list[list[int]] = []     # chosen map nodes this act: [x, y]
         self.route_act = 0
         self.hp: list[list[int]] = []        # [floor, hp, max_hp] this run
@@ -46,6 +47,11 @@ class LiveView:
         self.route, self.route_act, self.hp = [], 0, []
         self.decisions.clear()
         self.started = time.time()
+
+    def choice(self, entry: dict) -> None:
+        """A scored choice (card, event, path, rest, shop, boss relic) with each option's score parts."""
+        self.choices.appendleft(dict(entry, run=self.info.get("run"), t=time.strftime("%H:%M:%S")))
+        self._last_write = 0.0
 
     def llm_call(self, entry: dict) -> None:
         self.llm.appendleft(dict(entry, run=self.info.get("run")))
@@ -94,6 +100,7 @@ class LiveView:
             "plan": tracker.plan if tracker else {},
             "llm_calls": tracker.llm_calls if tracker else 0,
             "llm": list(self.llm),
+            "choices": list(self.choices),
             "hp_track": self.hp,
             "stats": {"elapsed": round(time.time() - self.started), "decisions": sum((tracker.counts or {}).values())
                       if tracker else 0, "llm_calls": tracker.llm_calls if tracker else 0,

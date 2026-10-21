@@ -382,6 +382,45 @@ class PolicyAgent:
     def _deck_names(self, g) -> list[str]:
         return [d.name for d in g.deck]
 
+    # ---------------------------------------------------------------- explain choices for the web app
+
+    GROUPS = (("synneed", "missing enabler"), ("synrule", "synergy"), ("cardctx", "fits now"), ("card", "card value"),
+              ("syn", "build"), ("tag", "build"), ("need", "deck needs it"), ("dup", "deck size"), ("dilute", "deck size"),
+              ("upgraded", "card value"), ("skip", "skip"), ("relicfit", "fits the deck"), ("relicctx", "fits the deck"),
+              ("relic", "relic value"), ("shoprelic", "relic value"), ("nodeact", "path"), ("node", "path"),
+              ("restx", "rest site"), ("rest", "rest site"), ("smith", "rest site"), ("shop", "shop"), ("ev", "event"))
+
+    @classmethod
+    def _group(cls, key: str) -> str:
+        kind = key.partition(":")[0]
+        for prefix, name in cls.GROUPS:
+            if kind == prefix:
+                return name
+        return "other"
+
+    def _log_choice(self, g, kind: str, labels: list, options: list, bonus: list, probs: list, idx: int, by: str) -> None:
+        """Each option's score split into readable parts (learned weight x feature, plus rule bonus) for the Live tab."""
+        live = CONFIG.live
+        if live is None:
+            return
+        try:
+            model = CONFIG.model
+            rows = []
+            for k, (lab, f) in enumerate(zip(labels, options)):
+                parts: dict[str, float] = {}
+                for key, x in f.items():
+                    grp = self._group(key)
+                    parts[grp] = parts.get(grp, 0.0) + model.w(key) * x
+                b = bonus[k] if k < len(bonus) else 0.0
+                if b:
+                    parts["rules"] = parts.get("rules", 0.0) + b
+                rows.append({"label": str(lab), "score": round(sum(parts.values()), 2),
+                             "p": round(probs[k], 3) if k < len(probs) else None,
+                             "parts": {n: round(v, 2) for n, v in parts.items() if abs(v) >= 0.05}})
+            live.choice({"kind": kind, "floor": g.floor, "act": g.act, "chosen": idx, "by": by, "options": rows})
+        except Exception:   # the view must never break a decision
+            pass
+
     def _relic_features(self, name: str, g, commit: dict, kind: str, prof: dict | None = None) -> dict[str, float]:
         """Relic choice features (boss relics: kind 'relic', shop relics: 'shoprelic'): the relic, the relic in
         this build / act / kind of deck (cost, draw, exhaust, clog, HP, gold buckets), and the deck-fit score,
@@ -605,6 +644,7 @@ class PolicyAgent:
                 idx, by = len(offered), f"rule: deck {len(g.deck)} cards, {offered[idx].name} has {why}"
         tr.events.append({"kind": "card", "options": options, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
+        self._log_choice(g, "card", labels, options, bonus, probs, idx, by)
         tr.picks.append({"floor": g.floor, "offered": labels, "chosen": labels[idx],
                          "p": round(probs[idx], 2), "archetype": tr.plan.get("archetype")})
         ranked = sorted(zip(labels, probs), key=lambda x: -x[1])
@@ -678,6 +718,8 @@ class PolicyAgent:
         idx, probs = model.choose(options, CONFIG.temperature, CONFIG.rng, bonus)
         tr.events.append({"kind": "path", "options": options, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
+        self._log_choice(g, "path", [{"M": "fight", "E": "elite", "R": "rest", "$": "shop", "?": "event",
+                                      "T": "chest"}.get(l, l) for l in labels], options, bonus, probs, idx, "policy")
         tr.path.append({"floor": g.floor + 1, "node": labels[idx], "hp": g.current_hp,
                         "max_hp": g.max_hp})
         if CONFIG.live is not None:
@@ -787,6 +829,7 @@ class PolicyAgent:
         idx, probs = model.choose(options, CONFIG.temperature, CONFIG.rng, bonus)
         tr.events.append({"kind": "rest", "options": options, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
+        self._log_choice(g, "rest", [o for _, o in labels], options, bonus, probs, idx, "policy")
         tr.rests.append({"floor": g.floor, "choice": labels[idx][1], "hp": g.current_hp,
                          "max_hp": g.max_hp})
         note = "rest site: " + ", ".join(f"{o} {p:.0%}" for (_, o), p in zip(labels, probs))
@@ -884,6 +927,7 @@ class PolicyAgent:
                             break
         tr.events.append({"kind": "shop", "options": options, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
+        self._log_choice(g, "shop", [l for l, _ in labels], options, bonus, probs, idx, by)
         name, choice = labels[idx]
         tr.shops.append({"floor": g.floor, "bought": name, "gold": g.gold, "by": by})
         note = f"shop ({by}): " + ", ".join(f"{l} {p:.0%}" for (l, _), p in
@@ -1110,6 +1154,8 @@ class PolicyAgent:
         # learn from the outcome whoever chose: the LLM's picks train the relic weights too
         tr.events.append({"kind": "boss_relic", "options": options, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
+        self._log_choice(g, "boss relic", [r.name for r in relics] + (["(skip)"] if can_skip else []),
+                         options, bonus, probs, idx, by)
         offered = [r.name for r in relics]
         if can_skip and idx == len(relics):
             tr.boss_relics.append({"floor": g.floor, "relic": "(skip)", "by": by, "offered": offered})
@@ -1165,6 +1211,7 @@ class PolicyAgent:
                 idx, by = k, self._llm_source
         tr.events.append({"kind": "event", "options": feats, "chosen": idx, "probs": probs,
                           "temp": CONFIG.temperature})
+        self._log_choice(g, "event: " + s.event_name, [o.label for o in live], feats, heur, probs, idx, by)
         pick = live[idx]
         tr.game_events.append({"floor": g.floor, "event": s.event_name, "choice": pick.label, "by": by})
         return Choose(choice_index=pick.choice_index), f"event {s.event_name} ({by}): {pick.label}"
