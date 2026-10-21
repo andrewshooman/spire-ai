@@ -53,6 +53,9 @@ sts-bench\  (gitignored) github.com/alavico/sts-bench pinned at 735b90625f63449a
 evolve\<character>\ (gitignored) model.json, champion_*, runs\, history\, progress.csv, coach.md, strategy.md,
             dashboard.html. Logs and trajectories: sts-bench\logs\<date>\.
 
+Storage: C:\sts-evolve\sts-bench\logs and C:\sts-evolve\evolve are junctions to F:\SpireAI\logs and
+F:\SpireAI\evolve (move-storage.ps1, run with the bot paused). Paths in code are unchanged.
+
 ## Game connection
 Mods: BaseMod + CommunicationMod (+ SuperFastMode). CommunicationMod config at
 %LOCALAPPDATA%\ModTheSpire\CommunicationMod\config.properties:
