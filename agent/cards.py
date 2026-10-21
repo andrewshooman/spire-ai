@@ -295,7 +295,7 @@ class Effects:
                  "conditional_strength", "self_vuln", "self_weak", "self_frail", "enemy_str_down",
                  "enemy_str_down_temp", "poison", "per_strike", "exhaust_hand", "block_per_exhaust",
                  "damage_per_exhaust", "if_vuln", "per_turn_strength", "per_turn_block",
-                 "per_turn_energy", "per_turn_damage", "thorns", "dex", "known", "shivs")
+                 "per_turn_energy", "per_turn_damage", "thorns", "dex", "known", "shivs", "poison_mult")
 
     def __init__(self):
         self.damage = 0; self.hits = 1; self.aoe = False; self.random_target = False
@@ -311,6 +311,7 @@ class Effects:
         self.per_turn_strength = 0; self.per_turn_block = 0; self.per_turn_energy = 0
         self.per_turn_damage = 0; self.thorns = 0; self.dex = 0; self.known = False
         self.shivs = 0   # Silent: Shivs added to the hand (0 cost, 4 damage each)
+        self.poison_mult = 0   # Catalyst: multiply the target's Poison
 
 
 def _int(pattern: str, text: str, default: int = 0) -> int:
@@ -370,6 +371,13 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
             e.enemy_str_down = int(m.group(1))
         e.aoe_debuff = e.aoe_debuff or "ALL enemies" in m.group(0)
     e.poison = _int(r"Apply (\d+) Poison", t)
+    m = re.search(r"(Double|Triple) the enemy's Poison", t, re.I)
+    if m:
+        e.poison_mult = 2 if m.group(1).lower() == "double" else 3
+    m = re.search(r"Poison to a random enemy (\d+) times", t, re.I)   # Bouncing Flask
+    if m:
+        e.poison *= int(m.group(1))
+        e.random_target = True
     m = re.search(r"Add (\d+|a) \*?Shivs?\b", t, re.I)
     if m:
         e.shivs = 1 if m.group(1).lower() == "a" else int(m.group(1))

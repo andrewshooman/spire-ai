@@ -35,6 +35,8 @@ CARDS = {
     "Wild Strike": ("Wild Strike", "ATTACK", 1, True), "Power Through": ("Power Through", "SKILL", 1, False),
     "Bludgeon": ("Bludgeon", "ATTACK", 3, True), "Heavy Blade": ("Heavy Blade", "ATTACK", 2, True),
     "Blade Dance": ("Blade Dance", "SKILL", 1, False), "Survivor": ("Survivor", "SKILL", 1, False),
+    "Catalyst": ("Catalyst", "SKILL", 1, True), "Bouncing Flask": ("Bouncing Flask", "SKILL", 2, False),
+    "Deadly Poison": ("Deadly Poison", "SKILL", 1, True),
 }
 
 
@@ -455,6 +457,18 @@ def main() -> None:
     plan = planner.plan_turn(msg, P, [])
     check("Shivs count: Blade Dance kills an 11 HP Louse", names(plan, msg) == ["Blade Dance"] and plan.summary["kills"] == 1,
           plan.describe(msg.game_state.combat_state.hand, msg.game_state.combat_state.monsters))
+    # Silent poison: Catalyst doubles poison already on the enemy; Bouncing Flask is 9 poison, not nothing
+    msg = state(["Catalyst", "Defend"], [monster("Jaw Worm", 60, 0, powers=[("Poison", 12)])], energy=1)
+    plan = planner.plan_turn(msg, P, [])
+    check("Catalyst on a poisoned enemy", names(plan, msg) == ["Catalyst"], ", ".join(names(plan, msg)))
+    msg = state(["Bouncing Flask"], [monster("Jaw Worm", 60, 0)], energy=2)
+    plan = planner.plan_turn(msg, P, [])
+    check("Bouncing Flask counts its 9 poison", names(plan, msg) == ["Bouncing Flask"] and plan.value - plan.base > 15,
+          f"{plan.value - plan.base:+.1f}")
+    # an enemy its poison will kill at the start of its turn never attacks: no need to block it
+    msg = state(["Defend", "Defend"], [monster("Cultist", 5, 30, powers=[("Poison", 6)])], hp=20, energy=2)
+    plan = planner.plan_turn(msg, P, [])
+    check("poison-doomed enemy: its attack doesn't count", plan.summary["taken"] == 0 and plan.base > -100, str(plan.summary))
     # act 1 rest site at 21% HP: rest, never smith (early Silent run 2)
     policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json"), params=dict(P), temperature=0.05)
     gm = NS(screen=NS(has_rested=False), choice_list=["rest", "smith"], current_hp=15, max_hp=70, floor=10,

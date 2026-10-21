@@ -175,6 +175,8 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     Effects.shivs ('Add N Shivs') -> planner hits the priority target for 4+Str each; rest under 45% HP in
     any act; act 1 elites for non-Ironclad only with HP >= 60% and 2+ damage cards. Web app follows the
     character the bot is playing (unless you picked one in the tab), per-character accent, global status pill.
+    Poison: planner reads existing Poison, Catalyst (poison_mult), Bouncing Flask (poison x times, priority
+    target), Corpse Explosion single-target; an enemy whose Poison >= HP doesn't attack (dies first).
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

@@ -168,7 +168,7 @@ def build(message, deck_names: list[str]) -> tuple[Sim, Ctx]:
         x.new_vuln = x.new_weak = 0
         x.atk, x.hits = intent_hit(m)
         x.down = x.down_perm = 0
-        x.poison = 0
+        x.poison = pw(m.powers, "Poison")   # already on it: ticks at the start of its turn
         x.artifact = pw(m.powers, "Artifact")
         x.barricade = pw(m.powers, "Barricade") > 0 or any(q.id == "Barricade" for q in m.powers)
         x.thorns = pw(m.powers, "Thorns")
@@ -348,7 +348,13 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int])
             if perm:
                 m.down_perm += n
     if e.poison:
-        group = [m for m in sim.mons if not m.dead] if (e.aoe or e.aoe_debuff) else ([tgt] if tgt else [])
+        live = [m for m in sim.mons if not m.dead]
+        if e.aoe_debuff:                       # Crippling Cloud: all enemies
+            group = live
+        elif tgt is not None and not tgt.dead:  # Deadly Poison, Poisoned Stab, Corpse Explosion
+            group = [tgt]
+        else:                                  # Bouncing Flask (random): count it on the priority target
+            group = [max(live, key=lambda x: (x.prio, -x.hp))] if live else []
         for m in group:
             if m.artifact > 0:
                 m.artifact -= 1
@@ -363,6 +369,8 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int])
             m = max(live, key=lambda x: (x.prio, -x.hp))
             per = (4 + sim.str) * (0.75 if sim.weak else 1.0)
             _hit(sim, m, int(per * (1.5 if m.vuln > 0 else 1.0)))
+    if getattr(e, "poison_mult", 0) and tgt is not None and not tgt.dead and tgt.poison:
+        tgt.poison *= e.poison_mult            # Catalyst
     if e.draw and vuln_ok:
         sim.draw_value += e.draw * (1.0 if sim.energy > 0 else 0.4)
     sim.card_loss += e.hp_loss
@@ -386,6 +394,8 @@ def incoming(sim: Sim) -> tuple[float, int]:
     for m in sim.mons:
         if m.dead or not m.atk:
             continue
+        if m.poison >= m.hp > 0:
+            continue   # its Poison kills it at the start of its turn, before it attacks
         per = max(0.0, m.atk - m.down * (0.75 if m.weak else 1.0))
         if m.shifting:  # Transient: every point of damage dealt this turn is Strength it loses
             per = max(0.0, per - (m.hp0 - m.hp))
