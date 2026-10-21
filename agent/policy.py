@@ -858,12 +858,11 @@ class PolicyAgent:
             need = 0.6 if getattr(g, "character", "IRONCLAD") == "IRONCLAD" else 0.7   # Slaver+Taskmaster cost Silent ~30 HP
             out["E"] = 0.9 if hp_frac >= need else -0.3
             out["E"] += CONFIG.risk if hp_frac >= 0.5 else 0.0
-            if getattr(g, "character", "IRONCLAD") == "IRONCLAD":
-                # act 2 hallways wear the Ironclad down (7.8 per run vs experts' 4.9; 7+ of them reached
-                # floor 30 at 40% HP vs 52% with 5-6): fewer of them, an elite instead when healthy
-                out["M"] = out.get("M", 0.0) - 0.4
-                if hp_frac >= 0.7:
-                    out["E"] += 0.3
+            # act 2 hallways wear every class down (Ironclad 7.8 per run vs experts' 4.9, 7+ of them reached floor 30
+            # at 40% HP vs 52% with 5-6; the Silent lost 12 HP per act 2 hallway fight in runs that died vs 6)
+            out["M"] = out.get("M", 0.0) - 0.4
+            if getattr(g, "character", "IRONCLAD") == "IRONCLAD" and hp_frac >= 0.7:
+                out["E"] += 0.3   # the Ironclad takes an elite instead when healthy (others need 70% HP anyway)
         elif hp_frac < 0.7:
             out["E"] = -1.0                  # act 3 elites end shaky runs
         if CONFIG.ab.get("event_pull"):

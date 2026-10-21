@@ -80,7 +80,10 @@ FEATURE_PRIORS = {
 WEIGHT_BOUNDS = {"tag": (-1.0, 1.0), "syn": (-1.0, 1.5), "relicctx": (-1.0, 1.0), "relicfit": (-0.5, 2.5),
                  "skip": (-1.5, 1.5), "expertpick": (0.0, 6.0), "expertrelic": (0.0, 4.0),
                  # rest/smith swung by +-2 in hours (sparse boss-kill rewards); keep them in a sane range
-                 "ev": (-2.0, 2.0),   # event choices (the Ironclad's Neow boss-relic swap had reached +3.9)
+                 "ev": (-2.0, 2.0),
+                 # card weights can run away too (the Silent's Dagger Spray reached +5.9 as a card and +5.9 more as
+                 # a 'Shiv' card, synrule:payoff->shiv +6.0, mostly from the LLM's picks); the Ironclad's sit within these
+                 "card": (-3.0, 4.0), "cardctx": (-3.0, 3.0), "synrule": (-3.0, 3.0), "synneed": (-3.0, 0.5),   # event choices (the Ironclad's Neow boss-relic swap had reached +3.9)
                  "rest": (-1.5, 2.5), "smith": (-1.5, 2.5), "restboss": (-1.5, 3.0), "smithboss": (-1.5, 2.5),
                  "cardplay": (0.0, 4.0), "cardfight": (0.0, 4.0), "cardpair": (0.0, 4.0),
                  "bossneed": (-1.0, 3.0)}  # skip:a2 had run away to -5.5 (the LLM never skipped; training followed it)

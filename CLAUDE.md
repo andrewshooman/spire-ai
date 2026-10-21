@@ -245,6 +245,12 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     learns restboss/smithboss weights, rest/smith bounded -1.5..2.5. Centurion deaths are HP: under 30% entry
     13/30 die, 50%+ 1/134 (route HP projection covers it; Mystic already priority 1.4). Act 1 boss relics vs
     act 2 boss (taken vs passed, small n): Black Star 0/5 vs 7/19, Runic Pyramid 0/7, Snecko Eye 5/8.
+37. Neow from the data (act 2 boss after each choice: Transform 39%/27%, HP-cost options 0/22 Ironclad): NEOW_SCORES
+    re-ranked, stiffer HP/curse penalties, Ironclad starter-relic swap 0.3 (1/18; its learned weight had hit +3.9),
+    Neow decided by the policy (LLM only when close), ev:Neow weights reset once (neow_v2). Cross-class: act 2
+    "fewer hallway fights" (M -0.4) for every class (the extra act 2 elite pull stays Ironclad); bounds for
+    ev (+-2), card (-3..4), cardctx (+-3), synrule (+-3), synneed (-3..0.5) -- the Silent's Dagger Spray /
+    Shiv weights had run to +6. Learned weights stay per class (each class has its own model).
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

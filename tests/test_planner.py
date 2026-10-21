@@ -537,6 +537,8 @@ def main() -> None:
     g2 = NS(act=2, floor=20, current_hp=70, max_hp=80, gold=99, relics=[], deck=real_deck, character="IRONCLAD")
     r2 = ag._map_rules(g2)
     check("Ironclad act 2: away from hallway fights, toward elites when healthy", r2.get("M", 0) < 0 and r2.get("E", 0) > 1, str(r2))
+    gs2 = NS(act=2, floor=20, current_hp=70, max_hp=80, gold=99, relics=[], deck=real_deck, character="THE_SILENT")
+    check("every class avoids act 2 hallway fights", policy.PolicyAgent()._map_rules(gs2).get("M", 0) < 0)
     # card use from the protocol log: hand per turn, plays, HP per fight, co-played pairs
     import cardutil
     def st(turn, hand, hp, floor=1, deck=("Strike", "Bash", "Inflame", "Twin Strike")):
