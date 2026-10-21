@@ -239,7 +239,9 @@ def convert(d: dict, char: str, model: Model, source: str = "human") -> tuple[di
     path = d.get("path_per_floor", [])
     at = lambda arr, f, default: arr[f - 1] if 0 < f <= len(arr) and arr[f - 1] is not None else default
     tl = Timeline(d, gchar)
-    policy.CONFIG = policy.Config(model=model, tracker=policy.RunTracker(), learn=False, llm_events=False)
+    # expert_features off: features built from expert runs must not be learned from those same runs
+    policy.CONFIG = policy.Config(model=model, tracker=policy.RunTracker(), learn=False, llm_events=False,
+                                  expert_features=False)
     agent = policy.PolicyAgent()
     empty = NS(id="Potion Slot", name="Potion Slot")
 
@@ -394,6 +396,50 @@ def sync(char: str = "ironclad", model: Model | None = None, say=print, source: 
     skipped_file.write_text(json.dumps(sorted(skipped)), encoding="utf-8")
     counts["total"] = len(done)
     return counts
+
+
+_RATES: dict[str, dict] = {}
+
+
+def expert_rates(game_char: str) -> dict:
+    """How often expert players took each card (per act) and boss relic when offered, shrunk toward their
+    average so rare offers don't swing: {'card': {(name, act): rate - mean}, 'relic': {name: rate - 1/3}}.
+    Empty when no expert runs are loaded for this character."""
+    char = next((k for k, v in GAME_CHAR.items() if v == game_char), None)
+    if char is None:
+        return {}
+    if char in _RATES:
+        return _RATES[char]
+    off: dict = {}
+    tak: dict = {}
+    roff: dict = {}
+    rtak: dict = {}
+    for r in runs(char, "expert"):
+        for p in r.get("picks", []):
+            act = 1 if p["floor"] <= 17 else 2 if p["floor"] <= 34 else 3
+            for o in p.get("offered", []):
+                if o != "(skip)":
+                    k = (C.base_name(o), act)
+                    off[k] = off.get(k, 0) + 1
+            if p.get("chosen") not in (None, "(skip)"):
+                k = (C.base_name(p["chosen"]), act)
+                tak[k] = tak.get(k, 0) + 1
+        for b in r.get("boss_relics", []):
+            for o in b.get("offered", []):
+                roff[o] = roff.get(o, 0) + 1
+            if b.get("relic") not in (None, "(skip)"):
+                rtak[b["relic"]] = rtak.get(b["relic"], 0) + 1
+    out: dict = {"card": {}, "relic": {}}
+    a = 6.0   # shrinkage: an offer seen 6 times moves halfway from the mean to its own rate
+    for act in (1, 2, 3):
+        keys = [k for k in off if k[1] == act]
+        mean = sum(tak.get(k, 0) for k in keys) / max(1, sum(off[k] for k in keys))
+        for k in keys:
+            out["card"][k] = round((tak.get(k, 0) + a * mean) / (off[k] + a) - mean, 3)
+    for name, n in roff.items():
+        out["relic"][name] = round((rtak.get(name, 0) + a / 3) / (n + a) - 1 / 3, 3)
+    _RATES[char] = out if out["card"] else {}
+    return _RATES[char]
 
 
 def take_pending(char: str, source: str = "human") -> list[dict]:

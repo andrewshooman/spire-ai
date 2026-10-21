@@ -63,6 +63,8 @@ FEATURE_PRIORS = {
     "shop:purge": 1.5, "shop:leave": 0.0, "shop:potion": -0.2, "shop:price": -0.6,
     "shop:card": -1.0, "shop:relic": 0.3,
     "relic:skip": -0.5,
+    # expert players' pick rate vs their average (human.expert_rates): +0.7 for a card they always take
+    "expertpick": 3.0, "expertrelic": 2.0,
 }
 
 
@@ -70,7 +72,7 @@ FEATURE_PRIORS = {
 # (tag:Strength reached +3.8) until nearly every run drafted Strength. Keep them small so the
 # individual card weights, synergy rules and the LLM decide.
 WEIGHT_BOUNDS = {"tag": (-1.0, 1.0), "syn": (-1.0, 1.5), "relicctx": (-1.0, 1.0), "relicfit": (-0.5, 2.5),
-                 "skip": (-1.5, 1.5)}  # skip:a2 had run away to -5.5 (the LLM never skipped; training followed it)
+                 "skip": (-1.5, 1.5), "expertpick": (0.0, 6.0), "expertrelic": (0.0, 4.0)}  # skip:a2 had run away to -5.5 (the LLM never skipped; training followed it)
 
 
 def hp_bucket(hp: int, max_hp: int) -> int:

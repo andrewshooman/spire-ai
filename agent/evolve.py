@@ -94,6 +94,13 @@ def _dismiss_or_wait(state, character, ascension, seed):
 
 _session.choose_command = _dismiss_or_wait
 
+# sts-bench stops a run at 1000 decisions; a floor-50 run already takes ~920, so the cap aborted two deep
+# Ironclad runs (floors 36 and 42) and threw away the most valuable learning. Keyword defaults are bound at
+# def time, so raise them on the function itself.
+if _session.play_run.__kwdefaults__ and "max_decisions" in _session.play_run.__kwdefaults__:
+    _session.play_run.__kwdefaults__["max_decisions"] = 3000
+    _session.play_run.__kwdefaults__["max_steps"] = max(8000, _session.play_run.__kwdefaults__.get("max_steps", 0))
+
 
 def _recv_line_tolerant(self, timeout: float | None = None) -> str:
     """GameConnection.recv_line, but a line that is not valid UTF-8 (the game sometimes

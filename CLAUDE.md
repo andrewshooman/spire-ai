@@ -197,6 +197,14 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     Expert runs: human.py source 'expert' (import_runs.bat --expert <folder>), all 4 starters, Neow log, Peace
     Pipe, Pandora's/Empty Cage/Astrolabe in the deck rebuild; evolve.learn_expert_runs (--expert-lr 0.1, cards +
     boss relics only), evidence.expert -> "expert A20 players". Loaded: 565 A20 runs (vmService data).
+29. Ironclad vs 157 expert runs (bot runs 130+: act 1 boss 88%, act 2 boss 17%, Champ 17% of deaths):
+    the bot loved Sword Boomerang/Twin Strike/Perfected Strike/Heavy Blade/Searing Blow (experts 0-6%) and
+    skipped Feed/Shockwave/Burning Pact/Impervious/Disarm/Offering. Learnable features expertpick (expert
+    pick rate in this act minus their mean, shrunk; prior 3.0, bounds 0..6) and expertrelic (prior 2.0) from
+    human.expert_rates; off while converting expert runs (Config.expert_features). Held-out agreement with
+    experts' picks: Ironclad 49 -> 52%, Silent 25 -> 30%. Ironclad map: act 1 +0.5 elite pull until 2 elites
+    (HP 60%+), act 2 M -0.4 and E +0.3 at 70%+ HP. sts-bench caps raised (max_decisions 3000, max_steps
+    8000): two deep runs had aborted at 1000. syn_notes always on; LLM card advice off by default.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

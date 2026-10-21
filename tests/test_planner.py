@@ -501,6 +501,23 @@ def main() -> None:
     lethal = state(["Footwork", "Defend"], [monster("Jaw Worm", 44, 11)], hp=8, energy=1)
     check("Defend when the hit would kill", names(planner.plan_turn(lethal, P, []), lethal) == ["Defend"],
           ", ".join(names(planner.plan_turn(lethal, P, []), lethal)))
+    # expert pick rates (human.expert_rates) as a learnable feature; Ironclad act 2: fewer hallway fights
+    import human
+    human._RATES["ironclad"] = {"card": {("Shockwave", 1): 0.6, ("Sword Boomerang", 1): -0.27}, "relic": {"Runic Pyramid": 0.4}}
+    ag = policy.PolicyAgent()
+    g1 = NS(act=1, floor=3, current_hp=70, max_hp=80, gold=99, relics=[], deck=real_deck, character="IRONCLAD")
+    fs = ag._card_features(human.card_from_id("Shockwave"), g1, {})
+    fb = ag._card_features(human.card_from_id("Sword Boomerang"), g1, {})
+    check("expert pick rate feature: Shockwave up, Sword Boomerang down",
+          fs.get("expertpick") == 0.6 and fb.get("expertpick") == -0.27, f"{fs.get('expertpick')} {fb.get('expertpick')}")
+    policy.CONFIG.expert_features = False
+    check("no expert features while converting expert runs", "expertpick" not in ag._card_features(
+        human.card_from_id("Shockwave"), g1, {}))
+    policy.CONFIG.expert_features = True
+    del human._RATES["ironclad"]
+    g2 = NS(act=2, floor=20, current_hp=70, max_hp=80, gold=99, relics=[], deck=real_deck, character="IRONCLAD")
+    r2 = ag._map_rules(g2)
+    check("Ironclad act 2: away from hallway fights, toward elites when healthy", r2.get("M", 0) < 0 and r2.get("E", 0) > 1, str(r2))
     # overnight Silent runs: low-HP pathing everywhere, Velvet Choker vs Shiv decks, no auto Smoke Bomb
     low = NS(act=1, floor=9, current_hp=20, max_hp=70, gold=99, relics=[], deck=real_deck, character="THE_SILENT")
     r = policy.PolicyAgent()._map_rules(low)

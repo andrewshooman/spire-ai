@@ -114,6 +114,7 @@ class Config:
     evidence: dict | None = None # this bot's track record (evidence.build), shown to the LLM
     human_evidence: dict | None = None  # the same from runs the player played (human.py)
     expert_evidence: dict | None = None  # the same from other strong players' runs (human.py source 'expert')
+    expert_features: bool = True  # expertpick / expertrelic features (off while converting expert runs)
     ab: dict = field(default_factory=dict)  # per-run A/B switches (explore runs); missing = on
 
 
@@ -385,7 +386,7 @@ class PolicyAgent:
 
     # ---------------------------------------------------------------- explain choices for the web app
 
-    GROUPS = (("synneed", "missing enabler"), ("synrule", "synergy"), ("cardctx", "fits now"), ("card", "card value"),
+    GROUPS = (("expertpick", "experts take it"), ("expertrelic", "experts take it"), ("synneed", "missing enabler"), ("synrule", "synergy"), ("cardctx", "fits now"), ("card", "card value"),
               ("syn", "build"), ("tag", "build"), ("need", "deck needs it"), ("dup", "deck size"), ("dilute", "deck size"),
               ("upgraded", "card value"), ("skip", "skip"), ("relicfit", "fits the deck"), ("relicctx", "fits the deck"),
               ("relic", "relic value"), ("shoprelic", "relic value"), ("nodeact", "path"), ("node", "path"),
@@ -436,6 +437,9 @@ class PolicyAgent:
         if len(g.deck) >= 28:
             f[f"relicctx:{name}:big"] = 1.0
         if kind == "relic":
+            ex = _expert_rates(g.character).get("relic", {}).get(name)
+            if ex:
+                f["expertrelic"] = ex   # experts' pick rate for this boss relic vs 1 in 3
             fit = relics_mod.boss_fit(name, prof)[0]
             if fit:
                 f["relicfit:boss"] = fit   # how much the deck-fit judgment counts is learned too (prior 1.0)
@@ -488,6 +492,11 @@ class PolicyAgent:
             f["dup"] = float(dup)
         if len(g.deck) > 15:
             f["dilute"] = (len(g.deck) - 15) / 10.0
+        ex = _expert_rates(char).get("card", {}).get((name, min(g.act, 3)))
+        if ex:
+            # how much more (or less) often strong players took this card in this act than their average:
+            # the Ironclad took Sword Boomerang 69% / Perfected Strike 63%, experts ~0-6%; Feed 13% vs 87%
+            f["expertpick"] = ex
         return f
 
     def _update_plan(self, g) -> dict:
@@ -763,10 +772,21 @@ class PolicyAgent:
         elif g.act == 1:
             out["E"] = 1.0 if hp_frac >= 0.5 and damage >= 1 else (0.3 if hp_frac >= 0.5 else -0.6)
             out["E"] += CONFIG.risk if hp_frac >= 0.4 else 0.0
+            elites = sum(1 for p in (CONFIG.tracker.path if CONFIG.tracker else []) if p.get("node") == "E")
+            if elites < 2 and hp_frac >= 0.6:
+                # experts took 2.7 act 1 elites per run vs the bot's 1.4; bot runs with 2 beat the act 2 boss
+                # 25% of the time vs 12% with 1
+                out["E"] += 0.5
         elif g.act == 2:
             need = 0.6 if getattr(g, "character", "IRONCLAD") == "IRONCLAD" else 0.7   # Slaver+Taskmaster cost Silent ~30 HP
             out["E"] = 0.9 if hp_frac >= need else -0.3
             out["E"] += CONFIG.risk if hp_frac >= 0.5 else 0.0
+            if getattr(g, "character", "IRONCLAD") == "IRONCLAD":
+                # act 2 hallways wear the Ironclad down (7.8 per run vs experts' 4.9; 7+ of them reached
+                # floor 30 at 40% HP vs 52% with 5-6): fewer of them, an elite instead when healthy
+                out["M"] = out.get("M", 0.0) - 0.4
+                if hp_frac >= 0.7:
+                    out["E"] += 0.3
         elif hp_frac < 0.7:
             out["E"] = -1.0                  # act 3 elites end shaky runs
         if CONFIG.ab.get("event_pull"):
@@ -1519,6 +1539,16 @@ EVENT_RULES = [
 
 # optional event fights: (event, regex for the fight option, minimum HP fraction); enforced over the LLM
 FIGHT_EVENT_GUARD = {"Masked Bandits": (r"fight", 0.7), "The Colosseum": (r"victory", 0.6)}
+
+
+def _expert_rates(game_char: str) -> dict:
+    if not CONFIG.expert_features:
+        return {}
+    try:
+        import human
+        return human.expert_rates(game_char)
+    except Exception:   # expert data is a bonus; never break a decision over it
+        return {}
 
 
 def _basics(g) -> int:
