@@ -563,6 +563,30 @@ def main() -> None:
           and Model(Path(tempfile.mkdtemp()) / "m.json", "IRONCLAD").w("pathrelic:Ectoplasm:$") < 0)
     check("path features only for owned relics and the rooms they change",
           policy.PATH_RELIC["Black Star"] == {"E": 0.6} and "M" not in policy.PATH_RELIC["Black Star"])
+    # the HP rules shape the whole route: two fights now, one leads on to rest sites, the other to more fights
+    mp = copy.deepcopy(json.loads((FIX / "map-2.json").read_text()))
+    gm = mp["game_state"]
+    gm.update({"current_hp": 26, "max_hp": 80, "floor": 20, "act": 2, "class": "IRONCLAD", "act_boss": "The Champ"})
+    node = lambda x, y, sym, ch: {"x": x, "y": y, "symbol": sym, "children": [{"x": cx, "y": cy} for cx, cy in ch], "parents": []}
+    gm["map"] = [node(0, 1, "M", [(0, 2)]), node(0, 2, "R", [(0, 3)]), node(0, 3, "R", []),
+                 node(1, 1, "M", [(1, 2)]), node(1, 2, "M", [(1, 3)]), node(1, 3, "M", [])]
+    gm["screen_state"]["next_nodes"] = [{"symbol": "M", "x": 1, "y": 1}, {"symbol": "M", "x": 0, "y": 1}]
+    policy.CONFIG = policy.Config(model=Model(Path(tempfile.mkdtemp()) / "m.json", "IRONCLAD"), tracker=policy.RunTracker(),
+                                  temperature=0.01, llm_events=False)
+    act_, note = policy.PolicyAgent()._map(parse_message(mp), None)
+    check("low HP: of two fights, the one whose route leads to rest sites", getattr(act_, "choice_index", None) == 1, note)
+    # anticipation: same rooms in a different order (M M R vs M R M). Judged at today's HP they tie; with HP projected
+    # along the route the rest site comes when it is needed (after two fights) and that route wins
+    gm["current_hp"] = 48
+    mq = Model(Path(tempfile.mkdtemp()) / "m.json", "IRONCLAD")   # like the live model: rest sites only pay when low
+    mq.weights.update({"node:R:h1": 0.0, "node:M:h1": 0.0, "node:R:h2": 0.0, "node:M:h2": 0.0,
+                       "node:R:h0": 1.0, "node:M:h0": -1.0, "nodeact:R:a2": 0.0, "nodeact:M:a2": 0.0})
+    policy.CONFIG = policy.Config(model=mq, tracker=policy.RunTracker(), temperature=0.05, llm_events=False)
+    gm["map"] = [node(0, 1, "M", [(0, 2)]), node(0, 2, "M", [(0, 3)]), node(0, 3, "R", []),
+                 node(1, 1, "M", [(1, 2)]), node(1, 2, "R", [(1, 3)]), node(1, 3, "M", [])]
+    act_, note = policy.PolicyAgent()._map(parse_message(mp), None)
+    probs = policy.CONFIG.tracker.events[-1]["probs"]
+    check("projected HP: the rest site where it will be needed (after two act 2 fights)", probs[1] > 0.9, note)
     # overnight Silent runs: low-HP pathing everywhere, Velvet Choker vs Shiv decks, no auto Smoke Bomb
     low = NS(act=1, floor=9, current_hp=20, max_hp=70, gold=99, relics=[], deck=real_deck, character="THE_SILENT")
     r = policy.PolicyAgent()._map_rules(low)

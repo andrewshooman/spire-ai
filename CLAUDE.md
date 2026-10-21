@@ -234,6 +234,11 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     2026-10-20 storage move restored an older state.json and runs 224-236 overwrote that afternoon's files).
     Settings "Rotate characters" (off / ironclad + silent / all 4): one random character per run, each with
     its own workspace (evolve.rotation_pick, ROTATIONS); default off while the focus is Ironclad.
+35. First 25 runs on the new code (243-267): act 2 boss 36% (was 17%), 13 runs/hr (was 7.4), two act 3 boss
+    fights (Donu and Deca, lost at good HP); act 1 boss deaths up to 20% (arrive ~50% after 2-3 elites).
+    Low-HP deaths: under 40% HP the bot took a safe room when offered (57/59) but met fight-only choices 28
+    times -> route look-ahead projects HP along each route (ROOM_HP_COST per act; rest +30% under 60%) and
+    scores later rooms with the learned weights and map rules at that projected HP (ROUTE_RULE_SHARE 0.6).
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

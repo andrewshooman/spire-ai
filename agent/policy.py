@@ -736,29 +736,55 @@ class PolicyAgent:
             # ? rooms; Ectoplasm: shops are useless...); learnable, starting from PATH_RELIC
             return {f"pathrelic:{r}:{sym}": 1.0 for r in owned if sym in PATH_RELIC[r]}
 
-        def node_score(sym: str) -> float:
-            v = model.w(f"node:{sym}:h{hb}") + model.w(f"nodeact:{sym}:a{act}") + model.score(relic_feats(sym))
+        rule = self._map_rules(g)
+        max_hp = max(1, g.max_hp)
+        cost = ROOM_HP_COST.get(act, ROOM_HP_COST[3])
+        rules_at: dict = {}
+
+        def rules_for(frac: float) -> dict:
+            # the map rules as they would be at a projected HP (cached per 5%)
+            key = round(frac * 20)
+            if key not in rules_at:
+                rules_at[key] = self._map_rules(_AtHP(g, max(1, int(key / 20 * max_hp))))
+            return rules_at[key]
+
+        def after(sym: str, frac: float) -> float:
+            """Projected HP fraction after a room: fights cost this act's typical HP, a rest site heals 30%
+            when it would be a rest (under 60%)."""
+            if sym == "R" and frac < 0.6:
+                return min(1.0, frac + 0.3)
+            return max(0.02, frac - cost.get(sym, 0.0) / max_hp)
+
+        def node_score(sym: str, frac: float) -> float:
+            hbx = 0 if frac < 0.4 else 1 if frac < 0.7 else 2
+            v = model.w(f"node:{sym}:h{hbx}") + model.w(f"nodeact:{sym}:a{act}") + model.score(relic_feats(sym))
             if sym == "$":
                 v += shop_pull
-            return v
+            # rooms further down a route are judged at the HP the bot would have by then: under 40% HP it took
+            # the safe room whenever one was offered (57 of 59) but had walked into fight-only stretches 28 times
+            return v + ROUTE_RULE_SHARE * rules_for(frac).get(sym, 0.0)
 
-        def route(x: int, y: int, depth: int = 0) -> float:
-            if (x, y) in memo:
-                return memo[(x, y)]
+        def route(x: int, y: int, frac: float, depth: int = 0) -> float:
+            key = (x, y, round(frac * 20))
+            if key in memo:
+                return memo[key]
             n = by_pos.get((x, y))
             if n is None or depth > 20:
                 return 0.0
-            best_child = max((route(ch.x, ch.y, depth + 1) for ch in n.children), default=0.0)
-            memo[(x, y)] = node_score(n.symbol) + 0.85 * best_child
-            return memo[(x, y)]
+            sym = n.symbol or "?"
+            nxt = after(sym, frac)
+            best_child = max((route(ch.x, ch.y, nxt, depth + 1) for ch in n.children), default=0.0)
+            memo[key] = node_score(sym, frac) + 0.85 * best_child
+            return memo[key]
 
+        hp0 = g.current_hp / max_hp
         options, bonus, labels = [], [], []
-        rule = self._map_rules(g)
         for n in nodes:
             sym = n.symbol or "?"
             options.append({f"node:{sym}:h{hb}": 1.0, f"nodeact:{sym}:a{act}": 1.0, **relic_feats(sym)})
             full = by_pos.get((n.x, n.y))
-            future = max((route(ch.x, ch.y) for ch in full.children), default=0.0) if full else 0.0
+            nxt = after(sym, hp0)
+            future = max((route(ch.x, ch.y, nxt) for ch in full.children), default=0.0) if full else 0.0
             bonus.append(0.85 * future + (shop_pull if sym == "$" else 0.0) + rule.get(sym, 0.0))
             labels.append(sym)
         idx, probs = model.choose(options, CONFIG.temperature, CONFIG.rng, bonus)
@@ -1593,6 +1619,20 @@ EVENT_RULES = [
 # optional event fights: (event, regex for the fight option, minimum HP fraction); enforced over the LLM
 FIGHT_EVENT_GUARD = {"Masked Bandits": (r"fight", 0.7), "The Colosseum": (r"victory", 0.6)}
 
+
+ROUTE_RULE_SHARE = 0.6   # how much of the map rules (HP, elites, shops) also scores the rooms further down a route
+# typical HP a room costs by act (Ironclad: act 1 hallway ~2, act 2 ~10, act 3 ~13; elites ~25), for the route look-ahead
+ROOM_HP_COST = {1: {"M": 3.0, "E": 25.0}, 2: {"M": 10.0, "E": 24.0}, 3: {"M": 13.0, "E": 25.0}, 4: {"M": 13.0, "E": 25.0}}
+
+
+class _AtHP:
+    """The game state as seen at a different HP (route look-ahead); everything else unchanged."""
+
+    def __init__(self, g, hp: int):
+        self._g, self.current_hp = g, hp
+
+    def __getattr__(self, name):
+        return getattr(self._g, name)
 
 _CHAR_DIR = {"IRONCLAD": "ironclad", "THE_SILENT": "silent", "SILENT": "silent", "DEFECT": "defect", "WATCHER": "watcher"}
 
