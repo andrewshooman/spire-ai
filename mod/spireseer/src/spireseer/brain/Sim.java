@@ -48,6 +48,8 @@ public final class Sim {
     public final List<Orb> orbs = new ArrayList<>();
     public int orbSlots, focus;
     public boolean lightningAll;       // Electrodynamics
+    public String stance = "Neutral";  // Watcher: Wrath / Calm / Divinity / Neutral (read from the game)
+    public int mantra;
     public final List<Mon> mons = new ArrayList<>();
     public int energy, playerBlock, hp, maxHp, strength, turn = 1;
     public boolean playerWeak;         // our attacks deal 25% less (already in game-computed damage)

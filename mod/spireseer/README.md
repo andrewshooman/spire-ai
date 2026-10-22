@@ -66,4 +66,4 @@ from the Workshop page to test, then publish with `-Visibility public`.
 
 ## Not yet
 
-Card rewards, map, shops, rest sites and events (out-of-combat automation), hand-select screens, and the Watcher's stances. Modeled: Silent poison/Shivs/Dexterity, Defect orbs (channel, evoke, passives, Focus, slots), Intangible, Double Tap/Burst, Reaper, "next turn" riders, Malaise X.
+Card rewards, map, shops, rest sites and events (out-of-combat automation) and hand-select screens. Modeled: Silent poison/Shivs/Dexterity, Defect orbs (channel, evoke, passives, Focus, slots), Watcher stances (Wrath, Calm, Divinity, Mantra; read from the game), Intangible, Double Tap/Burst, Reaper, "next turn" riders, Malaise X.

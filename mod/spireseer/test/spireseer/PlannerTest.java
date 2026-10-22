@@ -298,6 +298,39 @@ public final class PlannerTest {
         Effects ra = Effects.parse("Channel 1 Lightning. NL Channel 1 Frost. NL Channel 1 Dark. NL Exhaust.", "SKILL", 0);
         check("orb text: Chill per enemy, Rainbow three orbs", "Frost".equals(ch.channelPerEnemy) && ra.channel.size() == 3, ra.channel.toString());
 
+        // Watcher stances (the game gives the stance; card damage and intents already include it)
+        Sim w1 = sim(70, 3);
+        mon(w1, "Cultist", 48, 0, 0, 0);   // its buff turn: Wrath costs nothing now
+        card(w1, "Eruption", "ATTACK", 2, 9, 0, true, "Deal !D! damage. NL Enter *Wrath.", 0);
+        card(w1, "Strike", "ATTACK", 1, 6, 0, true, "Deal !D! damage.", 0);
+        p = Planner.plan(w1, P);
+        check("Watcher: Eruption then Strike in Wrath (9 + 12) on a quiet turn", names(w1, p).startsWith("Eruption") && p.dealt >= 21, p.describe(w1));
+        Sim w2 = sim(40, 1);
+        w2.stance = "Wrath";
+        mon(w2, "Cultist", 48, 24, 1, 0);   // 12 doubled by Wrath, as the game shows it
+        card(w2, "Empty Body", "SKILL", 1, 0, 7, false, "Gain !B! Block. NL Exit your Stance.", 0);
+        card(w2, "Defend", "SKILL", 1, 0, 5, false, "Gain !B! Block.", 0);
+        p = Planner.plan(w2, P);
+        check("Watcher in Wrath facing a big hit: Empty Body leaves Wrath and blocks", names(w2, p).startsWith("Empty Body") && p.taken == 5, p.describe(w2));
+        Sim w3 = sim(70, 1);
+        mon(w3, "Jaw Worm", 40, 5, 1, 0);
+        card(w3, "Blasphemy", "SKILL", 1, 0, 0, false, "Retain. NL Enter *Divinity. NL Die next turn. NL Exhaust.", 0);
+        card(w3, "Defend", "SKILL", 1, 0, 5, false, "Gain !B! Block.", 0);
+        p = Planner.plan(w3, P);
+        check("Watcher: no Blasphemy when the fight goes on", !names(w3, p).contains("Blasphemy"), p.describe(w3));
+        Effects ip = Effects.parse("If you are in *Calm, draw !M! cards, otherwise enter *Calm.", "SKILL", 3);
+        check("Inner Peace: draw only in Calm, else enter Calm", "calm_draw".equals(ip.stanceCond) && ip.condN == 3 && ip.draw == 0, ip.stanceCond + " " + ip.condN + " " + ip.draw);
+        // Suggest reasons cover orbs and stances
+        java.util.List<String> rz = Planner.explain(dz, Planner.plan(dz, P), P);
+        java.util.List<String> rw = Planner.explain(w1, Planner.plan(w1, P), P);
+        check("reasons: Zap channels Lightning, Eruption enters Wrath",
+              rz.get(0).contains("channels Lightning") && rw.get(0).contains("enters Wrath"), rz + " / " + rw);
+        // act 2: potions are for the boss -- no elite opener at good HP with a free slot
+        PotionAdvisor.Context eo = new PotionAdvisor.Context();
+        eo.elite = true; eo.turn = 1; eo.hp = 70; eo.maxHp = 80; eo.act = 2; eo.floorInAct = 5; eo.emptySlots = 1;
+        check("act 2 elite at good HP with a free slot: keeps potions for the boss",
+              PotionAdvisor.advise(pots("Strength Potion", "Fire Potion"), eo) == null, "");
+
         // potions (Spire AI policy._potion rules)
         PotionAdvisor.Context ctx = new PotionAdvisor.Context();
         ctx.boss = true; ctx.turn = 1; ctx.hp = 60; ctx.maxHp = 80; ctx.champHp = 420; ctx.champMaxHp = 420;

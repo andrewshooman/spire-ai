@@ -90,6 +90,9 @@ public final class GameBridge {
         s.orbSlots = pl.maxOrbs;
         s.focus = playerPower("Focus");
         s.lightningAll = playerPower("Electro") > 0;
+        // Watcher: the stance is on the player (card damage and intents the game shows already include it)
+        if (pl.stance != null && pl.stance.ID != null) s.stance = pl.stance.ID;
+        s.mantra = playerPower("Mantra");
         if (pl.orbs != null)
             for (com.megacrit.cardcrawl.orbs.AbstractOrb o : pl.orbs)
                 if (o != null && o.ID != null && ("Lightning".equals(o.ID) || "Frost".equals(o.ID) || "Dark".equals(o.ID)
@@ -220,6 +223,7 @@ public final class GameBridge {
         c.handSize = s.hand.size();
         c.usedThisTurn = usedThisTurn;
         c.floorInAct = AbstractDungeon.floorNum % 17;
+        c.act = AbstractDungeon.actNum;
         int empty = 0;
         for (AbstractPotion p : AbstractDungeon.player.potions) if (p instanceof PotionSlot) empty++;
         c.emptySlots = empty;

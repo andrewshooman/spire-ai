@@ -28,6 +28,11 @@ public final class Effects {
     public boolean recursion;        // Recursion: evoke the next orb, then channel it again
     public int focus, orbSlots;      // Focus gained, orb slots gained (negative = lost)
     public boolean perOrb, lightningAll;   // Barrage: a hit per orb; Electrodynamics: Lightning hits all
+    // Watcher stances: "Wrath" / "Calm" / "Divinity" / "Neutral" (exit); conditional: calm_draw (Inner Peace),
+    // wrath_vuln (Indignation), if_attacking (Fear No Evil)
+    public String stance = "", stanceCond = "";
+    public int condN, mantra, wrathBlock;
+    public boolean dieNextTurn;
 
     private static final String N = "(!m!|\\d+)";
     private static final Pattern ENERGY_ICONS = Pattern.compile("gain ((?:\\[[rgbwe]\\] ?)+)");
@@ -51,7 +56,7 @@ public final class Effects {
     public static Effects parse(String raw, String type, int magic) {
         Effects e = new Effects();
         if (raw == null) return e;
-        String t = raw.replace(" NL ", " ").replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
+        String t = raw.replace(" NL ", " ").replace("*", "").replaceAll("\\s+", " ").toLowerCase(Locale.ROOT);
         // "Next turn, ..." sentences are next turn's: take them out before reading this turn's effects
         StringBuilder now = new StringBuilder(), next = new StringBuilder();
         for (String sentence : t.split("(?<=\\.)\\s+")) (sentence.startsWith("next turn") ? next : now).append(sentence).append(' ');
@@ -135,6 +140,26 @@ public final class Effects {
         int times = find(t, N + " times", magic);
         if (times > 0) e.hits = times;
         if (t.contains("evoke your next orb")) e.hits = 1;   // "twice" / "X times" are about evoking, not hits
+        // Watcher stances
+        Matcher ip = Pattern.compile("if you are in calm, draw " + N + " cards?, otherwise enter calm").matcher(t);
+        Matcher ig = Pattern.compile("if you are in wrath, apply " + N + " vulnerable to all enemies, otherwise enter wrath").matcher(t);
+        if (ip.find()) {
+            e.stance = "Calm"; e.stanceCond = "calm_draw"; e.condN = ip.group(1).equals("!m!") ? magic : Integer.parseInt(ip.group(1));
+            e.draw = 0;
+        } else if (ig.find()) {
+            e.stance = "Wrath"; e.stanceCond = "wrath_vuln"; e.condN = ig.group(1).equals("!m!") ? magic : Integer.parseInt(ig.group(1));
+            e.vuln = 0; e.aoe = false;
+        } else if (t.contains("if the enemy intends to attack, enter calm")) {
+            e.stance = "Calm"; e.stanceCond = "if_attacking";
+        } else if (t.contains("exit your stance")) {
+            e.stance = "Neutral";
+        } else {
+            Matcher en = Pattern.compile("\\benter (wrath|calm|divinity)").matcher(t);
+            if (en.find()) e.stance = cap(en.group(1));
+        }
+        e.mantra = find(t, "gain " + N + " mantra", magic);
+        e.dieNextTurn = t.contains("die next turn");
+        e.wrathBlock = find(t, "if you are in wrath, gain " + N + " additional block", magic);
         return e;
     }
 }

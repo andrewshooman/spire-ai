@@ -20,7 +20,7 @@ public final class PotionAdvisor {
 
     public static final class Context {
         public boolean boss, elite;
-        public int turn, hp, maxHp, taken, handSize, usedThisTurn, emptySlots, floorInAct;
+        public int turn, hp, maxHp, taken, handSize, usedThisTurn, emptySlots, floorInAct, act = 1;
         public boolean attacksPlanned;
         public int champHp = -1, champMaxHp = -1;   // The Champ, when it is in the fight
         public double lowHp = 0.32;
@@ -112,7 +112,10 @@ public final class PotionAdvisor {
             return new Advice(p, "boss fight: potions are free power");
         if (c.boss && hpFrac < 0.5 && (p = pick(usable, c, false, "heal", "defense", "buff", "damage", "tempo")) != null)
             return new Advice(p, "boss fight, HP low");
-        if (c.elite && c.turn == 1 && c.usedThisTurn == 0 && (usable.size() >= 2 || hpFrac < 0.6) && c.floorInAct < 12
+        // act 2+: potions are for the boss (the bot's act 2 boss: 53% beaten arriving with 3 potions, 23-29% with
+        // 1-2): open an elite only when hurt or when the belt is full
+        boolean opener = hpFrac < 0.6 || (c.act <= 1 ? usable.size() >= 2 : c.emptySlots == 0);
+        if (c.elite && c.turn == 1 && c.usedThisTurn == 0 && opener && c.floorInAct < 12
                 && (p = pick(usable, c, false, "buff", "damage", "tempo")) != null)
             return new Advice(p, "elite opener");
         if (hpFrac < c.lowHp && c.taken > 0 && (p = pick(usable, c, false, "defense", "heal")) != null)

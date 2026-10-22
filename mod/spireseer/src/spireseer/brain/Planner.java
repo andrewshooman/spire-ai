@@ -83,6 +83,9 @@ public final class Planner {
         int energy, block, strGain, permStr, dexGain, powers, draw, doubleAtk, doubleSkill;
         int nextBlock, nextEnergy, nextDraw, turnBlock, turnDamage, orbSlots, focus, permFocus;
         boolean lightningAll;
+        String stance = "Neutral";
+        int mantra;
+        boolean doomed;
         List<int[]> orbs = new ArrayList<>();   // {kind (index in ORB), evoke, passive}
         int[] hp, mblock, vulnAdd, weakAdd, strDown, poison;
         boolean[] dead, used;
@@ -99,7 +102,7 @@ public final class Planner {
             n.strDown = strDown.clone(); n.dead = dead.clone(); n.used = used.clone();
             n.nextBlock = nextBlock; n.nextEnergy = nextEnergy; n.nextDraw = nextDraw;
             n.turnBlock = turnBlock; n.turnDamage = turnDamage; n.orbSlots = orbSlots; n.focus = focus;
-            n.permFocus = permFocus; n.lightningAll = lightningAll;
+            n.permFocus = permFocus; n.lightningAll = lightningAll; n.stance = stance; n.mantra = mantra; n.doomed = doomed;
             for (int[] o : orbs) n.orbs.add(o.clone());
             return n;
         }
@@ -146,6 +149,8 @@ public final class Planner {
         st.orbSlots = s.orbSlots;
         st.focus = s.focus;
         st.lightningAll = s.lightningAll;
+        st.stance = s.stance == null ? "Neutral" : s.stance;
+        st.mantra = s.mantra;
         for (Sim.Orb o : s.orbs) {
             int k = java.util.Arrays.asList(ORB).indexOf(o.kind);
             if (k >= 0) st.orbs.add(new int[]{k, o.evoke, o.passive});
@@ -260,6 +265,23 @@ public final class Planner {
         if (c.fx.doubleAttack > 0) parts.add("the next Attack is played twice");
         if (c.fx.doubleSkill > 0) parts.add("the next Skill is played twice");
         if (after.heal > before.heal) parts.add("heals " + (int) (after.heal - before.heal));
+        // Defect orbs
+        if (!c.fx.channel.isEmpty()) parts.add("channels " + String.join(" + ", c.fx.channel) + orbNote(c.fx.channel.get(0)));
+        else if (!c.fx.channelX.isEmpty()) parts.add("channels X " + c.fx.channelX + orbNote(c.fx.channelX));
+        else if (!c.fx.channelPerEnemy.isEmpty()) parts.add("channels a " + c.fx.channelPerEnemy + " per enemy" + orbNote(c.fx.channelPerEnemy));
+        if (c.fx.evoke != 0) parts.add("evokes the next orb" + (c.fx.evoke == 2 ? " twice" : c.fx.evoke < 0 ? " X times" : ""));
+        if (c.fx.focus > 0) parts.add("+" + c.fx.focus + " Focus: every orb hits/blocks harder");
+        if (c.fx.orbSlots > 0) parts.add("+" + c.fx.orbSlots + " orb slots");
+        // Watcher stances
+        if (!after.stance.equals(before.stance)) {
+            String to = after.stance;
+            String what = "Wrath".equals(to) ? "attacks deal double (and so do theirs)"
+                    : "Calm".equals(to) ? "leaving it later gives 2 energy"
+                    : "Divinity".equals(to) ? "attacks deal triple, +3 energy" : "back to neutral";
+            parts.add(("Neutral".equals(to) ? "leaves " + before.stance : "enters " + to) + ": " + what
+                    + ("Calm".equals(before.stance) ? " (+2 energy from leaving Calm)" : ""));
+        }
+        if (after.mantra > before.mantra) parts.add("+" + (after.mantra - before.mantra) + " Mantra (10 = Divinity)");
         return parts.isEmpty() ? "sets up the rest of the turn" : String.join(", ", parts);
     }
 
@@ -362,6 +384,7 @@ public final class Planner {
                 if (st.dead[i]) continue;
                 Sim.Mon m = s.mons.get(i);
                 int per = (c.damage.length > i ? c.damage[i] : c.damage[0]) + st.strGain;
+                per = (int) (per * dealt(st.stance) / dealt(s.stance));   // Wrath x2 / Divinity x3, relative to now
                 if (m.vuln == 0 && st.vulnAdd[i] > 0) per = (int) (per * 1.5);
                 hit(st, i, per);
                 if (m.thorns > 0) st.retal += m.thorns;
@@ -407,6 +430,7 @@ public final class Planner {
         st.turnDamage += fx.turnDamage;
         if (st.orbSlots > 0 || fx.orbSlots != 0 || !fx.channel.isEmpty() || !fx.channelPerEnemy.isEmpty() || !fx.channelX.isEmpty())
             orbEffects(st, fx, c, target, xOf(c, cost));
+        if (!fx.stance.isEmpty() || fx.mantra > 0 || fx.wrathBlock > 0) stanceEffects(st, fx, target);
         if (fx.intangible > 0) st.intangible = true;
         st.doubleAtk += fx.doubleAttack;
         st.doubleSkill += fx.doubleSkill;
@@ -416,6 +440,48 @@ public final class Planner {
 
     private static int xOf(Sim.Card c, int cost) {
         return c.cost < 0 ? Math.max(0, cost) : 0;
+    }
+
+    // ---------------------------------------------------------------- Watcher stances
+
+    private static String orbNote(String kind) {
+        switch (kind) {
+            case "Lightning": return " (hits an enemy every turn)";
+            case "Frost": return " (blocks every turn)";
+            case "Dark": return " (grows, then bursts)";
+            case "Plasma": return " (energy every turn)";
+            default: return "";
+        }
+    }
+
+    static double dealt(String stance) {
+        return "Wrath".equals(stance) ? 2.0 : "Divinity".equals(stance) ? 3.0 : 1.0;
+    }
+
+    static double takenMult(String stance) {
+        return "Wrath".equals(stance) ? 2.0 : 1.0;
+    }
+
+    private void setStance(St st, String next) {
+        if (next.equals(st.stance)) return;
+        if ("Calm".equals(st.stance)) st.energy += 2;     // leaving Calm
+        if ("Divinity".equals(next)) st.energy += 3;
+        st.stance = next;
+    }
+
+    private void stanceEffects(St st, Effects fx, int target) {
+        if (fx.wrathBlock > 0 && "Wrath".equals(st.stance)) st.block += fx.wrathBlock;           // Halt
+        if ("calm_draw".equals(fx.stanceCond) && "Calm".equals(st.stance)) st.draw += fx.condN;  // Inner Peace in Calm
+        else if ("wrath_vuln".equals(fx.stanceCond) && "Wrath".equals(st.stance)) {            // Indignation in Wrath
+            for (int i = 0; i < s.mons.size(); i++) if (!st.dead[i]) st.vulnAdd[i] += fx.condN;
+        } else if ("if_attacking".equals(fx.stanceCond)) {                                     // Fear No Evil
+            if (target >= 0 && s.mons.get(target).intentDmg > 0) setStance(st, fx.stance);
+        } else if (!fx.stance.isEmpty()) setStance(st, fx.stance);
+        if (fx.mantra > 0) {
+            st.mantra += fx.mantra;
+            if (st.mantra >= 10) { st.mantra -= 10; setStance(st, "Divinity"); }
+        }
+        if (fx.dieNextTurn) st.doomed = true;                                                   // Blasphemy
     }
 
     // ---------------------------------------------------------------- Defect orbs
@@ -553,7 +619,7 @@ public final class Planner {
             v += p.weak * st.weakAdd[i] * Math.max(atk, 6) / 3.0;
             v += p.block * st.strDown[i] * Math.max(1, m.intentHits) * 1.5;
         }
-        double inc = incoming(st);
+        double inc = incoming(st) * takenMult(st.stance) / takenMult(s.stance);   // the game's intents include Wrath now
         double taken = Math.max(0, inc - st.block);
         if (st.intangible) taken = Math.min(taken, hitsComing(st));   // Intangible: every hit deals 1
         if (st.heal > 0) v += p.hpCost * Math.min(st.heal, Math.max(0, s.maxHp - s.hp + taken));
@@ -575,6 +641,8 @@ public final class Planner {
             }
         }
         if (taken + st.retal + st.selfLoss >= s.hp) v -= 500;
+        if ("Calm".equals(st.stance)) v += p.energy * 2 * 0.6;          // Calm banked: leaving it next turn gives 2 energy
+        if (st.doomed && !allDead(st)) v -= 500;                        // Blasphemy: you die next turn unless it ends now
         double fight = 1 + Math.min(2, hpLeft / 40.0);
         v += p.strength * st.permStr * fight;
         v += p.block * st.dexGain * fight * DEX_BLOCK_CARDS;   // Dexterity lasts the fight: +1 on ~1.5 block cards a turn
