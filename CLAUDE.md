@@ -278,6 +278,11 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     Neutralize). relics.boss_fit + GUIDE_BOSS_RELIC for Nuclear Battery, Frozen Core, Inserter, Holy Water,
     Violet Lotus, Ring of the Serpent, Wrist Blade, Hovering Kite (profile gains orb_src/focus/discard_src/calm_src).
     Expert Watcher decks with stance changers + a payoff won 71% vs 55% without.
+42. Spireseer catches up: Defect orbs + parser fixes (published 2026-10-21), then Watcher stances (player.stance read
+    from the game; attacks rescaled on a mid-turn stance change, incoming to the end stance, Calm +2, Divinity +3,
+    Mantra, conditional stance cards, Blasphemy guard), '*' keyword markers stripped, Suggest reasons for orbs and
+    stances, PotionAdvisor act 2+ elite openers only when hurt / belt full. Weights bundled per class at 30+ runs
+    (bundle_weights.py; Defect now has its own). Still not in the mod: out-of-combat choices, hand-select screens.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.
