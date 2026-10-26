@@ -39,6 +39,7 @@ COMBAT_DEFAULTS = {
     "energy_cost": 1.0,   # unused since the whole-turn planner (kept for old model files)
     "end_threshold": 0.5, # end the turn when the best turn plan beats ending by less than this
     "potion_hp": 0.35,    # use potions when HP falls below this fraction
+    "threat": 0.5,        # damage that doesn't kill yet: share of the enemy's future hits it brings forward
 }
 
 NODE_PRIORS = {
@@ -104,6 +105,13 @@ def hp_bucket(hp: int, max_hp: int) -> int:
     return 0 if frac < 0.4 else 1 if frac < 0.7 else 2
 
 
+def threat_default(character: str) -> float:
+    """Starting weight of the planner's threat term (damage valued as the enemy hits it saves). Offline sims on
+    each class's own decks: Silent 23 -> 29% fights won at 1.0-1.5, Watcher 22 -> 29%, Defect 27 -> 28%; the
+    Ironclad was flat (41% at 0, 39% at 1.0), so it starts low."""
+    return 0.3 if "IRONCLAD" in str(character).upper() else 1.2
+
+
 class Model:
     def __init__(self, path: Path, character: str = "IRONCLAD"):
         self.path = Path(path)
@@ -118,6 +126,10 @@ class Model:
             self.params.update(data.get("params", {}))
             self.meta.update(data.get("meta", {}))
             self.character = data.get("character", character)
+            if "threat" not in data.get("params", {}):
+                self.params["threat"] = threat_default(self.character)
+        else:
+            self.params["threat"] = threat_default(self.character)
 
     # -------------------------------------------------------------- weights
 

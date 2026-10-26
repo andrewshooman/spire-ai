@@ -64,7 +64,7 @@ class Mon:
     __slots__ = ("i", "name", "hp", "hp0", "max_hp", "block", "block0", "vuln", "weak", "weak0",
                  "new_vuln", "new_weak", "atk", "hits", "down", "down_perm", "poison", "artifact",
                  "barricade", "thorns", "sharp", "malleable", "curl", "intangible", "cap", "prio",
-                 "asleep", "nob", "dead", "shifting", "flight", "nxt")
+                 "asleep", "nob", "dead", "shifting", "flight", "nxt", "mark", "thr")
 
     def copy(self) -> "Mon":
         n = Mon.__new__(Mon)
@@ -74,6 +74,9 @@ class Mon:
 
 
 DEX_BLOCK_CARDS = 1.5   # block cards played per turn, for the lasting value of Dexterity
+THREAT_RATE = 15.0     # enemy HP your deck removes a turn (what turns HP dealt into turns of its hits saved)
+VAULT_TURN = 14.0      # what an extra turn is worth: about this much block or damage
+POWER_TURN_SHARE = 0.6  # share of a power's per-turn value counted for each turn left (discount, uneven use)
 
 
 class Sim:
@@ -82,7 +85,8 @@ class Sim:
                  "draw_value", "enrage", "curiosity", "played", "junk", "self_vuln", "self_weak",
                  "self_frail", "thorns_back", "ended", "retal", "intangible", "double_atk", "double_skill",
                  "heal", "orbs", "orb_slots", "focus", "perm_focus", "lightning_all",
-                 "next_block", "next_energy", "next_draw", "stance", "stance0", "mantra", "doomed")
+                 "next_block", "next_energy", "next_draw", "stance", "stance0", "mantra", "doomed",
+                 "turn_dmg1", "turn_draw", "vault")
 
     def copy(self) -> "Sim":
         n = Sim.__new__(Sim)
@@ -157,6 +161,8 @@ def build(message, deck_names: list[str]) -> tuple[Sim, Ctx]:
     sim.self_loss = sim.card_loss = sim.retal = 0.0
     sim.perm_dex = 0
     sim.perm_str = sim.turn_str = sim.turn_block = sim.turn_energy = sim.turn_dmg = 0
+    sim.turn_dmg1 = sim.turn_draw = 0.0
+    sim.vault = False
     sim.powers = 0
     sim.draw_value = 0.0
     sim.enrage = sim.curiosity = 0
@@ -215,6 +221,12 @@ def build(message, deck_names: list[str]) -> tuple[Sim, Ctx]:
         x.shifting = pw(m.powers, "Shifting") != 0 or any(p.id == "Shifting" for p in m.powers)
         x.flight = pw(m.powers, "Flight")
         x.nxt = 0.0       # next turn's attack total (monsters.next_attack), set in plan_turn
+        x.mark = pw(m.powers, "Mark")
+        # its attack per turn for the rest of the fight: this turn's or its usual, plus Ritual / Strength growth
+        usual = monsters.TYPICAL.get(m.name, 6.0) + pw(m.powers, "Strength") * max(1, x.hits)
+        x.thr = max(float(x.atk * x.hits), usual) + 1.5 * pw(m.powers, "Ritual") * max(1, x.hits)
+        if m.name in ("Orb", "Bronze Orb", "Torch Head", "Dagger"):
+            x.thr *= 0.5  # they die with their summoner
         x.dead = False
         sim.mons.append(x)
     hand = list(c.hand)
@@ -345,6 +357,10 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int],
         sim.block += int(exhausted * (e.block_per_exhaust + sim.dex) * frail)
     if e.double_block:
         sim.block *= 2
+    if getattr(e, "bullet_time", False):
+        # the rest of the hand costs 0 this turn: as much energy as those cards cost
+        sim.energy += sum(max(0, ctx.hand[j].cost) for j in others)
+    tgt_hp = tgt.hp if tgt is not None else 0
     # damage
     if e.damage or e.block_scaling or e.damage_per_exhaust:
         if e.block_scaling:
@@ -373,6 +389,25 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int],
             for _ in range(max(0, hits)):
                 d = per * (1.5 if m.vuln > 0 else 1.0)
                 _hit(sim, m, int(d) * share if share < 1 else int(d))
+    if getattr(e, "wallop", False) and tgt is not None:
+        sim.block += max(0, tgt_hp - tgt.hp)
+    if getattr(e, "judgment", 0) and tgt is not None and not tgt.dead and tgt.hp <= e.judgment and tgt.cap > 10 ** 5:
+        tgt.hp = 0
+        tgt.dead = True
+    if getattr(e, "mark", 0) and tgt is not None and not tgt.dead:
+        # Pressure Points: Mark the target, then every enemy loses HP equal to its Mark (block doesn't stop it)
+        if tgt.artifact > 0:
+            tgt.artifact -= 1
+        else:
+            tgt.mark += e.mark
+        for m in sim.mons:
+            if m.mark and not m.dead:
+                m.hp -= min(m.mark, m.cap) if not m.intangible else 1
+                if m.hp <= 0:
+                    m.hp = 0
+                    m.dead = True
+    if getattr(e, "vault", False):
+        sim.vault = True
     # debuffs
     weak = e.weak + (x_energy if e.x_weak else 0)       # Malaise: X Weak
     if e.vuln or weak:
@@ -428,13 +463,16 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int],
     sim.self_weak += e.self_weak
     sim.self_frail += e.self_frail
     sim.thorns_back += e.thorns
-    if ctype == "POWER":
-        sim.powers += 1
-        sim.curiosity += ctx.curiosity_amt
+    if ctype == "POWER" or getattr(e, "setup", False):
+        if ctype == "POWER":
+            sim.powers += 1
+            sim.curiosity += ctx.curiosity_amt
         sim.turn_str += e.per_turn_strength
         sim.turn_block += e.per_turn_block
         sim.turn_energy += e.per_turn_energy
         sim.turn_dmg += e.per_turn_damage
+        sim.turn_dmg1 += getattr(e, "per_turn_single", 0)
+        sim.turn_draw += getattr(e, "per_turn_draw", 0)
     if getattr(e, "intangible", 0):
         sim.intangible = True
     if getattr(e, "double_attack", 0):
@@ -637,6 +675,11 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
             if removed > 0 and ctx.turn <= 2:
                 v -= 3.0
         v += P["damage"] * removed * mult
+        if removed > 0 and not m.asleep:
+            # every HP off an enemy brings its death forward by 1/THREAT_RATE turns, and with it its hits: valued like
+            # block, so damage can't lose to a Defend against enemies that grow (three Cultists: the Watcher blocked
+            # five turns and died; learned damage/block weights had drifted to 0.34 / 3.22)
+            v += P["block"] * P.get("threat", 0.5) * m.thr * min(removed, m.hp0) / THREAT_RATE
         dealt += removed
         if m.barricade and not m.dead:
             v += P["damage"] * 0.8 * max(0, m.block0 - m.block)
@@ -658,6 +701,11 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
             v += P["block"] * m.down_perm * max(1, m.hits) * 1.5
         if m.poison:
             v += P["damage"] * min(m.hp, m.poison * 2.5)
+    if sim.vault:
+        # Vault: an extra turn comes before the enemies act. Block played before it is gone by then; the extra turn
+        # (3 energy, 5 cards) blocks what it needs and spends the rest on damage
+        sim.block = min(inc, VAULT_TURN)
+        v += P["damage"] * max(0.0, VAULT_TURN - inc)
     taken = max(0.0, inc - sim.block)
     if sim.intangible:
         taken = min(taken, float(inc_hits))   # Intangible: every hit deals 1
@@ -700,7 +748,7 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
     if sim.stance == "Wrath" and ctx.wrath_stuck and not all(m.dead for m in sim.mons):
         # Wrath stays: next turn's hits are doubled too unless the next hand can leave it (Hexaghost's quiet turn 1
         # ended in Wrath, then Divider hit for 72). Next turn's attacks come from the monster AI (monsters.py).
-        v -= P["block"] * 0.7 * ctx.wrath_stuck * sum(m.nxt for m in sim.mons if not m.dead)
+        v -= P["block"] * 1.0 * ctx.wrath_stuck * sum(m.nxt for m in sim.mons if not m.dead)
     if sim.doomed and not all(m.dead for m in sim.mons):
         v -= 500.0                        # Blasphemy: you die next turn unless the fight ends now
     # "Next turn, ..." riders: next turn's block / energy / draw, a little less than now
@@ -719,9 +767,17 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
     # in hand valued only as a generic power, and the Silent learned to skip it: taken 5 times in 68 offers)
     v += P["block"] * sim.perm_dex * fight * DEX_BLOCK_CARDS
     v += P["strength"] * sim.turn_str * fight * 1.5
-    v += P["block"] * sim.turn_block * fight * 0.7
-    v += P["damage"] * sim.turn_dmg * max(1, sum(1 for m in sim.mons if not m.dead)) * fight * 0.7
-    v += P["energy"] * sim.turn_energy * fight * 0.5
+    # per-turn powers pay for the turns the fight has left (~25 enemy HP a turn): a boss fight is worth up to 6
+    # turns of it, a weak hallway fight about one (the old cap of 3 made Deva Form vs a 250 HP boss a Defend)
+    horizon = min(6.0, max(1.0, enemy_left / 25.0)) * POWER_TURN_SHARE
+    # ...when you live to use them: a power that leaves you under 40% HP after the hits is worth less
+    left = (ctx.hp - taken - sim.self_loss - sim.card_loss) / max(1, ctx.max_hp)
+    horizon *= min(1.0, max(0.2, left / 0.4))
+    v += P["block"] * sim.turn_block * horizon
+    v += P["damage"] * sim.turn_dmg * max(1, sum(1 for m in sim.mons if not m.dead)) * horizon
+    v += P["damage"] * sim.turn_dmg1 * horizon
+    v += P["energy"] * sim.turn_energy * horizon * 0.8
+    v += P["draw"] * sim.turn_draw * horizon
     if sim.powers:
         asleep = any(m.asleep and not m.dead for m in sim.mons)
         v += P["power"] * sim.powers * (1.5 if ctx.elite or asleep else 1.0) * \

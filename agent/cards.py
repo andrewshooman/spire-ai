@@ -372,7 +372,9 @@ class Effects:
                  "intangible", "double_attack", "double_skill", "heal_unblocked",
                  "channel", "channel_per_enemy", "channel_x", "evoke", "focus", "orb_slots", "recursion",
                  "per_orb", "lightning_all", "next_block", "next_energy", "next_draw", "x_str_down", "x_weak",
-                 "stance", "stance_cond", "cond_n", "mantra", "die_next_turn", "ends_turn", "wrath_block")
+                 "stance", "stance_cond", "cond_n", "mantra", "die_next_turn", "ends_turn", "wrath_block",
+                 "per_turn_single", "per_turn_draw", "mark", "judgment", "wallop", "bullet_time", "vault",
+                 "setup")
 
     def __init__(self):
         self.damage = 0; self.hits = 1; self.aoe = False; self.random_target = False
@@ -410,6 +412,14 @@ class Effects:
         # calm_draw (Inner Peace), wrath_vuln (Indignation), if_attacking (Fear No Evil)
         self.stance = ""; self.stance_cond = ""; self.cond_n = 0
         self.mantra = 0; self.die_next_turn = False; self.ends_turn = False; self.wrath_block = 0
+        self.per_turn_single = 0.0   # powers: single-target damage a turn (Infinite Blades, Juggernaut...)
+        self.per_turn_draw = 0.0     # powers: cards drawn a turn (Rushdown, Machine Learning, Tools of the Trade)
+        self.mark = 0            # Pressure Points: Mark on the target, then ALL enemies lose HP equal to their Mark
+        self.judgment = 0        # Judgment: an enemy at or under this HP dies
+        self.wallop = False      # Wallop: Block equal to the unblocked damage dealt
+        self.bullet_time = False  # Bullet Time: the rest of the hand costs 0 this turn
+        self.vault = False       # Vault: an extra turn before the enemies act
+        self.setup = False       # a non-Power with a lasting per-turn payoff (Alpha -> Omega, Conjure Blade...)
 
 
 def _int(pattern: str, text: str, default: int = 0) -> int:
@@ -418,7 +428,7 @@ def _int(pattern: str, text: str, default: int = 0) -> int:
 
 
 # Sentences that describe a later trigger, not something that happens on play.
-_TRIGGER = re.compile(r"^(?:At the (?:start|end) of|Whenever|If this card is Exhausted|"
+_TRIGGER = re.compile(r"^(?:At the (?:start|end) of|Whenever|Every time|If this card is Exhausted|"
                       r"When(?:ever)? you (?:draw|lose|gain|play))", re.IGNORECASE)
 
 
@@ -461,6 +471,11 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
         setattr(e, {"Vulnerable": "self_vuln", "Weak": "self_weak", "Frail": "self_frail"}[m.group(2)],
                 int(m.group(1)))
     e.exhaust = bool(re.search(r"\bExhaust\.", t))
+    e.mark = _int(r"Apply (\d+) Mark", t)
+    e.judgment = _int(r"has (\d+) or less HP, set", t)
+    e.wallop = bool(re.search(r"Gain Block equal to unblocked damage", t, re.I))
+    e.bullet_time = bool(re.search(r"Reduce the cost of all cards in your hand to 0", t, re.I))
+    e.vault = bool(re.search(r"Take an extra turn", t, re.I))
     e.damage = _int(r"Deal (\d+) damage", t)
     e.if_vuln = bool(re.search(r"If the enemy (?:has|is) Vulnerable", t, re.I))
     e.per_strike = _int(r"Deals (\d+) additional damage for ALL your cards containing", t)
@@ -584,9 +599,78 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
     return e
 
 
+# What a power is worth each turn it stays in play, in the planner's units (damage to ALL / to one enemy, block,
+# energy, cards drawn, Strength), for the powers whose printed text the parser can't turn into numbers. Without
+# it these were valued as a bare "power" (~2-4 points, less than one Strike) and sat in hand: Deva Form played
+# on 24% of the turns it was held, Alpha 7%, Wraith Form 26%, A Thousand Cuts 14%, Echo Form 22%, Corruption 12%.
+# Rough A0 estimates for a typical deck; the planner multiplies them by the turns the fight has left.
+POWER_TURN = {
+    # Ironclad
+    "Barricade": {"block": 4}, "Brutality": {"draw": 1, "block": -1}, "Corruption": {"energy": 1.5},
+    "Dark Embrace": {"draw": 0.8}, "Evolve": {"draw": 0.3}, "Feel No Pain": {"block": 2.5},
+    "Fire Breathing": {"dmg": 2}, "Juggernaut": {"single": 7}, "Rupture": {"str": 0.3},
+    # Silent
+    "A Thousand Cuts": {"dmg": 4}, "Accuracy": {"single": 5}, "After Image": {"block": 4}, "Envenom": {"single": 4},
+    "Infinite Blades": {"single": 4}, "Tools of the Trade": {"draw": 0.8}, "Well-Laid Plans": {"draw": 0.6},
+    "Wraith Form": {"block": -1.5, "next_block": 12},
+    # Defect
+    "Buffer": {"next_block": 10}, "Creative AI": {"single": 4}, "Echo Form": {"single": 7}, "Heatsinks": {"draw": 0.4},
+    "Hello World": {"single": 3}, "Loop": {"single": 3}, "Machine Learning": {"draw": 1}, "Self Repair": {"block": 1.5},
+    "Static Discharge": {"single": 2}, "Storm": {"single": 2},
+    # Watcher
+    "Battle Hymn": {"single": 7}, "Deva Form": {"energy": 2}, "Devotion": {"energy": 0.8},
+    "Establishment": {"energy": 0.5}, "Fasting": {"energy": -1}, "Foresight": {"draw": 0.6}, "Like Water": {"block": 3},
+    "Master Reality": {"draw": 0.3}, "Mental Fortress": {"block": 6}, "Nirvana": {"block": 2}, "Rushdown": {"draw": 1.5},
+    "Study": {"draw": 1.2},
+    # colorless
+    "Magnetism": {"single": 3}, "Mayhem": {"single": 5}, "Panache": {"dmg": 4}, "Sadistic Nature": {"single": 2},
+}
+# cards whose text the parser reads wrong or not at all (numbers are base A0 expectations)
+CARD_FIX = {
+    "Scrawl": {"draw": 4},                                    # draw until the hand is full
+    "Chaos": {"channel": ["Lightning"]},                      # a random orb: count a Lightning
+    "Thunder Strike": {"damage": 7, "hits": 3, "random_target": True},   # 7 per Lightning channeled (~3)
+    "Blizzard": {"damage": 6, "hits": 1, "aoe": True},        # 2 per Frost channeled (~3)
+    "Simmering Fury": {"next_draw": 2, "next_energy": 1},     # next turn: Wrath (+damage) and 2 cards
+    "Wreath of Flame": {"temp_strength": 4},                  # next Attack +5
+    "Phantasmal Killer": {"next_energy": 2},                  # next turn's Attacks deal double
+}
+# non-Powers that pay for the rest of the fight (per-turn values, like POWER_TURN)
+SETUP_TURN = {
+    "Alpha": {"dmg": 6},             # Beta -> Omega: 50 to ALL a turn, three draws away
+    "Conjure Blade": {"single": 5},  # Expunger: 9 x X
+    "Collect": {"energy": 0.8},      # a Miracle+ for X turns
+    "Talk to the Hand": {"block": 3},
+}
+_POWER_FIELDS = {"dmg": "per_turn_damage", "single": "per_turn_single", "block": "per_turn_block",
+                 "energy": "per_turn_energy", "draw": "per_turn_draw", "str": "per_turn_strength",
+                 "next_block": "next_block"}
+
+
+@lru_cache(maxsize=4096)
+def _effects(text: str, ctype: str, cost: int, base: str) -> Effects:
+    e = parse_text(text, ctype, cost)
+    table = POWER_TURN.get(base) if ctype == "POWER" else SETUP_TURN.get(base)
+    fix = CARD_FIX.get(base)
+    if not table and not fix:
+        return e
+    n = Effects.__new__(Effects)
+    for s in Effects.__slots__:
+        v = getattr(e, s)
+        setattr(n, s, list(v) if isinstance(v, list) else v)
+    for k, v in (fix or {}).items():
+        setattr(n, k, list(v) if isinstance(v, list) else v)
+    for k, v in (table or {}).items():
+        setattr(n, _POWER_FIELDS[k], v)
+    if table and ctype != "POWER":
+        n.setup = True
+    return n
+
+
 def effects(card) -> Effects:
     text = card_text(card) or ""
-    return parse_text(text, card.type.value if hasattr(card.type, "value") else str(card.type), card.cost)
+    ctype = card.type.value if hasattr(card.type, "value") else str(card.type)
+    return _effects(text, ctype, card.cost, base_name(card.name))
 
 
 def roles(card) -> set[str]:

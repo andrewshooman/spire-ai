@@ -47,6 +47,12 @@ CARDS = {
     "Eruption": ("Eruption", "ATTACK", 2, True), "Vigilance": ("Vigilance", "SKILL", 2, False),
     "Strike_P": ("Strike_P", "ATTACK", 1, True), "Defend_P": ("Defend_P", "SKILL", 1, False),
     "Empty Body": ("EmptyBody", "SKILL", 1, False), "Blasphemy": ("Blasphemy", "SKILL", 1, False),
+    "Deva Form": ("DevaForm", "POWER", 3, False), "Echo Form": ("Echo Form", "POWER", 3, False),
+    "A Thousand Cuts": ("A Thousand Cuts", "POWER", 2, False), "Rushdown": ("Adaptation", "POWER", 1, False),
+    "Panache": ("Panache", "POWER", 0, False),
+    "Pressure Points": ("PathToVictory", "SKILL", 1, True), "Judgment": ("Judgement", "SKILL", 1, True),
+    "Wallop": ("Wallop", "ATTACK", 2, True), "Bullet Time": ("Bullet Time", "SKILL", 3, False),
+    "Dash": ("Dash", "ATTACK", 2, True),
 }
 
 
@@ -80,6 +86,15 @@ def state(hand: list[str], monsters: list[dict], hp: int = 70, energy: int = 3, 
              "requires_target": False}
     g["potions"] = (pots + [empty] * 3)[:3]
     return parse_message(s)
+
+
+def planner_card(name: str):
+    return parse_message_card(card(name, 0))
+
+
+def parse_message_card(d: dict):
+    from sts_bench.state.schema import Card
+    return Card.model_validate(d) if hasattr(Card, "model_validate") else Card(**d)
 
 
 def first(msg) -> object:
@@ -513,6 +528,34 @@ def main() -> None:
     msg = state(["Wraith Form", "Defend", "Defend", "Defend"], [monster("Book of Stabbing", 120, 6, 6)], hp=40, energy=3)
     plan = planner.plan_turn(msg, P, [])
     check("Wraith Form against a 36-damage turn", names(plan, msg) == ["Wraith Form"], ", ".join(names(plan, msg)))
+    # powers whose text the parser can't read get per-turn values for the turns the fight has left (Deva Form was
+    # played on 24% of the turns it was held, A Thousand Cuts 14%, Echo Form 22%)
+    boss = [monster("The Champ", 420, 8)]
+    for hand in (["Deva Form", "Strike_P", "Defend_P", "Defend_P"], ["Echo Form", "Strike", "Defend", "Defend"],
+                 ["A Thousand Cuts", "Strike", "Defend", "Defend"], ["Rushdown", "Strike_P", "Defend_P"]):
+        msg = state(hand, boss, turn=1, room="MonsterRoomBoss")
+        check(f"{hand[0]} on a boss's quiet turn", hand[0] in names(planner.plan_turn(msg, P, []), msg))
+    msg = state(["Deva Form", "Strike_P", "Defend_P", "Defend_P"], [monster("Jaw Worm", 40, 11)])
+    check("...but not into a hallway hit (the fight ends before it pays)",
+          "Deva Form" not in names(planner.plan_turn(msg, P, []), msg))
+    msg = state(["Deva Form", "Defend_P", "Defend_P", "Defend_P"], [monster("The Champ", 420, 24)], hp=26, turn=1,
+                room="MonsterRoomBoss")
+    check("...nor when the hit would leave you nearly dead", "Deva Form" not in names(planner.plan_turn(msg, P, []), msg))
+    pan = C.effects(planner_card("Panache"))
+    check("Panache deals no damage when played (its 10 to ALL is a trigger)", pan.damage == 0 and pan.per_turn_damage > 0)
+    # cards the parser read as nothing (Pressure Points 13% played, Bullet Time 6%, Wallop 34%, Judgment 10%)
+    msg = state(["Pressure Points", "Pressure Points", "Strike_P"], [monster("Jaw Worm", 16, 5)], energy=2)
+    plan = planner.plan_turn(msg, P, [])
+    check("Pressure Points twice: Mark 8 then 16 = 24 HP lost, kills a 16 HP Jaw Worm",
+          names(plan, msg) == ["Pressure Points", "Pressure Points"] and plan.summary["kills"] == 1, str(plan.summary))
+    msg = state(["Judgment", "Defend_P"], [monster("The Champ", 28, 20)], energy=2, room="MonsterRoomBoss")
+    plan = planner.plan_turn(msg, P, [])
+    check("Judgment kills an enemy at 30 HP or less", plan.summary["kills"] == 1, str(plan.summary))
+    plan = planner.plan_turn(state(["Wallop"], [monster("Jaw Worm", 40, 12)], energy=2), P, [])
+    check("Wallop blocks the damage it deals", plan.summary["block"] >= 9, str(plan.summary))
+    msg = state(["Bullet Time", "Strike", "Strike", "Defend", "Defend", "Dash"], [monster("Jaw Worm", 80, 12)], energy=3)
+    plan = planner.plan_turn(msg, P, [])
+    check("Bullet Time then the whole hand for free", len(plan.steps) == 6, ", ".join(names(plan, msg)))
     msg = state(["Double Tap", "Heavy Blade"], [monster("Jaw Worm", 60, 0)], energy=3)
     plan = planner.plan_turn(msg, P, [])
     check("Double Tap before Heavy Blade hits twice", names(plan, msg) == ["Double Tap", "Heavy Blade"]

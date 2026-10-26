@@ -302,6 +302,20 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     SPLITTERS (Slime Boss, L slimes): the HP left after crossing half counts again (Silent lost Slime Boss 32% vs
     Ironclad 7%), half weight, lifted by the stall guard. Stuck screens: the tip-screen handler alternates Confirm and
     Cancel (deck view left open after Empty Cage). Spireseer's Java brain lacks the Wrath look-ahead and splits.
+44. Powers and setup cards played (60 runs a class: powers sat in hand -- Deva Form played on 24% of the turns held,
+    Alpha 7%, Wraith Form 26%, A Thousand Cuts 14%, Echo Form 22%, Corruption 12%; their text parsed to nothing and
+    a bare power was worth less than a Strike): cards.POWER_TURN per-turn values (damage to ALL / one, block,
+    energy, draw, Strength) for every unparsed power, SETUP_TURN (Alpha, Conjure Blade, Collect, Talk to the Hand),
+    CARD_FIX (Scrawl, Chaos, Thunder Strike, Blizzard, Simmering Fury, Wreath of Flame, Phantasmal Killer); the
+    planner pays per-turn effects for the turns the fight has left (enemy HP / 25, max 6, x0.6; less when the
+    turn leaves you under 40% HP). New mechanics: Pressure Points (Mark), Judgment, Wallop, Bullet Time, Vault
+    (extra turn), "Every time" triggers (Panache had read as 10 damage now); the sim (sim.py) resolves them too.
+    Threat term (combat param "threat", Ironclad 0.3 / others 1.2): damage that doesn't kill is also worth the
+    enemy's future hits it saves (P.block x threat x its attack per turn x HP / 15) -- learned damage/block had
+    drifted to 0.34/3.22 (Watcher) and three Cultists won by outscaling a bot that blocked for five turns. Sim on
+    each class's real decks (fights won): Silent 23 -> 29%, Watcher 22 -> 29%, Defect 27 -> 28%, Ironclad flat.
+    Wrath stuck penalty 0.7 -> 1.0. synergy: Watcher Wrath balance (synrule:wrath->exit for exits when ways in
+    outnumber ways out, synneed:wrath_exit). Spireseer's Java brain lacks all of this (update later).
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

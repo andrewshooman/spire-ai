@@ -167,6 +167,18 @@ RULES += [
     ("scry->payoff", "scry_pay", {"scry_src"}, 0.35, 3),
 ]
 
+# Watcher: every way into Wrath wants a way out (Wrath doubles the enemies' hits too). The bot took Inner Peace
+# 17% / Empty Mind 36% / Fear No Evil 32% of offers (experts 59-87% above their average) and lost act 2 hallway
+# fights in Wrath: 16 HP a hallway fight vs 10-12 for the other classes
+WRATH_IN = {"Eruption", "Tantrum", "Crescendo", "Simmering Fury", "Indignation"}
+WRATH_OUT = {"Vigilance", "Inner Peace", "Fear No Evil", "Empty Body", "Empty Fist", "Empty Mind", "Meditate",
+             "Tranquility"}
+for _n in WRATH_IN:
+    CARD_TAGS.setdefault(_n, set()).add("wrath_in")
+for _n in WRATH_OUT:
+    CARD_TAGS.setdefault(_n, set()).add("wrath_out")
+RULES_EXTRA = {"synrule:wrath->exit": 0.5, "synneed:wrath_exit": -0.6}
+
 # payoff cards that are close to dead without an enabler: (card tag, enabler tags, penalty)
 NEEDS = [
     ("str_mult", {"str_src"}, -1.2),          # Limit Break with no Strength
@@ -247,11 +259,24 @@ def explain(name: str, deck_names: list[str], relic_names: list[str] = ()) -> tu
         if tag in tags and not any(have[e] for e in enablers):
             feats[f"synneed:{tag}"] = 1.0
             reasons.append(f"- {NEED_TEXT.get(tag, 'missing its enabler')}")
+    # Wrath balance (counts the starter Eruption / Vigilance too)
+    w_in = sum(1 for n in deck_names if base(n) in WRATH_IN)
+    w_out = sum(1 for n in deck_names if base(n) in WRATH_OUT)
+    if "wrath_out" in tags and w_in:
+        n = max(0, min(3, w_in - w_out + 1))
+        if n:
+            feats["synrule:wrath->exit"] = float(n)
+            reasons.append(f"+a way out of Wrath ({w_in} ways in, {w_out} out)")
+    if "wrath_in" in tags and w_in >= w_out + 1:
+        feats["synneed:wrath_exit"] = 1.0
+        reasons.append(f"- another way into Wrath with only {w_out} way(s) out")
     return feats, "; ".join(reasons)
 
 
 def prior(key: str) -> float | None:
     """Starting weight for synergy features (model.prior uses it)."""
+    if key in RULES_EXTRA:
+        return RULES_EXTRA[key]
     kind, _, rest = key.partition(":")
     if kind == "synrule":
         return next((w for r, _, _, w, _ in RULES if r == rest), 0.2)

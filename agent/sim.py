@@ -371,6 +371,9 @@ class Fight:
         self.thorns = 0
         self.double_tap = 0
         self.no_draw = False
+        self.vault = False       # Vault: an extra turn before the monsters act
+        self.turn_over = False   # a card ended the turn (Vault, Meditate)
+        self.dealt_now = 0       # unblocked damage of the card being resolved (Wallop)
         self.cards_played = 0
         self.rampage: dict[str, int] = {}
 
@@ -627,6 +630,7 @@ class Fight:
                     if m.p("Sharp Hide") and c["type"] == "ATTACK":
                         self.lose_hp(m.p("Sharp Hide"))
                     through = self.damage_monster(m, per)
+                    self.dealt_now += through
                     if name == "Reaper":
                         self.hp = min(self.max_hp, self.hp + through)
                     if name == "Feed" and m.gone:
@@ -655,6 +659,30 @@ class Fight:
         if vuln_ok and e.draw:
             self.draw_cards(e.draw)
         self.thorns += e.thorns
+        if getattr(e, "wallop", False):
+            self.gain_block(self.dealt_now, raw=True)
+        self.dealt_now = 0
+        if getattr(e, "judgment", 0) and tgt is not None and not tgt.gone and 0 < tgt.hp <= e.judgment:
+            tgt.hp = 0
+            tgt.gone = True
+        if getattr(e, "mark", 0) and tgt is not None and not tgt.gone:
+            if tgt.p("Artifact"):
+                tgt.powers["Artifact"] -= 1
+            else:
+                tgt.powers["Mark"] = tgt.p("Mark") + e.mark
+            for m in self.alive():
+                if m.p("Mark"):
+                    m.hp -= m.p("Mark")
+                    if m.hp <= 0:
+                        m.hp = 0
+                        m.gone = True
+        if getattr(e, "bullet_time", False):
+            self.energy += sum(max(0, h["cost"]) for h in self.hand)
+            self.no_draw = True
+        if getattr(e, "vault", False):
+            self.vault = True
+        if getattr(e, "ends_turn", False):
+            self.turn_over = True
         # specials the text parser can't express
         if name == "Anger":
             self.add_card("Anger+" if up else "Anger", "discard")
@@ -705,13 +733,13 @@ class Fight:
             elif name == "Brutality":
                 self.powers[name] = self.p(name) + 1
             if e.per_turn_strength:
-                self.powers["Demon Form"] = self.p("Demon Form") + e.per_turn_strength
+                self.powers["Demon Form"] = self.p("Demon Form") + int(round(e.per_turn_strength))
             if e.per_turn_block:
-                self.powers["Metallicize"] = self.p("Metallicize") + e.per_turn_block
+                self.powers["Metallicize"] = self.p("Metallicize") + int(round(e.per_turn_block))
             if e.per_turn_energy:
-                self.powers["Berserk"] = self.p("Berserk") + e.per_turn_energy
+                self.powers["Berserk"] = self.p("Berserk") + int(round(e.per_turn_energy))
             if e.per_turn_damage:
-                self.powers["Combust"] = self.p("Combust") + e.per_turn_damage
+                self.powers["Combust"] = self.p("Combust") + int(round(e.per_turn_damage))
             for m in self.alive():
                 if m.p("Curiosity"):
                     m.powers["Strength"] = m.p("Strength") + m.p("Curiosity")
@@ -959,8 +987,9 @@ class Fight:
             for m in self.monsters:
                 if m.name == "Hexaghost" and m.move == "divider":
                     set_move(m, "divider", "ATTACK", self.hp // 12 + 1, 6)
+            self.turn_over = False
             for _ in range(25):
-                if self.hp <= 0 or not self.alive():
+                if self.hp <= 0 or not self.alive() or self.turn_over:
                     break
                 msg = self.message()
                 plan = planner.plan_turn(msg, params, self.deck_names, max_nodes=max_nodes)
@@ -976,6 +1005,9 @@ class Fight:
             self.end_turn()
             if self.hp <= 0:
                 break
+            if self.vault:
+                self.vault = False   # the extra turn comes before the monsters act
+                continue
             self.monsters_act()
         win = self.hp > 0 and not self.alive()
         total = sum(m.max_hp for m in self.monsters) or 1
