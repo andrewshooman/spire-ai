@@ -283,6 +283,25 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     Mantra, conditional stance cards, Blasphemy guard), '*' keyword markers stripped, Suggest reasons for orbs and
     stances, PotionAdvisor act 2+ elite openers only when hurt / belt full. Weights bundled per class at 30+ runs
     (bundle_weights.py; Defect now has its own). Still not in the mod: out-of-combat choices, hand-select screens.
+43. Learning v2 (Silent/Defect/Watcher: 0 wins in 80 runs each, act 2 boss 8%/22%/5% vs Ironclad 35%). Bug: the value
+    error was measured after fitting the run's own states (in-sample, std 0.01-0.04), so almost every run's advantage
+    hit the +-3 cap and weights drifted to their bounds on coin flips (Defect Hello World +3.6 / Defragment -2.4, act 1
+    ? rooms +5.8 / hallways -5.6; Watcher Sash Whip +3.2, elites at full HP -4.3; dilute -2.5..-4.2 -> Silent skipped
+    65% of act 2 rewards vs experts' 23%). Fix (model.py): error measured before fitting, floor VALUE_VAR_MIN, adv_cap 2,
+    PRIOR_PULL 0.02 toward the prior for every touched weight, bounds for dup/dilute/node/nodeact. Card priors =
+    half tier, half expert pick rate (cards.expert_card_rates, human.expert_rates 'overall'); skip:a<act> priors from
+    expert skip rates per class (Watcher experts skip 43%/64%, Defect 9%/19%). Watcher tiers fixed (Deva Form,
+    Like Water, Battle Hymn, Wreath of Flame 1.6/1.2 -> 0.6; experts take them 0-4%). evolve.learning_v2 (once):
+    value error re-measured on replay; classes under 150 runs (not Ironclad) keep 30% of each weight's distance from
+    the corrected prior, skip weights restart. Non-Ironclad act 1: +0.5 elite pull until 2 elites when ready (bot runs
+    with 2 act 1 elites beat the act 2 boss 25-29% vs 0-14% with 1).
+    Monster AI (agent/monsters.py, from the StS reference spreadsheet v2.2): next_attack() = next turn's attack total
+    (Hexaghost Divider after Activate, Slime Boss Slam after Preparing, Guardian/Automaton/Nob/Lagavulin cycles, else
+    the monster's average attack). Planner: ending a turn in Wrath costs next turn's attacks x the chance the next
+    hand has no Wrath exit (Watcher lost 50% of Hexaghost fights at 81% HP: Eruption on turn 1, Divider for 72);
+    SPLITTERS (Slime Boss, L slimes): the HP left after crossing half counts again (Silent lost Slime Boss 32% vs
+    Ironclad 7%), half weight, lifted by the stall guard. Stuck screens: the tip-screen handler alternates Confirm and
+    Cancel (deck view left open after Empty Cage). Spireseer's Java brain lacks the Wrath look-ahead and splits.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

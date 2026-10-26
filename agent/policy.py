@@ -862,6 +862,11 @@ class PolicyAgent:
             ready = hp_frac >= 0.6 and damage >= 2
             out["E"] = 0.8 if ready else (-0.2 if hp_frac >= 0.6 else -0.8)
             out["E"] += CONFIG.risk if ready else 0.0
+            elites = sum(1 for p in (CONFIG.tracker.path if CONFIG.tracker else []) if p.get("node") == "E")
+            if ready and elites < 2:
+                # experts took 2.1-2.5 act 1 elites vs the bot's 0.7-1.4; bot runs with 2 beat the act 2 boss far more
+                # often than with 1 (Silent 25% vs 14%, Defect 29% vs 0%, Watcher 27% vs 8%)
+                out["E"] += 0.5
         elif g.act == 1:
             out["E"] = 1.0 if hp_frac >= 0.5 and damage >= 1 else (0.3 if hp_frac >= 0.5 else -0.6)
             out["E"] += CONFIG.risk if hp_frac >= 0.4 else 0.0

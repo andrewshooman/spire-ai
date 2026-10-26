@@ -87,7 +87,9 @@ def _dismiss_or_wait(state, character, ascension, seed):
         if _tip_polls[0] == 1:
             say("tutorial tip on screen: trying to dismiss it; if it stays, click it away in the game")
         if _tip_polls[0] % 3 == 1 and "key" in cmds:
-            return "key Confirm"
+            # odd tries Confirm (tips), even tries Cancel: an overlay the game opened by itself (the deck view
+            # after Empty Cage, run of 2026-10-26) reports no screen and only closes with Return/Escape
+            return "key Confirm" if _tip_polls[0] % 6 == 1 else "key Cancel"
         return "wait 300" if "wait" in cmds else "state"
     _tip_polls[0] = 0
     return _choose_command(state, character, ascension, seed)
@@ -723,6 +725,8 @@ def migrate(ws: Workspace) -> None:
             del ws.model.weights[k]
         ws.model.meta["silent_tiers_v1"] = True
         say(f"Silent tiers: {len(moved)} top cards +0.4, Footwork back to its prior")
+    if not ws.model.meta.get("learning_v2"):
+        learning_v2(ws)
     if ws.model.meta.get("reward_version") != Model.REWARD_VERSION:
         # the reward scale changed: restart the running baselines instead of comparing apples to oranges
         ws.model.meta.update({"reward_version": Model.REWARD_VERSION, "baseline": None, "var": 0.04,
@@ -734,6 +738,51 @@ def migrate(ws: Workspace) -> None:
                          "cycle_bench": [], "cycle_bench_reward": [], "cycle_bench_seed": []})
         say(f"reward v{Model.REWARD_VERSION}: bosses beaten and wins only (no floors); baselines reset, "
             f"value estimate refit on {rescored} replayed runs, champion selection restarted")
+
+
+# weights learned under the advantage bug: kept at this share of their distance from the (new) prior
+SHRINK_KINDS = ("card", "cardctx", "synrule", "synneed", "node", "nodeact", "ev", "relic", "shoprelic", "relicctx",
+                "dup", "dilute", "upgraded", "tag", "syn", "shop", "rest", "smith", "restx", "need", "bossneed")
+SHRINK_KEEP = 0.3
+
+
+def learning_v2(ws: Workspace) -> None:
+    """One-time repair of the advantage bug (value error measured in-sample: std ~0.01-0.04, so nearly every run
+    pushed every choice at the +-3 cap). All classes: the value error scale is re-measured out of sample on the
+    replay buffer. Classes with under 150 trained runs (Silent, Defect, Watcher) mostly learned noise from it --
+    Watcher Sash Whip +3.2, Defect Hello World +3.6 / Defragment -2.4, Defect act 1 ? rooms +5.8: their weights
+    keep 30% of their distance from the corrected priors (expert-blended cards, expert skip rates) and skip
+    weights restart from the expert skip priors. The Ironclad (won runs with its weights) keeps them, clamped."""
+    m = ws.model
+    errs = []
+    path = ws.root / "replay.jsonl"
+    vw = m.meta.get("value_w") or {}
+    if path.exists() and vw:
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            it = json.loads(line)
+            for ev in it.get("events", []):
+                s = ev.get("state")
+                if s:
+                    errs.append(it["reward"] - (vw.get("bias", 0.0) + sum(vw.get(k, 0.0) * x for k, x in s.items())))
+    if errs:
+        m.meta["value_var"] = sum(e * e for e in errs) / len(errs)
+    m.meta["act_baseline"] = {}
+    shrunk = 0
+    if m.meta.get("runs_trained", 0) < 150 and "IRONCLAD" not in str(m.character).upper():
+        for k in list(m.weights):
+            kind = k.partition(":")[0]
+            if kind == "skip":
+                del m.weights[k]
+                shrunk += 1
+            elif kind in SHRINK_KINDS:
+                p = m.prior(k)
+                m.weights[k] = p + SHRINK_KEEP * (m.weights[k] - p)
+                shrunk += 1
+    m.meta["learning_v2"] = True
+    say(f"learning v2: value error std {m.meta.get('value_var', 0) ** 0.5:.3f} (out of sample)"
+        + (f", {shrunk} noisy weights pulled 70% back to the corrected priors" if shrunk else ""))
 
 
 def rescore_replay(ws: Workspace) -> int:

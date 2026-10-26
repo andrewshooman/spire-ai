@@ -439,8 +439,23 @@ def expert_rates(game_char: str) -> dict:
                 roff[o] = roff.get(o, 0) + 1
             if b.get("relic") not in (None, "(skip)"):
                 rtak[b["relic"]] = rtak.get(b["relic"], 0) + 1
-    out: dict = {"card": {}, "relic": {}}
+    out: dict = {"card": {}, "relic": {}, "overall": {}, "skip": {}}
     a = 6.0   # shrinkage: an offer seen 6 times moves halfway from the mean to its own rate
+    # all acts together (card priors) and how often they skipped a card reward per act (skip priors)
+    tot_off, tot_tak, skips = {}, {}, {}
+    for (n, act), c in off.items():
+        tot_off[n] = tot_off.get(n, 0) + c
+        tot_tak[n] = tot_tak.get(n, 0) + tak.get((n, act), 0)
+    mean_all = sum(tot_tak.values()) / max(1, sum(tot_off.values()))
+    for n, c in tot_off.items():
+        out["overall"][n] = round((tot_tak[n] + a * mean_all) / (c + a) - mean_all, 3)
+    for r in runs(char, "expert"):
+        for p in r.get("picks", []):
+            act = 1 if p["floor"] <= 17 else 2 if p["floor"] <= 34 else 3
+            s = skips.setdefault(act, [0, 0])
+            s[0] += p.get("chosen") in (None, "(skip)")
+            s[1] += 1
+    out["skip"] = {act: s / n for act, (s, n) in skips.items() if n >= 30}
     for act in (1, 2, 3):
         keys = [k for k in off if k[1] == act]
         mean = sum(tak.get(k, 0) for k in keys) / max(1, sum(off[k] for k in keys))

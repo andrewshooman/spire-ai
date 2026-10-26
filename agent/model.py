@@ -86,7 +86,17 @@ WEIGHT_BOUNDS = {"tag": (-1.0, 1.0), "syn": (-1.0, 1.5), "relicctx": (-1.0, 1.0)
                  "card": (-3.0, 4.0), "cardctx": (-3.0, 3.0), "synrule": (-3.0, 3.0), "synneed": (-3.0, 0.5),   # event choices (the Ironclad's Neow boss-relic swap had reached +3.9)
                  "rest": (-1.5, 2.5), "smith": (-1.5, 2.5), "restboss": (-1.5, 3.0), "smithboss": (-1.5, 2.5),
                  "cardplay": (0.0, 4.0), "cardfight": (0.0, 4.0), "cardpair": (0.0, 4.0),
-                 "bossneed": (-1.0, 3.0)}  # skip:a2 had run away to -5.5 (the LLM never skipped; training followed it)
+                 "bossneed": (-1.0, 3.0),
+                 # deck-size penalties ran away for the weaker classes (dilute: Defect -4.2, Watcher -3.5, Silent -2.5;
+                 # the Silent skipped 65% of act 2 rewards vs experts' 23%), path weights too (Defect ? in act 1
+                 # +5.8 / hallway -5.6, Watcher elites at full HP -4.3) -- all from the advantage bug fixed in v2
+                 "dup": (-1.5, 0.5), "dilute": (-1.5, 0.0), "node": (-3.0, 3.0), "nodeact": (-3.0, 3.0)}
+
+# Learning v2: every learned weight is pulled this share of the way back to its prior on each run that
+# touches it (a random walk around the prior instead of a drift to the bounds); the advantage uses an
+# out-of-sample error scale with a floor so one act 1 boss kill no longer hits the cap.
+PRIOR_PULL = 0.02
+VALUE_VAR_MIN = 0.0025   # value error std >= 0.05 (a quarter of an act 1 boss kill is 0.025)  # skip:a2 had run away to -5.5 (the LLM never skipped; training followed it)
 
 
 def hp_bucket(hp: int, max_hp: int) -> int:
@@ -112,6 +122,13 @@ class Model:
     # -------------------------------------------------------------- weights
 
     def prior(self, key: str) -> float:
+        if key.startswith("skip:a"):
+            # per class from expert players' skip rate in that act (Watcher experts skip 43%/64% in acts 1/2,
+            # the Defect 9%/19%); the fixed priors when no expert runs are loaded
+            from cards import expert_skip_prior
+            p = expert_skip_prior(self.character, key)
+            if p is not None:
+                return p
         if key in FEATURE_PRIORS:
             return FEATURE_PRIORS[key]
         kind, _, rest = key.partition(":")
@@ -210,6 +227,7 @@ class Model:
     def fit_value(self, events: list[dict], reward: float, lr: float = 0.02) -> None:
         vw = self.meta.setdefault("value_w", {"bias": 0.0})
         states = [ev["state"] for ev in events if ev.get("state")]
+        pre = [reward - (vw.get("bias", 0.0) + sum(vw.get(k, 0.0) * x for k, x in s.items())) for s in states]
         for _ in range(3):
             for s in states:
                 pred = vw.get("bias", 0.0) + sum(vw.get(k, 0.0) * x for k, x in s.items())
@@ -218,12 +236,12 @@ class Model:
                 for k, x in s.items():
                     vw[k] = vw.get(k, 0.0) + lr * err * x
         if states:
-            errs = [reward - (vw["bias"] + sum(vw.get(k, 0.0) * x for k, x in s.items())) for s in states]
+            errs = pre   # out of sample: this run's states before fitting on them
             self.meta["value_var"] = 0.9 * self.meta.get("value_var", 0.04) + 0.1 * (sum(e * e for e in errs) / len(errs))
             self.meta["value_runs"] = self.meta.get("value_runs", 0) + 1
 
     def learn(self, events: list[dict], reward: float, lr: float = 0.08, replay: bool = False,
-              adv_cap: float = 3.0) -> dict:
+              adv_cap: float = 2.0) -> dict:
         """REINFORCE with a per-decision baseline.
 
         Each choice is judged against the learned value of the state it was made in (value());
@@ -238,11 +256,11 @@ class Model:
         for a in sorted(set(by_act) | {1}):
             st = acts.setdefault(str(a), {"b": None, "var": 0.04})
             base = reward if st["b"] is None else st["b"]
-            advs[a] = max(-adv_cap, min(adv_cap, (reward - base) / math.sqrt(max(st["var"], 1e-4))))
+            advs[a] = max(-adv_cap, min(adv_cap, (reward - base) / math.sqrt(max(st["var"], VALUE_VAR_MIN))))
             if not replay:
                 st["b"] = base + 0.1 * (reward - base)
                 st["var"] = 0.9 * st["var"] + 0.1 * (reward - base) ** 2
-        vstd = math.sqrt(max(self.meta.get("value_var", 0.04), 1e-4))
+        vstd = math.sqrt(max(self.meta.get("value_var", 0.04), VALUE_VAR_MIN))
         changed: dict[str, float] = {}
         used_value = 0
         for a, evs in by_act.items():
@@ -265,6 +283,10 @@ class Model:
                         self.weights[k] = max(lo, min(hi, self.w(k) + delta))
                         changed[k] = changed.get(k, 0.0) + delta
         if not replay:
+            for k in changed:   # regularization: back toward the prior (see PRIOR_PULL)
+                if k in self.weights:
+                    lo, hi = WEIGHT_BOUNDS.get(k.partition(":")[0], (-6.0, 6.0))
+                    self.weights[k] = max(lo, min(hi, self.weights[k] + PRIOR_PULL * (self.prior(k) - self.weights[k])))
             self.fit_value(events, reward)
             base = self.meta["baseline"] if self.meta["baseline"] is not None else reward
             self.meta["baseline"] = base + 0.1 * (reward - base)

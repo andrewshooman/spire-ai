@@ -100,6 +100,34 @@ def main() -> None:
           f"{t_warm:.2f}")
     evolve.warm_start(sws, "silent", src=tmp / "iron.json")
     check("warm start runs once", sws.model.meta["warm_start"]["weights"] == 2)
+
+    # learning v2: the value error is measured before fitting the run (it was the in-sample residual, ~0, so
+    # every run's advantage hit the cap and weights drifted to the bounds on coin flips)
+    import random as _r
+    m = Model(tmp / "lv2.json", "WATCHER")
+    rng = _r.Random(3)
+    for i in range(60):   # a run: ~40 decisions, outcome a coin flip (act 1 boss beaten or not)
+        evs = [{"kind": "card", "act": 1, "options": [{"card:Sash Whip": 1.0}, {"card:Vault": 1.0}],
+                "chosen": rng.randrange(2), "probs": [0.5, 0.5], "temp": 1.0,
+                "state": {"hp": rng.random(), "deck": 0.3}} for _ in range(40)]
+        m.learn(evs, 0.1 if rng.random() < 0.5 else 0.0)
+    check("value error scale stays out of sample (no collapse to ~0)", m.meta["value_var"] > 0.001,
+          f"{m.meta['value_var']:.5f}")
+    drift = abs(m.w("card:Sash Whip") - m.prior("card:Sash Whip"))
+    check("coin-flip outcomes leave a card weight near its prior (cap 2, pull back to the prior)", drift < 1.5,
+          f"drift {drift:.2f}")
+    check("dilute / node weights are bounded", m.w("dilute") >= -1.5 and Model.prior(m, "dilute") >= -1.5)
+    # the one-time repair: young non-Ironclad models pulled 70% back to the corrected priors, the Ironclad kept
+    for char, runs, keep in (("DEFECT", 65, False), ("IRONCLAD", 214, True)):
+        ws2 = evolve.Workspace(tmp / f"lv2_{char}", char, ROOT / "agent" / "strategy_baseline.md")
+        ws2.model.meta.pop("learning_v2", None)
+        ws2.model.meta["runs_trained"] = runs
+        ws2.model.weights.update({"card:Hello World": 3.5, "nodeact:?:a1": 2.9, "skip:a2": -1.5})
+        evolve.migrate(ws2)
+        hw = ws2.model.w("card:Hello World")
+        ok = hw == 3.5 if keep else hw < 1.5 and "skip:a2" not in ws2.model.weights
+        check(f"learning v2 migration: {char} {'kept' if keep else 'repaired'}", ok and ws2.model.meta["learning_v2"],
+              f"Hello World {hw:.2f}")
     print("SELECT OK")
 
 

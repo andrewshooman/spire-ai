@@ -29,6 +29,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 import cards as C
+import monsters
 
 MAX_NODES = 3000
 
@@ -63,7 +64,7 @@ class Mon:
     __slots__ = ("i", "name", "hp", "hp0", "max_hp", "block", "block0", "vuln", "weak", "weak0",
                  "new_vuln", "new_weak", "atk", "hits", "down", "down_perm", "poison", "artifact",
                  "barricade", "thorns", "sharp", "malleable", "curl", "intangible", "cap", "prio",
-                 "asleep", "nob", "dead", "shifting", "flight")
+                 "asleep", "nob", "dead", "shifting", "flight", "nxt")
 
     def copy(self) -> "Mon":
         n = Mon.__new__(Mon)
@@ -119,6 +120,7 @@ class Ctx:
     no_safe_target: bool = False  # every living enemy has Thorns / Sharp Hide
     champ_str: int = 0    # The Champ's Strength (sizes its Execute)
     inc0: float = 0.0     # incoming damage before this turn's plays
+    wrath_stuck: float = 0.0  # chance the next hand has no way out of Wrath
 
 
 @dataclass
@@ -212,6 +214,7 @@ def build(message, deck_names: list[str]) -> tuple[Sim, Ctx]:
         x.nob = pw(m.powers, "Anger", "Enrage")
         x.shifting = pw(m.powers, "Shifting") != 0 or any(p.id == "Shifting" for p in m.powers)
         x.flight = pw(m.powers, "Flight")
+        x.nxt = 0.0       # next turn's attack total (monsters.next_attack), set in plan_turn
         x.dead = False
         sim.mons.append(x)
     hand = list(c.hand)
@@ -543,6 +546,7 @@ def _orb_passives(sim: Sim) -> None:
 
 # ---------------------------------------------------------------- Watcher stances
 
+SPLITTERS = {"Slime Boss", "Acid Slime (L)", "Spike Slime (L)"}   # split into two at their HP when at half or below
 STANCE_DEALT = {"Wrath": 2.0, "Divinity": 3.0}     # attack damage dealt
 STANCE_TAKEN = {"Wrath": 2.0}                      # attack damage taken
 
@@ -641,6 +645,12 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
             v += P["kill"] * m.prio
             continue
         enemy_left += m.hp
+        if m.name in SPLITTERS and m.hp <= m.max_hp / 2 < m.hp0 and not ctx.stall:
+            # it splits next turn into two copies at its current HP: what is left now counts twice, so a turn that
+            # crosses half should cross it deep (or wait for a bigger turn); the reference AI splits at 50% or below
+            # (half weight: waiting costs Slams too; the stall guard lifts it after a turn without progress)
+            v -= P["damage"] * 0.5 * m.hp * mult
+            enemy_left += m.hp
         v += P["vuln"] * 0.5 * min(m.new_vuln, 3)
         atk_total = m.atk * m.hits
         v += P["weak"] * m.new_weak * max(atk_total, 6) / 3.0
@@ -687,6 +697,10 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
     v += P["strength"] * sim.perm_str * fight
     if sim.stance == "Calm":
         v += P["energy"] * 2 * 0.6        # Calm banked: leaving it next turn gives 2 energy
+    if sim.stance == "Wrath" and ctx.wrath_stuck and not all(m.dead for m in sim.mons):
+        # Wrath stays: next turn's hits are doubled too unless the next hand can leave it (Hexaghost's quiet turn 1
+        # ended in Wrath, then Divider hit for 72). Next turn's attacks come from the monster AI (monsters.py).
+        v -= P["block"] * 0.7 * ctx.wrath_stuck * sum(m.nxt for m in sim.mons if not m.dead)
     if sim.doomed and not all(m.dead for m in sim.mons):
         v -= 500.0                        # Blasphemy: you die next turn unless the fight ends now
     # "Next turn, ..." riders: next turn's block / energy / draw, a little less than now
@@ -731,6 +745,21 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
     return v, {"dealt": dealt, "block": sim.block, "taken": taken + sim.self_loss, "kills": kills}
 
 
+# cards that leave Wrath (into Calm or Neutral)
+WRATH_EXITS = {"Vigilance", "Empty Body", "Empty Fist", "Empty Mind", "Inner Peace", "Fear No Evil", "Meditate",
+               "Tranquility"}
+
+
+def wrath_stuck(deck_names: list[str]) -> float:
+    """Chance a 5-card hand drawn from the deck holds no card that leaves Wrath."""
+    n = max(1, len(deck_names))
+    k = sum(1 for d in deck_names if C.base_name(d) in WRATH_EXITS)
+    stuck = 1.0
+    for i in range(min(5, n)):
+        stuck *= max(0.0, (n - k - i) / (n - i))
+    return stuck
+
+
 # ---------------------------------------------------------------- search
 
 def plan_turn(message, P: dict, deck_names: list[str], max_nodes: int = MAX_NODES, stall: int = 0,
@@ -739,6 +768,13 @@ def plan_turn(message, P: dict, deck_names: list[str], max_nodes: int = MAX_NODE
     sim.stance = sim.stance0 = stance or "Neutral"
     ctx.stall = stall
     ctx.inc0 = incoming(sim.copy())[0]
+    if any(e.stance == "Wrath" for e in ctx.effects) or sim.stance == "Wrath":
+        c = message.game_state.combat_state
+        for x in sim.mons:
+            m = c.monsters[x.i]
+            cur = x.atk * x.hits / STANCE_TAKEN.get(sim.stance0, 1.0) if x.atk > 0 else 0.0
+            x.nxt = monsters.next_attack(m, c.turn, c.player.current_hp, cur)
+        ctx.wrath_stuck = wrath_stuck(deck_names or [h.name for h in ctx.hand])
     champ = next((m for m in message.game_state.combat_state.monsters if m.name == "The Champ" and alive(m)), None)
     ctx.champ_str = pw(champ.powers, "Strength") if champ else 0
     alive_mons = [m for m in sim.mons if not m.dead]

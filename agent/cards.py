@@ -65,15 +65,16 @@ TIERS["DEFECT"] = {
 TIERS["WATCHER"] = {
     1.6: ["Rushdown", "Mental Fortress", "Talk to the Hand", "Tantrum", "Inner Peace", "Fear No Evil",
           "Cut Through Fate", "Wallop", "Empty Mind", "Ragnarok", "Scrawl", "Vault", "Lesson Learned",
-          "Wreath of Flame", "Deva Form", "Like Water"],
+          "Meditate"],
     1.2: ["Empty Fist", "Empty Body", "Flurry of Blows", "Crescendo", "Tranquility", "Third Eye", "Sanctity",
-          "Halt", "Battle Hymn", "Devotion", "Worship", "Prostrate", "Protect", "Weave", "Wheel Kick",
+          "Halt", "Devotion", "Worship", "Prostrate", "Protect", "Weave", "Wheel Kick",
           "Carve Reality", "Conclude", "Consecrate", "Foresight", "Study", "Spirit Shield", "Swivel",
-          "Simmering Fury", "Windmill Strike", "Reach Heaven", "Meditate", "Indignation", "Alpha", "Wish",
+          "Simmering Fury", "Windmill Strike", "Reach Heaven", "Indignation", "Alpha", "Wish",
           "Omniscience", "Brilliance", "Judgment", "Master Reality", "Nirvana", "Fasting", "Wave of the Hand",
           "Deceive Reality", "Follow-Up", "Bowling Bash", "Crush Joints", "Establishment", "Collect"],
     0.6: ["Sash Whip", "Just Lucky", "Pray", "Perseverance", "Evaluate", "Flying Sleeves", "Signature Move",
-          "Sands of Time", "Blasphemy", "Conjure Blade", "Foreign Influence"],
+          "Sands of Time", "Blasphemy", "Conjure Blade", "Foreign Influence", "Deva Form", "Like Water",
+          "Battle Hymn", "Wreath of Flame"],
     0.0: ["Pressure Points", "Discipline", "Unraveling"],
 }
 BASIC = {"Strike": -1.0, "Defend": -0.6}
@@ -296,7 +297,36 @@ def card_prior(character: str, name: str, card_type: str | None = None) -> float
         return BASIC[n]
     if card_type in ("CURSE", "STATUS"):
         return -3.0
-    return _tier_index(character_key(character)).get(n, DEFAULT_CARD_PRIOR)
+    tier = _tier_index(character_key(character)).get(n, DEFAULT_CARD_PRIOR)
+    d = expert_card_rates(character).get(n)
+    if d is None:
+        return tier
+    # half tier list, half what expert players do (their pick rate vs their average, shrunk): the hand-made tiers
+    # had Deva Form / Like Water / Battle Hymn at the top while experts took them 0-4% of the time
+    return round(0.5 * tier + 0.5 * max(-0.6, min(2.0, 0.3 + 3.0 * d)), 3)
+
+
+_EXPERT_CACHE: dict = {}
+
+
+def expert_card_rates(character: str) -> dict:
+    """{card: expert pick rate - their mean} over all acts, {} without expert runs (human.expert_rates)."""
+    key = character_key(character)
+    if key not in _EXPERT_CACHE:
+        try:
+            import human
+            _EXPERT_CACHE[key] = human.expert_rates(key) or {}
+        except Exception:
+            _EXPERT_CACHE[key] = {}
+    return _EXPERT_CACHE[key].get("overall", {})
+
+
+def expert_skip_prior(character: str, key: str) -> float | None:
+    """skip:a<act> prior from expert players' skip rate in that act: 10% -> -0.7, 40% -> +0.2, 65% -> +0.95."""
+    expert_card_rates(character)
+    act = int(key.rpartition("a")[2] or 1)
+    rate = _EXPERT_CACHE.get(character_key(character), {}).get("skip", {}).get(min(act, 3))
+    return None if rate is None else round(-1.0 + 3.0 * rate, 3)
 
 
 def archetypes(character: str) -> dict[str, dict[str, float]]:

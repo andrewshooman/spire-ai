@@ -666,10 +666,42 @@ def main() -> None:
     msg = state(["Eruption", "Strike_P"], [monster("Jaw Worm", 40, 0)], energy=3)
     check("the stance after a card is tracked (Eruption -> Wrath)",
           planner.stance_after(msg, [], "Neutral", (0, 0)) == "Wrath")
+    # next turn from the monster AI: Hexaghost's turn 1 is quiet, turn 2 is Divider ((HP/12+1) x 6). Ending turn 1 in
+    # Wrath with no way out doubled it (run 107: 72 incoming, 55 HP lost)
+    import monsters
+    from types import SimpleNamespace as NS
+    check("monster AI: Divider after Activate, Slam after Preparing, Fierce Bash after Charge Up",
+          monsters.next_attack(NS(name="Hexaghost", intent="UNKNOWN", powers=[]), 1, 62, 0) == 36
+          and monsters.next_attack(NS(name="Slime Boss", intent="UNKNOWN", powers=[]), 2, 60, 0) == 35
+          and monsters.next_attack(NS(name="The Guardian", intent="DEFEND", powers=[]), 1, 60, 0) == 32)
+    hexa = monster("Hexaghost", 250, 0)
+    msg = state(["Eruption", "Strike_P", "Defend_P"], [hexa], hp=62, energy=3, turn=1, room="MonsterRoomBoss")
+    deck = ["Strike_P"] * 4 + ["Defend_P"] * 4 + ["Eruption", "Vigilance"]
+    plan = names(planner.plan_turn(msg, P, deck), msg)
+    check("Hexaghost turn 1: no Eruption into Divider without a way out of Wrath", "Eruption" not in plan, str(plan))
+    msg = state(["Eruption", "Strike_P", "Defend_P"], [monster("Jaw Worm", 14, 11)], hp=62, energy=3)
+    plan = names(planner.plan_turn(msg, P, deck), msg)
+    check("...but Eruption still kills a weak enemy this turn", "Eruption" in plan, str(plan))
+    # Slime Boss splits into two at its current HP once at half or below: chipping it from 76 to 70 adds 70 HP of
+    # slimes; a big turn that crosses deep is fine
+    sb = monster("Slime Boss", 140, 0)
+    sb["current_hp"] = 76
+    msg = state(["Strike_P", "Defend_P", "Defend_P"], [sb], energy=3, room="MonsterRoomBoss")
+    plan = names(planner.plan_turn(msg, P, []), msg)
+    check("Slime Boss at 76/140: no Strike that only tips it into a 70 HP split", "Strike_P" not in plan, str(plan))
+    sb2 = dict(sb, current_hp=74)
+    msg = state(["Bludgeon", "Strike_P"], [sb2], energy=4, room="MonsterRoomBoss")
+    plan = names(planner.plan_turn(msg, P, []), msg)
+    check("...but a big turn that splits it low is taken", "Bludgeon" in plan, str(plan))
     # Defect and Watcher: card tiers, engine synergies with dead-payoff needs, class boss relics
     check("class card tiers: Glacier / Rushdown top, Reboot / Pressure Points low",
-          C.card_prior("DEFECT", "Glacier") == 1.6 and C.card_prior("WATCHER", "Rushdown") == 1.6
-          and C.card_prior("DEFECT", "Reboot") == 0.0 and C.card_prior("WATCHER", "Pressure Points") == 0.0)
+          C.card_prior("DEFECT", "Glacier") >= 1.5 and C.card_prior("WATCHER", "Rushdown") >= 1.5
+          and C.card_prior("DEFECT", "Reboot") <= 0.3 and C.card_prior("WATCHER", "Pressure Points") <= 0.3)
+    # tiers blended with expert pick rates (when expert runs are loaded): Deva Form / Like Water / Battle Hymn
+    # (experts 0-4%) below Vault / Inner Peace (72-87%)
+    check("Watcher priors follow expert picks: Vault > Like Water, Inner Peace > Battle Hymn",
+          C.card_prior("WATCHER", "Vault") > C.card_prior("WATCHER", "Like Water") + 0.8
+          and C.card_prior("WATCHER", "Inner Peace") > C.card_prior("WATCHER", "Battle Hymn") + 0.8)
     sf, _ = synergy.explain("Defragment", ["Zap", "Glacier", "Coolheaded"])
     sn, _ = synergy.explain("Rushdown", ["Strike", "Defend"])
     sw, _ = synergy.explain("Mental Fortress", ["Eruption", "Vigilance", "Tantrum"])
