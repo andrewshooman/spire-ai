@@ -316,6 +316,11 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     each class's real decks (fights won): Silent 23 -> 29%, Watcher 22 -> 29%, Defect 27 -> 28%, Ironclad flat.
     Wrath stuck penalty 0.7 -> 1.0. synergy: Watcher Wrath balance (synrule:wrath->exit for exits when ways in
     outnumber ways out, synneed:wrath_exit). Spireseer's Java brain lacks all of this (update later).
+    Endless fights: a Defect with 5 Frost orbs ended the turn ~2600 times vs a Gremlin Nob (runs at 15:52 and 18:28
+    on 2026-10-26 never finished; the first hit max_decisions): the planner's fight length (orbs / Strength /
+    powers) was measured after this turn's damage, so a Strike lowered the orbs' value more than it earned ->
+    fight length from the enemies' HP at the start of the turn; after STALL_FORCE (4) turns without enemy HP
+    change any damage gets P.block x 0.5 per HP.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.

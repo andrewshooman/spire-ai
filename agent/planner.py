@@ -74,6 +74,7 @@ class Mon:
 
 
 DEX_BLOCK_CARDS = 1.5   # block cards played per turn, for the lasting value of Dexterity
+STALL_FORCE = 4         # turns without enemy HP change before damage gets a large bonus
 THREAT_RATE = 15.0     # enemy HP your deck removes a turn (what turns HP dealt into turns of its hits saved)
 VAULT_TURN = 14.0      # what an extra turn is worth: about this much block or damage
 POWER_TURN_SHARE = 0.6  # share of a power's per-turn value counted for each turn left (discount, uneven use)
@@ -706,6 +707,9 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
         # (3 energy, 5 cards) blocks what it needs and spends the rest on damage
         sim.block = min(inc, VAULT_TURN)
         v += P["damage"] * max(0.0, VAULT_TURN - inc)
+    if ctx.stall >= STALL_FORCE and dealt > 0:
+        # no enemy HP has moved for several turns: any damage beats another empty turn (whatever the weights say)
+        v += P["block"] * 0.5 * dealt
     taken = max(0.0, inc - sim.block)
     if sim.intangible:
         taken = min(taken, float(inc_hits))   # Intangible: every hit deals 1
@@ -741,7 +745,11 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
                 v -= P["block"] * 0.6 * execute   # the stall guard lifts this after one turn: never a stall
     if taken + sim.self_loss + sim.card_loss >= ctx.hp:
         v -= 500.0
-    fight = 1.0 + min(2.0, enemy_left / 40.0)
+    # fight length from the enemies' HP at the start of the turn: measured after this turn's damage, every hit
+    # shortened the fight and so cut the lasting value of orbs / Strength / powers -- a Defect with 5 Frost orbs
+    # scored Strike at -0.9 against a Gremlin Nob it could never lose to and ended the turn 2600 times
+    left0 = sum(m.hp0 for m in sim.mons if m.hp0 > 0)
+    fight = 1.0 + min(2.0, left0 / 40.0)
     v += P["strength"] * sim.perm_str * fight
     if sim.stance == "Calm":
         v += P["energy"] * 2 * 0.6        # Calm banked: leaving it next turn gives 2 energy
@@ -769,7 +777,7 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
     v += P["strength"] * sim.turn_str * fight * 1.5
     # per-turn powers pay for the turns the fight has left (~25 enemy HP a turn): a boss fight is worth up to 6
     # turns of it, a weak hallway fight about one (the old cap of 3 made Deva Form vs a 250 HP boss a Defend)
-    horizon = min(6.0, max(1.0, enemy_left / 25.0)) * POWER_TURN_SHARE
+    horizon = min(6.0, max(1.0, left0 / 25.0)) * POWER_TURN_SHARE
     # ...when you live to use them: a power that leaves you under 40% HP after the hits is worth less
     left = (ctx.hp - taken - sim.self_loss - sim.card_loss) / max(1, ctx.max_hp)
     horizon *= min(1.0, max(0.2, left / 0.4))

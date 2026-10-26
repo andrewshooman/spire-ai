@@ -669,6 +669,15 @@ def main() -> None:
     msg = state(["Strike"], [monster("Jaw Worm", 40, 6)], energy=0, orbs=[frost, frost, frost])
     plan = planner.plan_turn(msg, P, [])
     check("Defect: three Frost orbs block 6 at the end of the turn", plan.summary["taken"] == 0, str(plan.summary))
+    # damage must never lower the lasting value of orbs: 5 Frost orbs vs a Nob that can't hurt them ended the turn
+    # 2600 times (Strike scored -0.9: it shortened the fight, and the orbs' value with it)
+    big = {"id": "Frost", "name": "Frost", "evoke_amount": 7, "passive_amount": 4}
+    nob = monster("Gremlin Nob", 45, 16, powers=[("Anger", 2)])
+    nob["max_hp"] = 85
+    P0 = dict(P, damage=0.55, block=2.0, threat=0.0)   # the Defect's learned weights
+    msg = state(["Strike", "Defend"], [nob], energy=3, orbs=[big] * 5)
+    check("Defect: Frost orbs don't make Strike look bad (no endless Nob fight)",
+          "Strike" in names(planner.plan_turn(msg, P0, []), msg), ", ".join(names(planner.plan_turn(msg, P0, []), msg)))
     msg = state(["Zap"], [monster("Jaw Worm", 40, 0)], energy=1, orbs=[light, light, light])
     sim, ctx = planner.build(msg, [])
     planner.play(sim, ctx, 0, None, [0])
