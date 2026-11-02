@@ -353,6 +353,14 @@ public final class PlannerTest {
         p = Planner.planForPlay(xb2, P, 20000);
         check("feedback: nothing incoming -> no Defend at all", !names(xb2, p).contains("Defend"), p.describe(xb2));
 
+        Sim mid = sim(70, 3);
+        mon(mid, "Gremlin Nob", 84, 0, 0, 0);   // its Bellow turn: nothing coming
+        strike(mid); defend(mid);
+        card(mid, "Slimed", "STATUS", 1, false, "Exhaust.");
+        p = Planner.planForPlay(mid, P, 20000);
+        check("feedback: a Defend in the middle with nothing coming is dropped, Slimed still played",
+              !names(mid, p).contains("Defend") && names(mid, p).contains("Slimed") && p.block == 0, p.describe(mid));
+
         // Gremlin Nob: every Skill gives it Strength
         Sim nob = sim(70, 2);
         mon(nob, "Gremlin Nob", 80, 14, 1, 0).nob = 2;

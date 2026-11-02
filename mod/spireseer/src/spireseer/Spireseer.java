@@ -283,11 +283,13 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
     private static final Color GREEN = new Color(0.45f, 1f, 0.55f, 1f);
     private static final Color CREAM = new Color(0.93f, 0.89f, 0.8f, 1f);
 
+    /** Names from the turn the plan was made for (the live hand shifts while a card resolves). */
     private static String stepName(int k) {
         Planner.Step st = lastPlan.steps.get(k);
-        AbstractCard c = GameBridge.handCard(st.card);
-        AbstractMonster m = GameBridge.monster(st.target);
-        return (c == null ? "?" : c.name) + (m == null ? "" : " > " + m.name);
+        String card = "?";
+        for (Sim.Card c : lastSim.hand) if (c.index == st.card) card = c.name;
+        Sim.Mon m = lastSim.mon(st.target);
+        return card + (m == null ? "" : " > " + m.name);
     }
 
     private static String reasonAt(int k) {
@@ -309,7 +311,7 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
                     c.current_y + c.hb.height / 2f + 30f * s, GREEN);
             return;
         }
-        if (mode == Mode.OFF || lastPlan == null || lastSim == null || !inCombat()) return;
+        if (mode == Mode.OFF || lastPlan == null || lastSim == null || !inCombat() || AbstractDungeon.player.isDead) return;
         if (mode == Mode.AUTO && !showInAuto) return;
         boolean end = lastPlan.endTurn(params) || lastPlan.steps.isEmpty();
         float cx = Settings.WIDTH / 2f, y = Settings.HEIGHT * 0.79f, gap = 30f * s;

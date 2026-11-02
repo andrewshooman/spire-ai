@@ -965,19 +965,39 @@ public final class Planner {
         Planner pl = new Planner(s, p, maxNodes);
         Plan best = pl.run();
         St start = pl.prepare();
-        while (best.steps.size() > 1) {
-            List<Step> shorter = new ArrayList<>(best.steps.subList(0, best.steps.size() - 1));
-            Double v = pl.replay(start, shorter);
-            if (v == null || best.value - v >= p.endThreshold) break;
-            best.steps.clear();
-            best.steps.addAll(shorter);
-            best.value = v;
+        // drop any card whose part of the plan is worth less than ending the turn would cost (last ones first)
+        boolean changed = true;
+        while (changed && !best.steps.isEmpty()) {
+            changed = false;
+            for (int k = best.steps.size() - 1; k >= 0; k--) {
+                List<Step> shorter = new ArrayList<>(best.steps);
+                shorter.remove(k);
+                Double v = pl.replay(start, shorter);
+                if (v == null || best.value - v >= p.endThreshold) continue;
+                best.steps.clear();
+                best.steps.addAll(shorter);
+                best.value = v;
+                changed = true;
+                break;
+            }
         }
-        if (best.steps.size() == 1) {
-            Double v = pl.replay(start, new ArrayList<Step>());
-            if (v != null && best.value - v < p.endThreshold) best.value = v;   // endTurn() then says so
-        }
+        double[] sum = new double[4];
+        pl.replaySummary(start, best.steps, sum);
+        fill(best, sum);
         return best;
+    }
+
+    private void replaySummary(St start, List<Step> steps, double[] sum) {
+        St st = start.copy();
+        List<Integer> remaining = new ArrayList<>();
+        for (int k = 0; k < hand.size(); k++) remaining.add(k);
+        for (Step step : steps) {
+            int i = handPos(step.card);
+            if (i < 0) continue;
+            play(st, i, step.target, remaining, false, 0);
+            remaining = kept(i, remaining);
+        }
+        evaluate(st, sum);
     }
 
     /** The plan's value if this hand were played from this state (no search): for choice screens. */

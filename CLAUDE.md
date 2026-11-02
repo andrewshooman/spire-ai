@@ -321,6 +321,21 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     powers) was measured after this turn's damage, so a Strike lowered the orbs' value more than it earned ->
     fight length from the enemies' HP at the start of the turn; after STALL_FORCE (4) turns without enemy HP
     change any damage gets P.block x 0.5 per HP.
+45. Spireseer auto battler (Workshop feedback 2026-10-26: "won't play slimes", "uses skill potions but can't choose
+    which card", "prioritizes excess block over damage"). The Java brain is now a faithful port of planner.py,
+    cards.py (parser + POWER_TURN/SETUP_TURN/CARD_FIX) and monsters.py; mod\spireseer\parityun.ps1 checks it:
+    724/724 card texts parsed identically, 2000/2000 real logged combat states (500 per class) give the same plan and
+    value (Java ~0.3 ms/plan, so the game searches 20,000 nodes). In a fight the game's rawDescription goes through
+    Effects.normalize (!D!/!B!/!M!, NL, energy icons -> database wording; 713/724 game texts read the same), and the
+    game's computed damage/block per target is kept as a bonus (GameBridge.anchor: Pen Nib, Wrist Blade...).
+    planForPlay drops any card worth less than the end threshold (the surplus-block complaint); statuses like Slimed
+    are played (junk credit). Auto answers in-combat choice screens with the planner (Choices.java): Discovery /
+    card potions (each option tried in the turn), Wish / Stance Potion, Armaments, exhaust/discard/retain/copy/
+    put-back/recycle hand selects (by action class), grid selects (Scry, Seek, Headbutt, Exhume, Hologram, Liquid
+    Memories, Secret Weapon/Technique, Meditate, Omniscience; GridHover patch clicks like CommunicationMod).
+    Verified in the game on a "SpireseerTest" profile (Nob, Jaw Worm, Hexaghost; Skill Potion discovery, Headbutt,
+    Warcry, Slimed). human.py never imports profiles named like "test". Bot: the search state key includes the
+    stance (Vigilance/Eruption orders were pruned), Malaise+ "X+1" parsed.
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.
