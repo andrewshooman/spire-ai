@@ -65,6 +65,16 @@ def game_dir() -> Path | None:
     return jar.parent if jar else None
 
 
+def test_slot(g: Path, slot: int) -> bool:
+    """A profile named like 'Spireseer Test': mod / bot testing, never learned from as a human player's runs."""
+    try:
+        slots = json.loads((g / "preferences" / "STSSaveSlots").read_text(encoding="utf-8", errors="replace"))
+    except (OSError, ValueError):
+        return False
+    name = slots.get("PROFILE_NAME" if slot == 0 else f"{slot}_PROFILE_NAME", "")
+    return "test" in str(name).lower()
+
+
 def run_dirs(char: str) -> list[tuple[Path, str]]:
     """Run history folders to import from: every save slot except the bot's, plus the inbox."""
     out = []
@@ -75,7 +85,7 @@ def run_dirs(char: str) -> list[tuple[Path, str]]:
             m = re.fullmatch(r"(?:(\d+)_)?" + GAME_CHAR[char], d.name)
             if m and d.is_dir():
                 slot = int(m.group(1) or 0)
-                if slot != bot_slot():
+                if slot != bot_slot() and not test_slot(g, slot):
                     out.append((d, f"profile slot {slot}"))
     inbox = EVOLVE / "human_inbox" / GAME_CHAR[char]
     if inbox.is_dir():

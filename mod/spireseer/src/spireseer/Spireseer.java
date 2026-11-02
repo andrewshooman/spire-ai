@@ -40,8 +40,9 @@ import java.util.Properties;
  *   F8  pause / resume AUTO
  *
  * AUTO never starts by itself: every launch begins in OFF or SUGGEST (whichever you used last), it is
- * off in Daily Climbs, it waits while you drag or target a card, and choice screens (Armaments, Headbutt,
- * card rewards...) are left to you.
+ * off in Daily Climbs and it waits while you drag or target a card. In a fight it also answers the choice
+ * screens (Discovery and card potions, Armaments, discards, Scry, Seek, Headbutt...); rewards, map, shops and
+ * events stay yours.
  */
 @SpireInitializer
 public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber, PostRenderSubscriber {
@@ -58,7 +59,8 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
     static boolean oneAtATime = false;      // Suggest: only the next card (F9 switches)
     static int delayMs = 350;
     static SpireConfig config;
-    static Planner.Params params = new Planner.Params();   // per character, from Weights at each replan
+    static Planner.Params params = new Planner.Params();
+    static final int GAME_NODES = 20000;   // the Java search is ~20x faster than the bot's: a wider search per turn   // per character, from Weights at each replan
     private static String weightsLabel = "";
 
     // last plan, recomputed only when the combat state changes
@@ -68,7 +70,9 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
     private static long nextActionAt;
     // stall guard: enemy HP unchanged from one turn to the next
     private static String stallHp;
-    private static int stall, stallTurn = -1;
+    static int stall;
+    private static int stallTurn = -1;
+    private static long nextChoiceLook;
     private static String status = "";
     private static PotionAdvisor.Advice lastPotion;
     private static int lastPotionTarget = -1;
@@ -183,6 +187,25 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
             oneAtATime = !oneAtATime;
             save();
         }
+        boolean autoOk = mode == Mode.AUTO && !paused && !Settings.isDailyRun;
+        if (mode != Mode.OFF && inCombat() && AbstractDungeon.isScreenUp) {
+            // a choice screen inside the fight: decide it with the planner (Auto picks, Suggest shows the pick)
+            if (lastPlan == null) {
+                String cls = AbstractDungeon.player.chosenClass == null ? null : AbstractDungeon.player.chosenClass.name();
+                params = Weights.forClass(cls);
+            }
+            long now = System.currentTimeMillis();
+            if (autoOk && !GameBridge.playerBusy() && now >= nextActionAt) {
+                if (Choices.step(true)) nextActionAt = now + Math.max(120, delayMs);
+                lastSig = null;
+            } else if (now >= nextChoiceLook) {
+                Choices.step(false);
+                nextChoiceLook = now + 250;
+            }
+            glow(null);
+            return;
+        }
+        Choices.suggestion = null;
         if (mode == Mode.OFF || !GameBridge.ready()) {
             if (mode == Mode.OFF || !inCombat()) {
                 lastPlan = null;
@@ -205,19 +228,19 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
             String cls = AbstractDungeon.player.chosenClass == null ? null : AbstractDungeon.player.chosenClass.name();
             params = Weights.forClass(cls);
             weightsLabel = Weights.label(cls);
-            lastPlan = Planner.plan(lastSim, params);
+            lastPlan = Planner.planForPlay(lastSim, params, GAME_NODES);
             lastReasons = Planner.explain(lastSim, lastPlan, params);
             lastSig = sig;
             if (turn != potionTurn) {
                 potionTurn = turn;
                 potionsThisTurn = 0;
             }
-            lastPotion = PotionAdvisor.advise(GameBridge.potions(),
-                    GameBridge.potionContext(lastSim, lastPlan, potionsThisTurn));
+            PotionAdvisor.Context pc = GameBridge.potionContext(lastSim, lastPlan, potionsThisTurn);
+            pc.lowHp = params.potionHp;
+            lastPotion = PotionAdvisor.advise(GameBridge.potions(), pc);
             lastPotionTarget = lastPotion == null ? -1 : GameBridge.potionTarget(lastPotion.potion, lastSim);
         }
         glow(lastPlan.endTurn(params) || lastPlan.steps.isEmpty() ? null : GameBridge.handCard(lastPlan.steps.get(0).card));
-        boolean autoOk = mode == Mode.AUTO && !paused && !Settings.isDailyRun;
         status = mode == Mode.AUTO ? (Settings.isDailyRun ? "AUTO is off in Daily Climbs" : paused ? "AUTO paused (F8)" : "")
                 : "";
         if (!autoOk || GameBridge.playerBusy() || System.currentTimeMillis() < nextActionAt) return;
@@ -278,6 +301,14 @@ public class Spireseer implements PostInitializeSubscriber, PostUpdateSubscriber
                 + (status.isEmpty() ? "" : " - " + status) + (weightsLabel.isEmpty() ? "" : " - " + weightsLabel)
                 + "   (F7 mode, F8 pause, F9 next card / whole turn)";
         FontHelper.renderFontLeftTopAligned(sb, FontHelper.tipBodyFont, head, 24f * s, Settings.HEIGHT - 70f * s, DIM);
+        if (mode != Mode.OFF && Choices.suggestion != null && inCombat() && AbstractDungeon.isScreenUp) {
+            FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, "Spireseer: " + Choices.suggestion,
+                    Settings.WIDTH / 2f, Settings.HEIGHT * 0.93f, GREEN);
+            AbstractCard c = Choices.suggested;
+            if (c != null) FontHelper.renderFontCentered(sb, FontHelper.panelNameFont, "PICK", c.current_x,
+                    c.current_y + c.hb.height / 2f + 30f * s, GREEN);
+            return;
+        }
         if (mode == Mode.OFF || lastPlan == null || lastSim == null || !inCombat()) return;
         if (mode == Mode.AUTO && !showInAuto) return;
         boolean end = lastPlan.endTurn(params) || lastPlan.steps.isEmpty();

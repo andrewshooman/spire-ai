@@ -16,6 +16,7 @@ public final class PotionAdvisor {
         public int slot;
         public String id = "", name = "";
         public boolean canUse = true, targetRequired;
+        public int potency;
     }
 
     public static final class Context {
@@ -23,7 +24,8 @@ public final class PotionAdvisor {
         public int turn, hp, maxHp, taken, handSize, usedThisTurn, emptySlots, floorInAct, act = 1;
         public boolean attacksPlanned;
         public int champHp = -1, champMaxHp = -1;   // The Champ, when it is in the fight
-        public double lowHp = 0.32;
+        public int enemies, lowestEnemy;             // living enemies, the lowest HP + block among them
+        public double lowHp = 0.32;                  // the bot's learned potion_hp (Planner.Params.potionHp)
     }
 
     public static final class Advice {

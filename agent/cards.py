@@ -557,8 +557,8 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
     m = re.search(r"Gain (\d+) Block\. If you are in Wrath, gain (\d+) additional Block", t, re.I)
     if m:
         e.wrath_block = int(m.group(2))
-    e.x_str_down = bool(re.search(r"loses? X Strength", t, re.I))
-    e.x_weak = bool(re.search(r"Apply X Weak", t, re.I))
+    e.x_str_down = bool(re.search(r"loses? X(?:\+1)? Strength", t, re.I))   # Malaise+ reads "X+1"
+    e.x_weak = bool(re.search(r"Apply X(?:\+1)? Weak", t, re.I))
     e.draw = _int(r"Draw (\d+) cards?", t)
     e.energy = _int(r"Gain (\d+) Energy", t)
     if re.search(r"At the end of this turn, lose", full):

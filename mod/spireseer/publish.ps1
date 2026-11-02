@@ -31,58 +31,63 @@ Copy-Item "$here\build\Spireseer.jar" "$ws\content\Spireseer.jar"
 $cfg = Get-Content "$ws\config.json" -Raw | ConvertFrom-Json
 $cfg.title = "Spireseer"
 $cfg.description = @"
-[h1]See the best turn. Or let it play.[/h1]
-Spireseer reads your hand, your energy and every enemy's intent, works out the strongest way to play the turn, and shows it to you right on the cards. Learn from it, check your own plan against it, or hand it the controller.
+[h1]An auto battler for Slay the Spire. Or a coach, if you'd rather play.[/h1]
+Press [b]F7[/b] twice and Spireseer plays your fights: every card, every target, every potion, every choice screen, then ends the turn. It reads your hand, your energy and every enemy's intent and plays the strongest turn it can find. Prefer to play yourself? Suggest mode shows the same plan right on your cards.
 
-[h2]Two modes[/h2]
+[h2]Auto: it plays the whole fight[/h2]
 [list]
-[*][b]Suggest[/b] (default): the cards to play are numbered [b]1, 2, 3[/b] in order, the next one glows green and its target gets the targeting reticle. Every card comes with its reason:
+[*][b]Cards and targets[/b], in the best order, at a watchable or fast pace (Mods > Spireseer > Config).
+[*][b]Choice screens inside a fight[/b], decided by the same brain: Discovery and the Attack / Skill / Power / Colorless potions (it tries each offered card in your turn and takes the best), Wish and Stance Potion, Armaments (the upgrade that helps most), True Grit / Burning Pact / Purity / Elixir (statuses and curses first, then what the turn needs least), discards (Survivor, Acrobatics, Prepared, Gambler's Brew), Dual Wield, Nightmare, Well-Laid Plans, Warcry, Setup, Forethought, Recycle, Scry, Seek, Headbutt, Exhume, Hologram, Liquid Memories, Secret Weapon / Technique, Meditate, Omniscience.
+[*][b]Potions[/b] by the rules its bot learned: never die holding one, Block or heal on a boss's big hit, burst potions saved for The Champ's second half, one opener in act 1 elites, the last potion kept for a lethal turn.
+[*][b]Ends the turn[/b] when nothing left is worth playing, and says why.
+[/list]
+[b]F7[/b] cycles Off / Suggest / Auto. [b]F8[/b] pauses Auto instantly. Rewards, the map, shops and events stay yours.
+
+[h2]Suggest: the same plan, shown on your cards[/h2]
+The cards to play are numbered [b]1, 2, 3[/b], the next one glows green and its target gets the reticle. Every card says why:
 [i]1. Bash > Jaw Worm - deals 8 to Jaw Worm, Vulnerable first: the attacks after it hit 50% harder
 2. Strike > Jaw Worm - deals 9 to Jaw Worm
 3. Defend - blocks 5 of the 12 coming[/i]
-Prefer one step at a time? [b]F9[/b] switches to [b]next card only[/b] ("Next: Bash > Jaw Worm - ..."), re-planned after every card. A potion worth drinking is marked [b]USE[/b] with the reason; [b]END TURN[/b] is marked with why ("out of energy", "what's left would cost more than it gains"). You still play every card.
-[*][b]Auto[/b]: plays the turn for you at a watchable pace, drinks potions by the same rules and ends the turn. Each part can be switched off in Mods > Spireseer > Config.
-[/list]
-[b]F7[/b] cycles Off / Suggest / Auto. [b]F8[/b] pauses Auto instantly. [b]F9[/b] switches whole turn / next card only.
+Choice screens get a [b]PICK[/b] marker with the reason, potions a [b]USE[/b] marker, and [b]F9[/b] switches to one card at a time.
 
-[h2]The AI behind the decisions[/h2]
-Spireseer's brain comes from [b]Spire AI[/b], a self-learning bot that has played hundreds of full Ironclad runs on its own, learning from every win and death.
+[h2]The brain[/h2]
+Spireseer is the combat planner of [b]Spire AI[/b], a self-learning bot that has played well over 900 full runs across all four characters, ported to Java and checked against the bot card for card: on 2,000 real combat states from its runs the mod picks the same play every time.
 [list]
-[*][b]Whole-turn search.[/b] It doesn't pick one card at a time. It tries the possible orders of your playable cards within your energy (up to 4,000 sequences a turn) and simulates each one: damage, block, kills, Vulnerable and Weak landing before the big hits, Strength gained mid-turn, Thorns, and what the enemies will hit you for.
-[*][b]The game's own numbers.[/b] Damage and block come straight from the game's calculation for every card against every target, with your relics, powers and debuffs already applied. That is why modded cards work too.
-[*][b]Learned judgment.[/b] Each finished turn is scored: damage (weighted by who to kill first: Gremlin Wizard before Gremlin Fat, the Automaton's body before its Orbs), kills, damage blocked, debuffs, card draw, powers and Strength (worth more in long fights), HP you'd lose, and a hard veto on any turn that lets the enemies kill you. The weights of those trade-offs weren't hand-picked: the bot tuned them through evolution-style trials across its runs, keeping the changes that climbed higher.
-[*][b]Lessons from its own deaths.[/b] Rules the bot learned the hard way are built in: finish a Thorns enemy instead of stalling forever, race The Champ once he drops below half but don't push him there when two Executes would kill you, save burst potions for that second half, keep one potion back for a lethal turn.
-[*][b]It re-thinks after every card.[/b] Draws and random effects change the turn, so the game is read again after each play.
+[*][b]Whole-turn search.[/b] It tries the orders of your playable cards within your energy (up to 20,000 sequences a turn, under a millisecond) and simulates each: damage through block, Vulnerable and Weak landing before the big hits, Strength gained mid-turn, kills, and what the enemies will hit you for.
+[*][b]Damage that counts.[/b] Damage isn't just HP off an enemy: every point brings its death forward and with it the hits it would still throw, so it won't turtle behind Defends while three Cultists grow stronger. It blocks what is coming, not more.
+[*][b]Long fights reward setup.[/b] Powers are worth what they pay each turn for the turns the fight has left: Demon Form, Deva Form, Echo Form, A Thousand Cuts, Wraith Form or Rushdown come out on a boss's quiet turn, not in a hallway fight that ends next turn, and never when the hit would leave you nearly dead.
+[*][b]Enemy mechanics.[/b] Gremlin Nob's Enrage (no Skills unless they're worth it), Thorns and Sharp Hide, Malleable, Curl Up, Artifact, flying Byrds, Transient's Shifting, Time Eater's 12 cards, the Heart's Beat of Death and damage cap, Lagavulin asleep, slimes that split at half (cross half deep or not at all), The Champ's second half, and who to kill first.
+[*][b]The game's own numbers.[/b] Card text gives the effects; the game's computed damage and block per target tell it what your relics add (Pen Nib, Wrist Blade, Strike Dummy, Vigor...), so modded cards and relics work too.
+[*][b]It re-thinks after every card[/b], since draws and random effects change the turn.
 [/list]
 
-[h2]How it was trained[/h2]
+[h2]Characters[/h2]
+Each character gets its own learned weights (the mod picks the set for whoever you play):
 [list]
-[*][b]Real runs, played by the bot.[/b] Spire AI plays complete runs of the actual game through CommunicationMod, at sped-up game speed, every fight start to finish. Runs come in cycles of ten: eight training runs that explore, two benchmark runs on fixed seeds to measure progress. Each run gets one score: deeper is worth disproportionately more, elites add a little, a win is best.
-[*][b]Evolution-style tuning of the combat weights.[/b] A training run plays with the weights nudged in a random direction (say block +8%, damage -5%). The next run replays [i]the same seed[/i] with the opposite nudge, and whichever went deeper pulls the weights its way. Same seed, mirrored nudges: most of the luck cancels out. Over hundreds of runs the weights drifted from the starting guesses to what you get here.
-[*][b]What it learned.[/b] Protect HP more, chase raw damage less: the value of each point of block rose about 50%, of each HP a card costs you more than doubled, and raw damage fell by about a third. That matches how its runs actually died: worn down across fights, rarely unable to finish one.
-[*][b]Rules from studying its deaths.[/b] Some lessons were found by analysing where runs ended and written in as rules: a run that ended its turn 60 times in a row against a Thorns enemy, the Champ's second half (the top killer), potions wasted on turn one, the Automaton's Orbs soaking up damage, and potions spent on act 2 elites that were needed for the boss (elite openers after act 1 only when you're hurt or your belt is full).
-[*][b]Packed into the mod.[/b] The bot's turn planner was ported to Java with the same scoring, so every learned weight means exactly what it did in training. In the game the mod reads each card's real computed damage instead of estimating it. The mod doesn't learn while you play: each release carries the bot's latest weights.
+[*][b]Ironclad[/b]: Strength, Limit Break, Heavy Blade, Body Slam, Fiend Fire, Corruption, Barricade, Feel No Pain, Juggernaut.
+[*][b]Silent[/b]: poison on enemies and what it kills before they attack, Catalyst, Bouncing Flask, Shivs and Accuracy, Wraith Form, Footwork's Dexterity, Bullet Time, Piercing Wail, Malaise's X.
+[*][b]Defect[/b]: channeling (a full row evokes the oldest), Dualcast, Multi-Cast, Recursion, Lightning / Frost / Dark / Plasma passives, Focus and orb slots, Echo Form, Electrodynamics.
+[*][b]Watcher[/b]: Wrath doubles your attacks and the hits you take, so it looks at next turn before entering it (no Eruption into Hexaghost's Divider); Calm banks energy, Divinity triples, Mantra builds toward it; Pressure Points' Mark, Judgment, Wallop, Vault's extra turn; never Blasphemy unless that turn wins.
 [/list]
+
+[h2]How the bot learned[/h2]
+Spire AI plays complete runs through CommunicationMod at sped-up game speed. Its combat weights (what a point of block, damage, draw, energy or Strength is worth) were tuned by evolution-style trials: one run with the weights nudged, a replay of the same seed with the opposite nudge, the better one pulls the weights its way. Rules came from studying where its runs died: endless Thorns stalls, The Champ's Executes, potions wasted early, Wrath before a big hit, slimes split at the wrong time. Each release carries the bot's latest weights; the mod doesn't learn while you play.
 
 [h2]Plays fair[/h2]
 [list]
 [*]Every launch starts in Off or Suggest, never Auto.
 [*]Auto is off in Daily Climbs.
 [*]It never acts while you drag or target a card.
-[*]Card choices (Armaments, Headbutt), rewards, map, shops and events stay yours.
 [/list]
-
-[h2]Characters[/h2]
-Each character gets its own learned weights, and the mod picks the set for whoever you play (shown at the top left). The Ironclad set comes from 300+ runs, the Silent set from its own training (growing with every release). The Silent's tools are modeled: poison already on enemies and the poison you add, Catalyst, Bouncing Flask, enemies their poison will kill before they attack, Shivs, Piercing Wail on every attacker, Malaise's X. The Defect's orbs are modeled too: channeling (a full row evokes the oldest), evoking (Dualcast, Multi-Cast, Recursion), Lightning, Frost, Dark and Plasma passives at the end of your turn, Focus and orb slots. So are cards that work differently from plain damage and block: Wraith Form's Intangible, Footwork's Dexterity (worth block for the rest of the fight), Double Tap and Burst, Reaper's healing, and "next turn" cards (Outmaneuver, Dodge and Roll) count for next turn, not this one. The Watcher's stances are modeled as well: Wrath doubles your attacks (and the hits you take), Calm banks 2 energy for when you leave it, Divinity triples attacks, Mantra builds toward it, and Inner Peace, Indignation, Fear No Evil and Halt work by your current stance. It knows when to step out of Wrath before a big hit, and it never plays Blasphemy unless that turn wins the fight. All four characters are covered now; every suggested card says why, including the orbs it channels and the stance it enters.
 
 Requires BaseMod. Works alongside other mods.
 
-[i]Search terms: auto battle, auto play, autoplay, auto chess, autobattler, auto battler, auto combat, AFK, idle, bot, AI, automation, combat helper, turn advisor, best move, suggestions, hints, coach, solver, assistant.[/i]
+[i]Search terms: auto battle, auto play, autoplay, auto battler, autobattler, auto combat, auto fight, AFK, idle, bot, AI, automation, combat helper, turn advisor, best move, suggestions, hints, coach, solver, assistant.[/i]
 "@
 $cfg.visibility = $Visibility
 $cfg | Add-Member -Force -NotePropertyName tags -NotePropertyValue @("Utility", "Qol")
 if ($ChangeNote) { $cfg.changeNote = $ChangeNote }
-elseif (-not $cfg.changeNote) { $cfg.changeNote = "First release: combat suggestions, auto-battle, potion advice." }
+elseif (-not $cfg.changeNote) { $cfg.changeNote = "Auto battler update." }
 [IO.File]::WriteAllText("$ws\config.json", ($cfg | ConvertTo-Json -Depth 5))   # no BOM: the uploader reads plain JSON
 Write-Host "Workshop folder ready: $ws (visibility: $Visibility)"
 Write-Host "Preview image: $ws\image.jpg (redraw: python mod\spireseer\art\make_preview.py)"

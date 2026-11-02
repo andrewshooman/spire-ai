@@ -9,6 +9,11 @@ from pathlib import Path
 
 here = Path(__file__).resolve().parent
 evolve = here.parent.parent / "evolve"
+sys.path.insert(0, str(here.parent.parent / "agent"))
+try:   # the bot's own loader fills params added since the model was saved (threat: per-class default)
+    from model import Model
+except Exception:   # building without the bot's code: raw params
+    Model = None
 out = here / "resources" / "spireseerResources" / "weights.json"
 weights = {}
 for c in ("ironclad", "silent", "defect", "watcher"):
@@ -19,7 +24,7 @@ for c in ("ironclad", "silent", "defect", "watcher"):
     if runs < 30:
         print(f"  {c}: {runs} runs, not enough yet (uses Ironclad weights)")
         continue
-    params = json.loads(m.read_text(encoding="utf-8")).get("params", {})
+    params = (dict(Model(m, c.upper()).params) if Model else json.loads(m.read_text(encoding="utf-8")).get("params", {}))
     weights[c] = {"runs": runs, "params": params}
     print(f"  {c}: weights from {runs} runs")
 if weights:

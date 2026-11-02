@@ -102,7 +102,10 @@ class Sim:
                 tuple((m.hp, m.block, m.vuln, m.weak, m.down, m.artifact, m.poison) for m in self.mons),
                 round(self.draw_value, 2), self.perm_str, self.powers, self.self_loss,
                 self.double_atk, self.double_skill, self.intangible, round(self.heal, 1),
-                tuple(tuple(o) for o in self.orbs), self.focus, self.orb_slots)
+                tuple(tuple(o) for o in self.orbs), self.focus, self.orb_slots,
+                # two orders that reach the same numbers in another stance are different turns (Vigilance then
+                # Eruption ends in Wrath, Eruption then Vigilance in Calm): without these the search pruned one
+                self.stance, self.mantra, self.ended, self.vault, self.doomed)
 
 
 @dataclass

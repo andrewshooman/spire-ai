@@ -12,15 +12,19 @@ Combat suggestions or auto-battle, in the game, with no Python or LLM needed.
   first one glows green), the target gets the game's targeting reticle, and a line explains the turn
   ("Suggested: Bash > Jaw Worm, Strike > Jaw Worm (deal 20, block 0, take 5)"). A potion worth drinking is
   marked USE with the reason; END TURN is marked when nothing is worth playing. You still play every card.
-- **Auto** plays the turn for you, one card at a time at a watchable pace, drinks potions by the same rules and
-  ends the turn (each switchable in Mods -> Spireseer -> Config).
+- **Auto** plays the whole fight: cards and targets, potions by the bot's rules, the choice screens inside a
+  fight (Discovery and card potions, Wish, Armaments, exhaust / discard / retain / copy picks, Scry, Seek,
+  Headbutt, Exhume, Hologram...; see `Choices.java`) and the end of the turn.
 - Safety: every launch starts in Off or Suggest (never Auto), Auto is off in Daily Climbs, it never acts while
-  you drag or target a card, and choice screens (Armaments, Headbutt, rewards, map, shops) are left to you.
+  you drag or target a card; rewards, the map, shops and events are left to you.
 
-The brain is a Java port of Spire AI's whole-turn planner (agent/planner.py): it reads the game's own computed
-damage and block for every card and target, simulates Vulnerable/Weak/Strength, Thorns, kills and the enemies'
-intents, and starts from the combat weights the Spire AI bot learned (300+ Ironclad runs; the Silent has its own set). Card text is parsed for
-draw/energy/debuffs, so cards from other mods work when they use standard wording.
+The brain (`src/spireseer/brain`) is a faithful Java port of Spire AI's whole-turn planner (agent/planner.py,
+agent/cards.py, agent/monsters.py). `parity/run.ps1` checks it against the Python planner: every card text in
+the database parsed field for field, the game's own card wording read the same, and the same plan on 2,000 real
+combat states from the bot's logs (500 per class). In the game the card text comes from the game
+(`Effects.normalize`), and the game's computed damage / block per target is added as a correction
+(`GameBridge.anchor`: relics like Pen Nib, Wrist Blade, Strike Dummy). Weights per class are bundled from the
+bot's models (`bundle_weights.py`).
 
 ## Build and install
 
@@ -31,7 +35,8 @@ powershell -ExecutionPolicy Bypass -File mod\spireseer\build.ps1 -Install
 Needs a JDK 11+ (compiles for the game's Java 8) and ModTheSpire + BaseMod from the Workshop. Then open the
 ModTheSpire launcher once and tick **Spireseer** (the bot's `launch-game.ps1` reuses the last mod list).
 
-`build.ps1` runs the brain tests first (`test/spireseer/PlannerTest.java`, no game needed).
+`build.ps1` runs the brain tests first (`test/spireseer/PlannerTest.java`, no game needed). Parity with the bot:
+`powershell -ExecutionPolicy Bypass -File mod\spireseer\parityun.ps1` (needs the bot's logs).
 
 ## How a play is chosen
 

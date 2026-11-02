@@ -3,37 +3,43 @@ package spireseer.brain;
 import java.util.ArrayList;
 import java.util.List;
 
-/** A combat turn as plain data: what the planner sees. Filled from the game by GameBridge, or by tests. */
+/**
+ * A combat turn as plain data: what the planner sees. Filled from the game by GameBridge, or by tests and the
+ * parity harness. Field meanings follow Spire AI's planner.build.
+ */
 public final class Sim {
 
-    /** One card in hand, with the game's own computed numbers (damage per target, block). */
+    /** One card in hand. */
     public static final class Card {
         public int index;              // position in hand
         public String id = "", name = "";
+        public int upgrades;
         public String type = "ATTACK"; // ATTACK / SKILL / POWER / STATUS / CURSE
-        public int cost;               // -1 = X cost
-        public boolean playable = true;
+        public int cost;               // -1 = X cost; the cost this turn
+        public boolean playable = true;   // the game would let you play it now
         public boolean targeted;       // needs an enemy target
-        public boolean aoe;            // hits every enemy
-        public boolean randomTarget;   // e.g. Sword Boomerang
-        public int[] damage = new int[0];  // damage per hit against each monster (game-computed)
-        public int hits = 1;
-        public int block;
         public Effects fx = new Effects();
-        public boolean[] canTarget = new boolean[0];
+        public boolean[] canTarget;    // per monster (null = every living enemy)
+        // the game's own numbers, when known: added to the planner's estimate as a fixed bonus (relics like Pen Nib,
+        // Wrist Blade, Strike Dummy; scaling cards like Rampage, Claw, Ritual Dagger)
+        public double[] dmgBonus;      // per monster
+        public double blockBonus;
+
+        public String baseName() { return Effects.baseName(name); }
     }
 
     public static final class Mon {
-        public int index;
+        public int index;              // position in the game's monster list
         public String name = "";
-        public int hp, maxHp, block;
-        public int vuln, weak;         // turns of Vulnerable / Weak already on it
-        public int intentDmg, intentHits; // per-hit damage of its intended attack (0 if not attacking)
-        public int thorns;             // Thorns / Sharp Hide
-        public int poison;             // Poison on it (ticks at the start of its turn)
-        public int strength;
+        public String intent = "";
         public boolean alive = true;
-        public double prio = 1.0;      // kill priority
+        public int hp, maxHp, block;
+        public int vuln, weak;
+        public int atk, hits;          // per-hit damage of its intended attack and the number of hits (0 if not attacking)
+        public int poison, artifact, thorns, sharp, malleable, curl, mark, strength, ritual, flight, nob;
+        public int invincible;         // damage cap left this turn (0 = none)
+        public boolean barricade, intangible, asleep, shifting, stasis;
+        public double prio = 1.0;      // kill priority (filled from PRIORITY when 0)
     }
 
     /** A Defect orb: the game's evoke / passive amounts already include Focus. */
@@ -45,18 +51,16 @@ public final class Sim {
     }
 
     public final List<Card> hand = new ArrayList<>();
-    public final List<Orb> orbs = new ArrayList<>();
-    public int orbSlots, focus;
-    public boolean lightningAll;       // Electrodynamics
-    public String stance = "Neutral";  // Watcher: Wrath / Calm / Divinity / Neutral (read from the game)
-    public int mantra;
     public final List<Mon> mons = new ArrayList<>();
-    public int energy, playerBlock, hp, maxHp, strength, turn = 1;
-    public boolean playerWeak;         // our attacks deal 25% less (already in game-computed damage)
-    public boolean elite;              // elite or boss room
+    public final List<Orb> orbs = new ArrayList<>();
+    public final List<String> deck = new ArrayList<>();   // the master deck's card names (Strike count, Wrath exits)
+    public int energy, playerBlock, hp, maxHp, strength, dexterity, turn = 1;
+    public boolean playerWeak, playerFrail, intangible, barricade, elite, lightningAll;
+    public int doubleAttack, doubleSkill, mantra, orbSlots, focus;
+    public String stance = "Neutral";
+    public int beatOfDeath, hex, curiosity;
+    public int timeWarp = -1;          // Time Eater's card counter (-1 = not in this fight)
     public int stall;                  // turns in a row the enemies' HP did not move
-    public boolean intangible;         // the player is Intangible this turn (hits deal 1)
-    public int doubleAttack, doubleSkill;   // Double Tap / Burst already active
 
     public Mon mon(int index) {
         for (Mon m : mons) if (m.index == index) return m;
