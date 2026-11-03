@@ -1,8 +1,8 @@
 @echo off
 title Spire AI
 cd /d "%~dp0"
-if not exist settings.bat copy settings.example.bat settings.bat >nul
-call settings.bat
+if not exist "%~dp0settings.bat" copy "%~dp0settings.example.bat" "%~dp0settings.bat" >nul
+call "%~dp0settings.bat"
 rem defaults for settings added after your settings.bat was made
 if "%GAME_SPEED%"=="" set GAME_SPEED=5
 if "%LLM_CARDS%"=="" set LLM_CARDS=on
