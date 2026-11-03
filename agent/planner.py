@@ -759,7 +759,7 @@ def evaluate(sim: Sim, ctx: Ctx, P: dict) -> tuple[float, dict]:
     if sim.stance == "Wrath" and ctx.wrath_stuck and not all(m.dead for m in sim.mons):
         # Wrath stays: next turn's hits are doubled too unless the next hand can leave it (Hexaghost's quiet turn 1
         # ended in Wrath, then Divider hit for 72). Next turn's attacks come from the monster AI (monsters.py).
-        v -= P["block"] * 1.0 * ctx.wrath_stuck * sum(m.nxt for m in sim.mons if not m.dead)
+        v -= P["block"] * P.get("wrath_risk", 1.0) * ctx.wrath_stuck * sum(m.nxt for m in sim.mons if not m.dead)
     if sim.doomed and not all(m.dead for m in sim.mons):
         v -= 500.0                        # Blasphemy: you die next turn unless the fight ends now
     # "Next turn, ..." riders: next turn's block / energy / draw, a little less than now

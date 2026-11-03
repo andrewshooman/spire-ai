@@ -55,6 +55,15 @@ COST = {  # base cost, upgraded cost when it differs
     "Regret": -2, "Doubt": -2, "Shame": -2, "Decay": -2, "Clumsy": -2, "Parasite": -2, "Injury": -2,
     "Writhe": -2, "Pain": -2, "Normality": -2, "Necronomicurse": -2, "Ascender's Bane": -2,
 }
+# every other card (Silent / Defect / Watcher / colorless): the most common cost seen in the bot's game logs
+# (agent/card_costs.json: base, upgraded; Snecko Eye and Corruption states left out)
+try:
+    for _n, (_c0, _c1) in json.loads((Path(__file__).resolve().parent / "card_costs.json").read_text()).items():
+        if _n not in COST and _c0 is not None:
+            COST[_n] = _c0 if _c1 in (None, _c0) else (_c0, _c1)
+except (OSError, ValueError):
+    pass
+WATCHER_STARTER = {"Eruption", "Vigilance"}
 IDS = {"Strike": "Strike_R", "Defend": "Defend_R"}
 STATUS = {"Dazed", "Burn", "Wound", "Slimed", "Void"}
 ETHEREAL = {"Dazed", "Carnage", "Ghostly Armor", "Void"}
@@ -99,6 +108,12 @@ def make_card(name: str) -> dict:
             "name": base + ("+" if up else ""), "id": IDS.get(base, base), "type": ctype,
             "ethereal": base in ETHEREAL, "uuid": str(uuid.uuid4()), "upgrades": up,
             "rarity": "BASIC" if base in ("Strike", "Defend", "Bash") else "COMMON", "has_target": target}
+
+
+def retains(c: dict) -> bool:
+    """Retain cards stay in hand at the end of the turn (Miracle, Protect, Windmill Strike...)."""
+    t = _text(C.base_name(c["name"]), c.get("upgrades", 0))
+    return t.startswith("Retain.") or " Retain." in t
 
 
 STARTER = ["Strike"] * 5 + ["Defend"] * 4 + ["Bash"]
@@ -376,6 +391,10 @@ class Fight:
         self.dealt_now = 0       # unblocked damage of the card being resolved (Wallop)
         self.cards_played = 0
         self.rampage: dict[str, int] = {}
+        # Watcher: stance and Mantra (Wrath x2 dealt and taken, Divinity x3 dealt, Calm +2 energy on leaving)
+        self.stance = "Neutral"
+        self.mantra = 0
+        self.watcher = bool(WATCHER_STARTER & {C.base_name(d) for d in deck})
 
     # -------------------------------------------------- helpers
     def alive(self) -> list[Monster]:
@@ -429,6 +448,23 @@ class Fight:
         self.block += n
         if self.p("Juggernaut") and self.alive():
             self.damage_monster(self.rng.choice(self.alive()), self.p("Juggernaut"), attack=False)
+
+    def set_stance(self, new: str) -> None:
+        if new == self.stance:
+            return
+        if self.stance == "Calm":
+            self.energy += 2
+        if new == "Divinity":
+            self.energy += 3
+        self.stance = new
+        if self.p("Mental Fortress"):
+            self.gain_block(self.p("Mental Fortress"), raw=True)
+        if new == "Wrath" and self.p("Rushdown"):
+            self.draw_cards(self.p("Rushdown"))
+        for c in [c for c in self.discard if C.base_name(c["name"]) == "Flurry of Blows"]:
+            if len(self.hand) < 10:
+                self.discard.remove(c)
+                self.hand.append(c)
 
     def lose_hp(self, n: int, from_card: bool = False) -> None:
         if n <= 0:
@@ -488,7 +524,7 @@ class Fight:
     def message(self):
         s = copy.deepcopy(TEMPLATE)
         g = s["game_state"]
-        g.update({"class": "IRONCLAD", "floor": 20 if ACT.get(self.encounter, 1) == 2 else 8,
+        g.update({"class": "WATCHER" if self.watcher else "IRONCLAD", "floor": 20 if ACT.get(self.encounter, 1) == 2 else 8,
                   "act": ACT.get(self.encounter, 1), "current_hp": self.hp, "max_hp": self.max_hp,
                   "room_type": "MonsterRoomBoss" if KIND.get(self.encounter) == "boss" else
                   ("MonsterRoomElite" if KIND.get(self.encounter) == "elite" else "MonsterRoom"),
@@ -506,6 +542,7 @@ class Fight:
             per = 0
             if m.dmg:
                 per = (m.dmg + m.p("Strength")) * (0.75 if m.p("Weakened") else 1.0) * (1.5 if self.p("Vulnerable") else 1.0)
+                per *= planner.STANCE_TAKEN.get(self.stance, 1.0)   # the game's intent numbers include Wrath
             pw = [{"id": k if k != "Enrage" else "Anger", "name": k, "amount": v} for k, v in m.powers.items() if v]
             mons.append({"name": m.name, "id": m.name.replace(" ", ""), "current_hp": max(0, m.hp),
                          "max_hp": m.max_hp, "block": m.block, "intent": m.intent, "half_dead": False,
@@ -518,7 +555,8 @@ class Fight:
             "hand": hand, "monsters": mons,
             "player": {"orbs": [], "current_hp": self.hp, "max_hp": self.max_hp, "block": self.block,
                        "energy": self.energy,
-                       "powers": [{"id": k, "name": k, "amount": v} for k, v in self.powers.items() if v]}}
+                       "powers": [{"id": k, "name": k, "amount": v} for k, v in self.powers.items() if v]
+                       + ([{"id": "Mantra", "name": "Mantra", "amount": self.mantra}] if self.mantra else [])}}
         s["available_commands"] = ["play", "end", "key", "click", "wait", "state"]
         return parse_message(s)
 
@@ -616,6 +654,8 @@ class Fight:
             per = base + self.p("Strength") * e.strength_mult
             if self.p("Weakened"):
                 per *= 0.75
+            if c["type"] == "ATTACK":
+                per *= planner.STANCE_DEALT.get(self.stance, 1.0)
             for _ in range(max(0, hits)):
                 live = self.alive()
                 if not live:
@@ -656,6 +696,25 @@ class Fight:
                         m.powers["Strength"] = m.p("Strength") - v
                         if not perm:
                             m.state["str_back"] = m.state.get("str_back", 0) + v
+        if e.wrath_block and self.stance == "Wrath":
+            self.gain_block(e.wrath_block)                         # Halt
+        if e.stance_cond == "calm_draw" and self.stance == "Calm":
+            self.draw_cards(e.cond_n)                              # Inner Peace in Calm
+        elif e.stance_cond == "wrath_vuln" and self.stance == "Wrath":
+            for m in self.alive():                                 # Indignation in Wrath
+                if m.p("Artifact"):
+                    m.powers["Artifact"] -= 1
+                else:
+                    m.powers["Vulnerable"] = m.p("Vulnerable") + e.cond_n
+        elif e.stance_cond == "if_attacking" and not (tgt is not None and tgt.dmg and "ATTACK" in tgt.intent):
+            pass                                                   # Fear No Evil: only on an attacker
+        elif e.stance:
+            self.set_stance(e.stance)
+        if e.mantra:
+            self.mantra += e.mantra
+            if self.mantra >= 10:
+                self.mantra -= 10
+                self.set_stance("Divinity")
         if vuln_ok and e.draw:
             self.draw_cards(e.draw)
         self.thorns += e.thorns
@@ -732,6 +791,12 @@ class Fight:
                 self.powers[name] = self.p(name) + (10 if up else 6)
             elif name == "Brutality":
                 self.powers[name] = self.p(name) + 1
+            elif name == "Mental Fortress":
+                self.powers[name] = self.p(name) + (6 if up else 4)
+            elif name == "Rushdown":
+                self.powers[name] = self.p(name) + 2
+            elif name == "Like Water":
+                self.powers[name] = self.p(name) + (7 if up else 5)
             if e.per_turn_strength:
                 self.powers["Demon Form"] = self.p("Demon Form") + int(round(e.per_turn_strength))
             if e.per_turn_block:
@@ -747,6 +812,10 @@ class Fight:
     # -------------------------------------------------- turns
     def start_turn(self) -> None:
         self.turn += 1
+        if self.stance == "Divinity":
+            self.stance = "Neutral"
+        if self.turn == 1 and self.watcher:
+            self.add_card("Miracle", "hand")   # Pure Water
         if not self.p("Barricade"):
             self.block = 0
         self.energy = self.base_energy + self.p("Berserk")
@@ -771,8 +840,11 @@ class Fight:
             if c["ethereal"]:
                 self.hand.remove(c)
                 self.exhaust_card(c)
-        self.discard.extend(self.hand)
-        self.hand = []
+        kept = [c for c in self.hand if retains(c)]
+        self.discard.extend(c for c in self.hand if not retains(c))
+        self.hand = kept
+        if self.p("Like Water") and self.stance == "Calm":
+            self.gain_block(self.p("Like Water"), raw=True)
         if self.p("Metallicize"):
             self.gain_block(self.p("Metallicize"), raw=True)
         if self.p("Combust"):
@@ -835,7 +907,7 @@ class Fight:
 
     def hit_player(self, m: Monster, dmg: int, hits: int) -> None:
         per = (dmg + m.p("Strength")) * (0.75 if m.p("Weakened") else 1.0) * (1.5 if self.p("Vulnerable") else 1.0)
-        per = max(0, int(per))
+        per = max(0, int(per * planner.STANCE_TAKEN.get(self.stance, 1.0)))
         for _ in range(hits):
             blocked = min(self.block, per)
             self.block -= blocked
@@ -992,7 +1064,7 @@ class Fight:
                 if self.hp <= 0 or not self.alive() or self.turn_over:
                     break
                 msg = self.message()
-                plan = planner.plan_turn(msg, params, self.deck_names, max_nodes=max_nodes)
+                plan = planner.plan_turn(msg, params, self.deck_names, max_nodes=max_nodes, stance=self.stance)
                 if not plan.steps or plan.value - plan.base < params.get("end_threshold", 0.5):
                     break
                 i, t = plan.steps[0]

@@ -69,6 +69,22 @@ def main() -> None:
     f.play(0, None, msg.game_state.combat_state.hand[0])
     check("Skills enrage Gremlin Nob", nob.p("Strength") == 2)
 
+    # Watcher stances: Eruption enters Wrath, the next Strike deals double; Vigilance -> Calm, leaving it +2 energy
+    wdeck = ["Strike"] * 4 + ["Defend"] * 4 + ["Eruption", "Vigilance"]
+    f = sim.Fight(wdeck, "Jaw Worm", seed=8)
+    jw = f.monsters[0]
+    f.hand = [sim.make_card("Eruption"), sim.make_card("Strike"), sim.make_card("Vigilance")]
+    f.energy = 5
+    hp0 = jw.hp
+    f.play(0, 0, f.message().game_state.combat_state.hand[0])
+    f.play(0, 0, f.message().game_state.combat_state.hand[0])
+    check("Wrath doubles attacks after Eruption", f.stance == "Wrath" and hp0 - jw.hp == 9 + 12, f"{hp0 - jw.hp}")
+    f.play(0, None, f.message().game_state.combat_state.hand[0])
+    e0 = f.energy
+    f.set_stance("Neutral")
+    check("leaving Calm gives 2 energy", f.energy == e0 + 2, f"{e0} -> {f.energy}")
+    check("Watcher cards have costs", sim.make_card("Tantrum")["cost"] == 1 and sim.make_card("Ragnarok")["cost"] == 3)
+
     f = sim.Fight(sim.STARTER, "Transient", seed=6)
     tr = f.monsters[0]
     sim.choose_move(tr, f)

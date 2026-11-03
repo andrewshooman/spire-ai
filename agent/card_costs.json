@@ -1,0 +1,1398 @@
+{
+"Dualcast": [
+1,
+0
+],
+"Zap": [
+1,
+0
+],
+"Strike": [
+1,
+1
+],
+"Defend": [
+1,
+1
+],
+"Storm": [
+1,
+1
+],
+"Coolheaded": [
+1,
+1
+],
+"Rebound": [
+1,
+1
+],
+"Aggregate": [
+1,
+null
+],
+"Dazed": [
+-2,
+null
+],
+"Go for the Eyes": [
+0,
+0
+],
+"Boot Sequence": [
+0,
+0
+],
+"Recycle": [
+1,
+null
+],
+"Loop": [
+1,
+null
+],
+"Charge Battery": [
+1,
+1
+],
+"Slimed": [
+1,
+null
+],
+"Miracle": [
+0,
+0
+],
+"Eruption": [
+2,
+1
+],
+"Vigilance": [
+2,
+2
+],
+"Bowling Bash": [
+1,
+1
+],
+"Weave": [
+0,
+0
+],
+"Flurry of Blows": [
+0,
+0
+],
+"Wheel Kick": [
+2,
+null
+],
+"Mental Fortress": [
+1,
+1
+],
+"Crush Joints": [
+1,
+1
+],
+"Deva Form": [
+3,
+3
+],
+"Simmering Fury": [
+1,
+1
+],
+"Evaluate": [
+1,
+1
+],
+"Insight": [
+0,
+0
+],
+"Halt": [
+0,
+0
+],
+"Tranquility": [
+1,
+null
+],
+"Blasphemy": [
+1,
+null
+],
+"Neutralize": [
+0,
+0
+],
+"Purity": [
+0,
+null
+],
+"Survivor": [
+1,
+1
+],
+"Calculated Gamble": [
+0,
+0
+],
+"Cloak and Dagger": [
+1,
+1
+],
+"Shiv": [
+0,
+0
+],
+"Deflect": [
+0,
+0
+],
+"Endless Agony": [
+0,
+0
+],
+"Tactician": [
+-2,
+-2
+],
+"Doom and Gloom": [
+2,
+2
+],
+"Compile Driver": [
+1,
+1
+],
+"Hello World": [
+1,
+1
+],
+"TURBO": [
+0,
+0
+],
+"Barrage": [
+1,
+1
+],
+"Stack": [
+1,
+1
+],
+"Recursion": [
+1,
+0
+],
+"Fission": [
+0,
+0
+],
+"Cold Snap": [
+1,
+1
+],
+"Beam Cell": [
+0,
+0
+],
+"Ball Lightning": [
+1,
+1
+],
+"Sweeping Beam": [
+1,
+1
+],
+"Leap": [
+1,
+1
+],
+"Burn": [
+-2,
+-2
+],
+"Multi-Cast": [
+-1,
+-1
+],
+"Steam Barrier": [
+0,
+0
+],
+"Claw": [
+0,
+0
+],
+"Hologram": [
+1,
+null
+],
+"Skim": [
+1,
+null
+],
+"Creative AI": [
+3,
+null
+],
+"Malaise": [
+-1,
+-1
+],
+"Terror": [
+1,
+0
+],
+"Piercing Wail": [
+1,
+1
+],
+"Masterful Stab": [
+0,
+0
+],
+"Deadly Poison": [
+1,
+1
+],
+"Dagger Spray": [
+1,
+1
+],
+"Infinite Blades": [
+1,
+null
+],
+"Footwork": [
+1,
+1
+],
+"Crippling Cloud": [
+2,
+2
+],
+"Leg Sweep": [
+2,
+2
+],
+"Acrobatics": [
+1,
+1
+],
+"Noxious Fumes": [
+1,
+1
+],
+"Wound": [
+-2,
+null
+],
+"Well-Laid Plans": [
+1,
+1
+],
+"Riddle with Holes": [
+2,
+2
+],
+"Wraith Form": [
+3,
+3
+],
+"Scrape": [
+1,
+1
+],
+"Glacier": [
+2,
+2
+],
+"Capacitor": [
+1,
+1
+],
+"Streamline": [
+2,
+1
+],
+"Quick Slash": [
+1,
+1
+],
+"Blade Dance": [
+1,
+1
+],
+"Outmaneuver": [
+1,
+1
+],
+"Meditate": [
+1,
+1
+],
+"Lesson Learned": [
+2,
+2
+],
+"Judgment": [
+1,
+1
+],
+"Cleave": [
+1,
+1
+],
+"Bash": [
+2,
+2
+],
+"Pommel Strike": [
+1,
+1
+],
+"Iron Wave": [
+1,
+1
+],
+"Spot Weakness": [
+1,
+1
+],
+"Uppercut": [
+2,
+2
+],
+"Shrug It Off": [
+1,
+1
+],
+"Barricade": [
+3,
+null
+],
+"Feed": [
+1,
+1
+],
+"Writhe": [
+-2,
+null
+],
+"Ritual Dagger": [
+1,
+1
+],
+"Flame Barrier": [
+2,
+2
+],
+"Entrench": [
+2,
+null
+],
+"Bloodletting": [
+0,
+0
+],
+"Rampage": [
+1,
+1
+],
+"Body Slam": [
+1,
+0
+],
+"Doubt": [
+-2,
+null
+],
+"Melter": [
+1,
+1
+],
+"Static Discharge": [
+1,
+null
+],
+"Hyperbeam": [
+2,
+2
+],
+"Electrodynamics": [
+2,
+null
+],
+"Regret": [
+-2,
+null
+],
+"Empty Mind": [
+1,
+1
+],
+"Wallop": [
+2,
+2
+],
+"Empty Body": [
+1,
+1
+],
+"Vault": [
+3,
+2
+],
+"Pressure Points": [
+1,
+1
+],
+"Like Water": [
+1,
+1
+],
+"Backstab": [
+0,
+0
+],
+"Poisoned Stab": [
+1,
+1
+],
+"Alchemize": [
+1,
+0
+],
+"Backflip": [
+1,
+1
+],
+"Swivel": [
+2,
+2
+],
+"Battle Hymn": [
+1,
+1
+],
+"Smite": [
+1,
+null
+],
+"Hand of Greed": [
+2,
+null
+],
+"Just Lucky": [
+0,
+0
+],
+"Establishment": [
+1,
+null
+],
+"Rushdown": [
+1,
+0
+],
+"Indignation": [
+1,
+null
+],
+"Unload": [
+1,
+1
+],
+"Catalyst": [
+1,
+1
+],
+"Distraction": [
+1,
+null
+],
+"Sever Soul": [
+2,
+2
+],
+"Clothesline": [
+2,
+2
+],
+"Immolate": [
+2,
+2
+],
+"Inflame": [
+1,
+1
+],
+"Corruption": [
+3,
+2
+],
+"Impervious": [
+2,
+2
+],
+"Heavy Blade": [
+2,
+2
+],
+"Second Wind": [
+1,
+1
+],
+"Metallicize": [
+1,
+1
+],
+"Fear No Evil": [
+1,
+1
+],
+"Sash Whip": [
+1,
+1
+],
+"Follow-Up": [
+1,
+1
+],
+"Crescendo": [
+1,
+0
+],
+"Empty Fist": [
+1,
+1
+],
+"Dash": [
+2,
+2
+],
+"Eviscerate": [
+3,
+3
+],
+"After Image": [
+1,
+1
+],
+"A Thousand Cuts": [
+2,
+null
+],
+"Corpse Explosion": [
+2,
+2
+],
+"Scrawl": [
+1,
+0
+],
+"Reach Heaven": [
+2,
+2
+],
+"Through Violence": [
+0,
+0
+],
+"Pummel": [
+1,
+1
+],
+"Warcry": [
+0,
+0
+],
+"Anger": [
+0,
+0
+],
+"Offering": [
+0,
+0
+],
+"Armaments": [
+1,
+1
+],
+"Disarm": [
+1,
+1
+],
+"Berserk": [
+0,
+null
+],
+"Demon Form": [
+3,
+3
+],
+"Fiend Fire": [
+2,
+2
+],
+"Carnage": [
+2,
+2
+],
+"Burning Pact": [
+1,
+1
+],
+"Twin Strike": [
+1,
+1
+],
+"Seeing Red": [
+1,
+0
+],
+"Dark Embrace": [
+2,
+1
+],
+"Reckless Charge": [
+0,
+0
+],
+"Madness": [
+1,
+null
+],
+"Sword Boomerang": [
+1,
+1
+],
+"Tools of the Trade": [
+1,
+null
+],
+"Caltrops": [
+1,
+null
+],
+"Sneaky Strike": [
+2,
+2
+],
+"Bullseye": [
+1,
+null
+],
+"Clumsy": [
+-2,
+null
+],
+"Chill": [
+0,
+0
+],
+"Curse of the Bell": [
+-2,
+null
+],
+"Tantrum": [
+1,
+1
+],
+"Inner Peace": [
+1,
+1
+],
+"Talk to the Hand": [
+1,
+1
+],
+"Signature Move": [
+2,
+2
+],
+"Finisher": [
+1,
+1
+],
+"Predator": [
+2,
+2
+],
+"All-Out Attack": [
+1,
+1
+],
+"Accuracy": [
+1,
+1
+],
+"Alpha": [
+1,
+1
+],
+"Decay": [
+-2,
+null
+],
+"Flex": [
+0,
+0
+],
+"Combust": [
+1,
+1
+],
+"Dual Wield": [
+1,
+1
+],
+"Reaper": [
+2,
+2
+],
+"Battle Trance": [
+0,
+0
+],
+"Enlightenment": [
+0,
+0
+],
+"Auto-Shields": [
+1,
+null
+],
+"Reinforced Body": [
+-1,
+-1
+],
+"Tempest": [
+-1,
+-1
+],
+"Meteor Strike": [
+5,
+null
+],
+"FTL": [
+0,
+0
+],
+"Amplify": [
+1,
+1
+],
+"Overclock": [
+0,
+null
+],
+"Rupture": [
+1,
+1
+],
+"Thunderclap": [
+1,
+1
+],
+"Shockwave": [
+2,
+2
+],
+"Headbutt": [
+1,
+1
+],
+"Havoc": [
+1,
+0
+],
+"Power Through": [
+1,
+1
+],
+"Fire Breathing": [
+1,
+1
+],
+"Parasite": [
+-2,
+null
+],
+"Rip and Tear": [
+1,
+1
+],
+"Biased Cognition": [
+1,
+1
+],
+"Equilibrium": [
+2,
+2
+],
+"Double Energy": [
+1,
+null
+],
+"Dropkick": [
+1,
+1
+],
+"Double Tap": [
+1,
+1
+],
+"Feel No Pain": [
+1,
+1
+],
+"Brutality": [
+0,
+0
+],
+"Limit Break": [
+1,
+1
+],
+"Reboot": [
+0,
+0
+],
+"Heatsinks": [
+1,
+1
+],
+"Echo Form": [
+3,
+null
+],
+"Defragment": [
+1,
+1
+],
+"Rainbow": [
+2,
+2
+],
+"Force Field": [
+4,
+3
+],
+"Adrenaline": [
+0,
+0
+],
+"Concentrate": [
+0,
+0
+],
+"Good Instincts": [
+0,
+null
+],
+"Trip": [
+0,
+null
+],
+"Thunder Strike": [
+3,
+null
+],
+"Void": [
+-2,
+null
+],
+"Bullet Time": [
+3,
+2
+],
+"Flechettes": [
+1,
+null
+],
+"Beta": [
+2,
+1
+],
+"Apparition": [
+1,
+1
+],
+"Bouncing Flask": [
+2,
+2
+],
+"Dagger Throw": [
+1,
+1
+],
+"Burst": [
+1,
+null
+],
+"Deceive Reality": [
+1,
+1
+],
+"Safety": [
+1,
+1
+],
+"Nirvana": [
+1,
+1
+],
+"Fasting": [
+2,
+2
+],
+"Violence": [
+0,
+null
+],
+"Prepared": [
+0,
+null
+],
+"Thinking Ahead": [
+0,
+null
+],
+"Blur": [
+1,
+null
+],
+"Blizzard": [
+1,
+1
+],
+"Deep Breath": [
+0,
+0
+],
+"Reprogram": [
+1,
+null
+],
+"Dramatic Entrance": [
+0,
+0
+],
+"Shame": [
+-2,
+null
+],
+"Third Eye": [
+1,
+1
+],
+"Intimidate": [
+0,
+0
+],
+"Master Reality": [
+1,
+null
+],
+"Cut Through Fate": [
+1,
+1
+],
+"All for One": [
+2,
+null
+],
+"Jack of All Trades": [
+0,
+null
+],
+"Swift Strike": [
+0,
+null
+],
+"Mayhem": [
+2,
+null
+],
+"Discovery": [
+1,
+1
+],
+"Slice": [
+0,
+0
+],
+"Forethought": [
+0,
+null
+],
+"Panache": [
+0,
+0
+],
+"The Bomb": [
+2,
+null
+],
+"Finesse": [
+0,
+null
+],
+"Transmutation": [
+-1,
+null
+],
+"Blood for Blood": [
+0,
+0
+],
+"Escape Plan": [
+0,
+0
+],
+"Sucker Punch": [
+1,
+1
+],
+"Die Die Die": [
+1,
+null
+],
+"Heel Hook": [
+1,
+1
+],
+"Devotion": [
+1,
+1
+],
+"Sands of Time": [
+4,
+2
+],
+"Foresight": [
+1,
+1
+],
+"Glass Knife": [
+1,
+1
+],
+"Secret Technique": [
+0,
+null
+],
+"Panacea": [
+0,
+null
+],
+"Consecrate": [
+0,
+0
+],
+"Pray": [
+1,
+null
+],
+"Normality": [
+-2,
+null
+],
+"Clash": [
+0,
+0
+],
+"Flash of Steel": [
+0,
+0
+],
+"Infernal Blade": [
+1,
+null
+],
+"Perfected Strike": [
+0,
+2
+],
+"Magnetism": [
+2,
+null
+],
+"Blind": [
+0,
+0
+],
+"Apotheosis": [
+2,
+null
+],
+"Metamorphosis": [
+2,
+null
+],
+"Chrysalis": [
+2,
+null
+],
+"Conjure Blade": [
+-1,
+-1
+],
+"Conclude": [
+1,
+1
+],
+"Wreath of Flame": [
+1,
+null
+],
+"Expertise": [
+1,
+1
+],
+"Wild Strike": [
+1,
+1
+],
+"Hemokinesis": [
+1,
+1
+],
+"True Grit": [
+1,
+1
+],
+"Whirlwind": [
+-1,
+-1
+],
+"Exhume": [
+1,
+0
+],
+"Mind Blast": [
+2,
+null
+],
+"Study": [
+2,
+1
+],
+"Ragnarok": [
+3,
+null
+],
+"Bane": [
+1,
+1
+],
+"Sunder": [
+3,
+null
+],
+"Phantasmal Killer": [
+1,
+0
+],
+"Evolve": [
+1,
+1
+],
+"Sadistic Nature": [
+0,
+null
+],
+"Rage": [
+0,
+0
+],
+"Carve Reality": [
+1,
+1
+],
+"Panic Button": [
+0,
+null
+],
+"Juggernaut": [
+2,
+2
+],
+"Prostrate": [
+0,
+0
+],
+"Storm of Steel": [
+1,
+null
+],
+"Sentinel": [
+1,
+1
+],
+"Protect": [
+2,
+2
+],
+"Windmill Strike": [
+2,
+null
+],
+"Foreign Influence": [
+0,
+0
+],
+"Bludgeon": [
+3,
+null
+],
+"Ghostly Armor": [
+1,
+null
+],
+"Envenom": [
+2,
+null
+],
+"Dodge and Roll": [
+1,
+null
+],
+"Choke": [
+2,
+null
+],
+"Skewer": [
+-1,
+null
+],
+"Flying Knee": [
+1,
+1
+],
+"Perseverance": [
+1,
+null
+],
+"Omniscience": [
+4,
+null
+],
+"Worship": [
+2,
+null
+],
+"Core Surge": [
+1,
+1
+],
+"Doppelganger": [
+-1,
+-1
+],
+"Searing Blow": [
+2,
+null
+],
+"Consume": [
+2,
+2
+],
+"Self Repair": [
+1,
+null
+],
+"Secret Weapon": [
+0,
+null
+],
+"Genetic Algorithm": [
+1,
+1
+],
+"Darkness": [
+1,
+1
+],
+"Fusion": [
+2,
+null
+],
+"White Noise": [
+1,
+0
+],
+"Brilliance": [
+1,
+null
+],
+"Setup": [
+1,
+null
+],
+"Reflex": [
+-2,
+null
+],
+"Wish": [
+3,
+null
+],
+"Machine Learning": [
+1,
+null
+],
+"Buffer": [
+2,
+2
+],
+"Seek": [
+0,
+null
+],
+"Pain": [
+-2,
+null
+],
+"Nightmare": [
+3,
+null
+],
+"Dark Shackles": [
+0,
+0
+],
+"Grand Finale": [
+0,
+null
+],
+"Wave of the Hand": [
+1,
+1
+],
+"Omega": [
+3,
+null
+],
+"Sanctity": [
+1,
+null
+],
+"Master of Strategy": [
+0,
+null
+],
+"Injury": [
+-2,
+null
+],
+"Expunger": [
+1,
+1
+]
+}
