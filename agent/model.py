@@ -97,6 +97,10 @@ WEIGHT_BOUNDS = {"tag": (-1.0, 1.0), "syn": (-1.0, 1.5), "relicctx": (-1.0, 1.0)
 # touches it (a random walk around the prior instead of a drift to the bounds); the advantage uses an
 # out-of-sample error scale with a floor so one act 1 boss kill no longer hits the cap.
 PRIOR_PULL = 0.02
+# Expert behavior cloning (expert_bc.py): card / boss-relic weights fitted to expert players' picks become the
+# priors; the bot's own runs move them at this share of the normal rate (their outcomes are noisy coin flips
+# for card values: the Watcher's learned weights agreed with experts on 26% of picks, the fit on 78%)
+BC_LR = 0.25
 VALUE_VAR_MIN = 0.0025   # value error std >= 0.05 (a quarter of an act 1 boss kill is 0.025)  # skip:a2 had run away to -5.5 (the LLM never skipped; training followed it)
 
 
@@ -130,10 +134,31 @@ class Model:
                 self.params["threat"] = threat_default(self.character)
         else:
             self.params["threat"] = threat_default(self.character)
+        self.bc: dict[str, float] = {}
+        self.bc_upgrade: dict[str, float] = {}   # expert smith choices: card -> upgrade utility
+        bc = self.path.parent / "expert_bc.json"
+        if bc.exists():
+            try:
+                d = json.loads(bc.read_text(encoding="utf-8"))
+                self.bc, self.bc_upgrade = d.get("weights", {}), d.get("upgrade", {})
+            except (OSError, ValueError):
+                pass
 
     # -------------------------------------------------------------- weights
 
+    def bounds(self, key: str) -> tuple[float, float]:
+        """WEIGHT_BOUNDS, widened to hold an expert-fitted prior (Watcher experts skip a lot: skip:a2 3.2)."""
+        lo, hi = WEIGHT_BOUNDS.get(key.partition(":")[0], (-6.0, 6.0))
+        b = self.bc.get(key)
+        if b is not None:
+            lo, hi = min(lo, b - 0.5), max(hi, b + 0.5)
+        return lo, hi
+
     def prior(self, key: str) -> float:
+        if key in self.bc:
+            return self.bc[key]
+        if self.bc and key in ("expertpick", "expertrelic"):
+            return 0.0   # the fit already holds the experts' picks; this would count them twice
         if key.startswith("skip:a"):
             # per class from expert players' skip rate in that act (Watcher experts skip 43%/64% in acts 1/2,
             # the Defect 9%/19%); the fixed priors when no expert runs are loaded
@@ -290,14 +315,14 @@ class Model:
                     if abs(g) < 1e-6:
                         continue
                     for k, x in feats.items():
-                        delta = lr * adv * g * x
-                        lo, hi = WEIGHT_BOUNDS.get(k.partition(":")[0], (-6.0, 6.0))
+                        delta = lr * adv * g * x * (BC_LR if k in self.bc else 1.0)
+                        lo, hi = self.bounds(k)
                         self.weights[k] = max(lo, min(hi, self.w(k) + delta))
                         changed[k] = changed.get(k, 0.0) + delta
         if not replay:
             for k in changed:   # regularization: back toward the prior (see PRIOR_PULL)
                 if k in self.weights:
-                    lo, hi = WEIGHT_BOUNDS.get(k.partition(":")[0], (-6.0, 6.0))
+                    lo, hi = self.bounds(k)
                     self.weights[k] = max(lo, min(hi, self.weights[k] + PRIOR_PULL * (self.prior(k) - self.weights[k])))
             self.fit_value(events, reward)
             base = self.meta["baseline"] if self.meta["baseline"] is not None else reward

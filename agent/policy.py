@@ -1159,6 +1159,11 @@ class PolicyAgent:
         return v
 
     def _upgrade_score(self, card, g) -> float:
+        up = getattr(CONFIG.model, "bc_upgrade", None)
+        if up:
+            # fitted to expert players' smith choices (expert_bc.py; held out: 52-62% agreement, chance 9-14%)
+            v = up.get(C.base_name(card.name), 0.0) + 0.3 * self._card_worth(card, g, True)
+            return v - (3.0 if card.upgrades and C.base_name(card.name) != "Searing Blow" else 0.0)
         v = self._card_worth(card, g, True) + C.UPGRADE_PRIORITY.get(C.base_name(card.name), 0.0)
         return v - (3.0 if card.upgrades and C.base_name(card.name) != "Searing Blow" else 0.0)
 
@@ -1175,7 +1180,11 @@ class PolicyAgent:
         options = options[:8] or ranked[:1]
         i, card = options[0]
         by = "policy"
-        if CONFIG.llm_events and len(options) > 1:
+        clear = (len(options) > 1 and getattr(CONFIG.model, "bc_upgrade", None)
+                 and self._upgrade_score(options[0][1], g) - self._upgrade_score(options[1][1], g) >= 0.6)
+        if clear:
+            by = "experts' upgrade order"   # the fit beats the 14B model's reading of the texts; ask only when close
+        if CONFIG.llm_events and len(options) > 1 and not clear:
             labels = []
             for _, c in options:
                 now, up = (card_text(c) or "").strip(), (upgraded_card_text(c) or "").strip()
@@ -1261,8 +1270,11 @@ class PolicyAgent:
             bonus.append(0.0)
         idx, probs = model.choose(options, CONFIG.temperature, CONFIG.rng, bonus)
         by = "policy"
-        # bench runs always ask the LLM; training runs only llm_share of the time so the learned weights get tried
-        if CONFIG.llm_events and (not CONFIG.learn or CONFIG.rng.random() < CONFIG.llm_share):
+        # bench runs always ask the LLM; training runs only llm_share of the time so the learned weights get tried.
+        # With weights fitted to expert picks (expert_bc) the LLM is asked only when the top two are close.
+        top2 = sorted(probs[:len(relics)], reverse=True)[:2] + [0.0]
+        close = not model.bc or top2[0] - top2[1] < 0.25
+        if CONFIG.llm_events and close and (not CONFIG.learn or CONFIG.rng.random() < CONFIG.llm_share):
             ranked = sorted(range(len(relics)), key=lambda k: -probs[k])
             labels = [f"{gamedata.with_relic(relics[k].name)} [policy {probs[k]:.0%}; fit for this deck "
                       f"{rules[k][0]:+.1f}{': ' + rules[k][1] if rules[k][1] else ''}] "

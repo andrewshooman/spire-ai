@@ -23,6 +23,7 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
+import hashlib
 import json
 import random
 import re
@@ -653,9 +654,34 @@ def save_cache(ws: Workspace, cache: dict) -> None:
 def open_workspace(args) -> Workspace:
     """Load evolve/<character> and apply one-time model migrations."""
     ws = Workspace(Path(args.workdir), args.character.upper(), Path(args.strategy_baseline))
+    refresh_expert_bc(ws, args.character)
     migrate(ws)
     warm_start(ws, args.character)
     return ws
+
+
+# classes whose card / boss-relic / upgrade choices start from the fit to expert picks (expert_bc.py). The
+# Ironclad keeps its own learned weights (27 wins in 475 runs with them; the others 1 in 620).
+BC_CLASSES = ("silent", "defect", "watcher")
+
+
+def refresh_expert_bc(ws: Workspace, character: str) -> None:
+    """Refit expert_bc.json when expert runs were imported after the last fit (~15 s), then reload it."""
+    if character not in BC_CLASSES or ws.root.resolve() != (HERE.parent / "evolve" / character).resolve():
+        return
+    runs = list((ws.root / "expert" / "runs").glob("*.json"))
+    if not runs:
+        return
+    out = ws.root / "expert_bc.json"
+    if out.exists() and out.stat().st_mtime >= max(p.stat().st_mtime for p in runs):
+        return
+    try:
+        import expert_bc
+        expert_bc.run(character, apply=True, say=say)
+        d = json.loads(out.read_text(encoding="utf-8"))
+        ws.model.bc, ws.model.bc_upgrade = d.get("weights", {}), d.get("upgrade", {})
+    except Exception as exc:   # a bonus; never stop the bot over it
+        say(f"expert fit failed: {type(exc).__name__}: {exc}")
 
 
 # choices that mean the same for every character: learned on the Ironclad, reused by the others
@@ -695,8 +721,10 @@ def migrate(ws: Workspace) -> None:
     from model import WEIGHT_BOUNDS
     clamped = 0
     for k in list(ws.model.weights):
-        lo, hi = WEIGHT_BOUNDS.get(k.partition(":")[0], (None, None))
-        if lo is not None and not lo <= ws.model.weights[k] <= hi:
+        if k.partition(":")[0] not in WEIGHT_BOUNDS and k not in ws.model.bc:
+            continue
+        lo, hi = ws.model.bounds(k)
+        if not lo <= ws.model.weights[k] <= hi:
             ws.model.weights[k] = max(lo, min(hi, ws.model.weights[k]))
             clamped += 1
     if clamped:
@@ -727,6 +755,7 @@ def migrate(ws: Workspace) -> None:
         say(f"Silent tiers: {len(moved)} top cards +0.4, Footwork back to its prior")
     if not ws.model.meta.get("learning_v2"):
         learning_v2(ws)
+    expert_bc_seed(ws)
     if ws.model.meta.get("reward_version") != Model.REWARD_VERSION:
         # the reward scale changed: restart the running baselines instead of comparing apples to oranges
         ws.model.meta.update({"reward_version": Model.REWARD_VERSION, "baseline": None, "var": 0.04,
@@ -738,6 +767,23 @@ def migrate(ws: Workspace) -> None:
                          "cycle_bench": [], "cycle_bench_reward": [], "cycle_bench_seed": []})
         say(f"reward v{Model.REWARD_VERSION}: bosses beaten and wins only (no floors); baselines reset, "
             f"value estimate refit on {rescored} replayed runs, champion selection restarted")
+
+
+def expert_bc_seed(ws: Workspace) -> None:
+    """Card / boss-relic weights fitted to expert picks (expert_bc.py; evolve/<char>/expert_bc.json): when the fit
+    is new for this model, every fitted weight restarts from it and expertpick/expertrelic go to 0 (the fit
+    already holds the experts' picks). The Watcher took Crush Joints 63% of the time (experts 3%), Inner Peace
+    29% (experts 78%): its learned card weights agreed with experts on 26% of held-out picks, the fit on 78%."""
+    bc = ws.model.bc
+    if not bc:
+        return
+    stamp = hashlib.sha1(json.dumps(bc, sort_keys=True).encode()).hexdigest()[:12]
+    if ws.model.meta.get("expert_bc") == stamp:
+        return
+    ws.model.weights.update(bc)
+    ws.model.weights["expertpick"] = ws.model.weights["expertrelic"] = 0.0
+    ws.model.meta["expert_bc"] = stamp
+    say(f"expert picks: {len(bc)} card / boss-relic weights restart from the fit to expert players' choices")
 
 
 # weights learned under the advantage bug: kept at this share of their distance from the (new) prior
