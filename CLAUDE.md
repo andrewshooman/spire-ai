@@ -336,6 +336,21 @@ sts-bench\.venv\Scripts\python.exe tests\test_e2e.py   (expects "E2E OK"; run af
     Verified in the game on a "SpireseerTest" profile (Nob, Jaw Worm, Hexaghost; Skill Potion discovery, Headbutt,
     Warcry, Slimed). human.py never imports profiles named like "test". Bot: the search state key includes the
     stance (Vigilance/Eruption orders were pruned), Malaise+ "X+1" parsed.
+46. Expert behavior cloning (non-Ironclad: 1 win in 620 runs vs the Ironclad's 27 in 475). The other classes die in act 2
+    of attrition (fatal fight entered at 32-46% HP vs 63%; raw fight losses match the Ironclad's before Burning Blood)
+    with weak decks: their learned card weights agreed with experts' held-out picks 26-34% of the time (chance ~28%;
+    Watcher Crush Joints 63% vs experts 3%, Inner Peace 29% vs 78%; Defect Rebound 80% vs 10%). agent/expert_bc.py fits
+    the policy's own card / boss-relic features to expert choices (conditional logit + skip, the policy's skip bonus and
+    the boss-relic guide tier as fixed offsets, L2 1.0 toward the hand-made priors): held-out agreement Silent 65%,
+    Defect 63%, Watcher 78%. evolve/<char>/expert_bc.json = the fit; Model.prior returns it (expertpick/expertrelic
+    -> 0, bounds widened to hold it), evolve.expert_bc_seed copies it into the weights once per fit, bot runs learn on
+    top at BC_LR 0.25; refit at startup when expert runs are newer (evolve.refresh_expert_bc, BC_CLASSES). Upgrades:
+    a fit to experts' smith choices (52-62% held out vs chance 9-14%) ranks the smith, the LLM only when the top two
+    are within 0.6. Boss relics: the LLM only when the top two policy probs are within 0.25. Not fitted: rests (experts
+    smith at 40-70% HP; the bot's own data says entry HP decides its bosses), events (expert labels differ).
+    Simulator now plays every class (agent/card_costs.json from the logs, Watcher stances); on 200 real Watcher fights
+    threat 0.5-2.5 and planner wrath_risk 2-3 were no better than the learned weights (Wrath-ending turns with
+    incoming cost 12.5 HP vs 5.6 Neutral in live play, but the alternatives didn't win more in the sim).
 Next ideas: calibrate the sim (sim.bat calibrate once fight_log has hundreds of fights); set the default risk from
 analyze.bat; tune the pre-boss rest threshold per boss from data; decompile monster AI for an exact sim (needs the
 user's OK to download Vineflower); Gremlin Leader / Slavers / Champ / Collector / Automaton in the sim.
