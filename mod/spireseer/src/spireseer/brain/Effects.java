@@ -23,6 +23,8 @@ public final class Effects {
     public int selfVuln, selfWeak, selfFrail, enemyStrDown, enemyStrDownTemp, poison, perStrike;
     public String exhaustHand = "";
     public int blockPerExhaust, damagePerExhaust;
+    public String discardHand = "";               // Unload: "nonattack"; Calculated Gamble / Storm of Steel: "all"
+    public boolean drawPerDiscard, shivPerDiscard;
     public boolean ifVuln;
     public double perTurnStrength, perTurnBlock, perTurnEnergy, perTurnDamage, perTurnSingle, perTurnDraw;
     public int thorns, dex;
@@ -54,6 +56,7 @@ public final class Effects {
         n.conditionalStrength = conditionalStrength; n.selfVuln = selfVuln; n.selfWeak = selfWeak; n.selfFrail = selfFrail;
         n.enemyStrDown = enemyStrDown; n.enemyStrDownTemp = enemyStrDownTemp; n.poison = poison; n.perStrike = perStrike;
         n.exhaustHand = exhaustHand; n.blockPerExhaust = blockPerExhaust; n.damagePerExhaust = damagePerExhaust;
+        n.discardHand = discardHand; n.drawPerDiscard = drawPerDiscard; n.shivPerDiscard = shivPerDiscard;
         n.ifVuln = ifVuln; n.perTurnStrength = perTurnStrength; n.perTurnBlock = perTurnBlock;
         n.perTurnEnergy = perTurnEnergy; n.perTurnDamage = perTurnDamage; n.perTurnSingle = perTurnSingle;
         n.perTurnDraw = perTurnDraw; n.thorns = thorns; n.dex = dex; n.known = known; n.shivs = shivs;
@@ -175,6 +178,13 @@ public final class Effects {
         } else if (has("Exhaust all non-Attack cards in your hand", t, true)) {
             e.exhaustHand = "nonattack";
             e.blockPerExhaust = num("Gain (\\d+) Block for each card Exhausted", t);
+        }
+        if (has("Discard all non-Attack cards", t, true)) {
+            e.discardHand = "nonattack";
+        } else if (has("Discard your hand", t, true)) {
+            e.discardHand = "all";
+            e.drawPerDiscard = has("draw that many", t, true);
+            e.shivPerDiscard = has("Shiv[^.]*for each card discarded", t, true);
         }
         m = pat("(?:Enemy|ALL enemies) loses? (\\d+) Strength( this turn)?", true).matcher(t);
         if (m.find()) {

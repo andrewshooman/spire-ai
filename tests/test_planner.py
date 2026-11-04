@@ -34,6 +34,7 @@ CARDS = {
     "Corruption": ("Corruption", "POWER", 3, False), "Second Wind": ("Second Wind", "SKILL", 1, False),
     "Wild Strike": ("Wild Strike", "ATTACK", 1, True), "Power Through": ("Power Through", "SKILL", 1, False),
     "Bludgeon": ("Bludgeon", "ATTACK", 3, True), "Heavy Blade": ("Heavy Blade", "ATTACK", 2, True),
+    "Unload": ("Unload", "ATTACK", 1, True),
     "Blade Dance": ("Blade Dance", "SKILL", 1, False), "Survivor": ("Survivor", "SKILL", 1, False),
     "Catalyst": ("Catalyst", "SKILL", 1, True), "Bouncing Flask": ("Bouncing Flask", "SKILL", 2, False),
     "Deadly Poison": ("Deadly Poison", "SKILL", 1, True),
@@ -498,6 +499,12 @@ def main() -> None:
     check("Sacred Bark ruled out with Sozu", bark[0] <= -2.0 and "Sozu" in bark[1], str(bark))
     check("Sozu penalized when it kills a Sacred Bark", R.conflict("Sozu", {"Sacred Bark"})[0] < 0)
     # Silent: Blade Dance's Shivs are damage (they used to count as nothing)
+    # Unload discards the non-Attacks: Blade Dance must come first (live: Unload alone, the Parasite lived, took 18)
+    msg = state(["Unload", "Blade Dance", "Survivor"], [monster("Shelled Parasite", 15, 18, block=6)], energy=3)
+    plan = planner.plan_turn(msg, P, [])
+    order = names(plan, msg)
+    check("Unload after the cards it would discard", "Unload" in order and order.index("Unload") == len(order) - 1
+          and "Blade Dance" in order and plan.summary["kills"] == 1, ", ".join(order))
     msg = state(["Blade Dance", "Defend"], [monster("Louse", 11, 6)], energy=1)
     plan = planner.plan_turn(msg, P, [])
     check("Shivs count: Blade Dance kills an 11 HP Louse", names(plan, msg) == ["Blade Dance"] and plan.summary["kills"] == 1,

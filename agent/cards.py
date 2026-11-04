@@ -366,7 +366,7 @@ class Effects:
                  "draw", "energy", "strength", "temp_strength", "hp_loss", "exhaust", "power",
                  "x_cost", "strength_mult", "block_scaling", "double_block", "double_strength",
                  "conditional_strength", "self_vuln", "self_weak", "self_frail", "enemy_str_down",
-                 "enemy_str_down_temp", "poison", "per_strike", "exhaust_hand", "block_per_exhaust",
+                 "enemy_str_down_temp", "poison", "per_strike", "exhaust_hand", "discard_hand", "draw_per_discard", "shiv_per_discard", "block_per_exhaust",
                  "damage_per_exhaust", "if_vuln", "per_turn_strength", "per_turn_block",
                  "per_turn_energy", "per_turn_damage", "thorns", "dex", "known", "shivs", "poison_mult",
                  "intangible", "double_attack", "double_skill", "heal_unblocked",
@@ -386,6 +386,9 @@ class Effects:
         self.self_vuln = 0; self.self_weak = 0; self.self_frail = 0
         self.enemy_str_down = 0; self.enemy_str_down_temp = 0; self.poison = 0
         self.per_strike = 0; self.exhaust_hand = ""; self.block_per_exhaust = 0
+        # Unload discards the non-Attacks, Calculated Gamble / Storm of Steel the whole hand (the planner kept
+        # playing them after Unload: a Silent took 18 from a Shelled Parasite it thought it had killed)
+        self.discard_hand = ""; self.draw_per_discard = False; self.shiv_per_discard = False
         self.damage_per_exhaust = 0; self.if_vuln = False
         self.per_turn_strength = 0; self.per_turn_block = 0; self.per_turn_energy = 0
         self.per_turn_damage = 0; self.thorns = 0; self.dex = 0; self.known = False
@@ -486,6 +489,12 @@ def parse_text(text: str, card_type: str, cost: int) -> Effects:
     elif re.search(r"Exhaust all non-Attack cards in your hand", t, re.I):
         e.exhaust_hand = "nonattack"
         e.block_per_exhaust = _int(r"Gain (\d+) Block for each card Exhausted", t)
+    if re.search(r"Discard all non-Attack cards", t, re.I):
+        e.discard_hand = "nonattack"
+    elif re.search(r"Discard your hand", t, re.I):
+        e.discard_hand = "all"
+        e.draw_per_discard = bool(re.search(r"draw that many", t, re.I))
+        e.shiv_per_discard = bool(re.search(r"Shiv[^.]*for each card discarded", t, re.I))
     m = re.search(r"(?:Enemy|ALL enemies) loses? (\d+) Strength( this turn)?", t, re.I)
     if m:
         if m.group(2):

@@ -469,7 +469,18 @@ public final class Planner {
                 else m.poison += e.poison;
             }
         }
-        for (int k = 0; k < e.shivs; k++) {   // Shivs: 0 cost, 4 (+Strength), counted now on the priority target
+        List<Integer> discarded = new ArrayList<>();
+        if ("all".equals(e.discardHand)) discarded.addAll(others);
+        else if ("nonattack".equals(e.discardHand))
+            for (int j : others) if (!"ATTACK".equals(hand.get(j).type)) discarded.add(j);
+        int shivs = e.shivs + (e.shivPerDiscard ? discarded.size() : 0);
+        for (int j : discarded) {   // discard triggers: Tactician energy, Reflex draw
+            String n = Effects.baseName(hand.get(j).name);
+            if (n.equals("Tactician")) st.energy += hand.get(j).upgrades > 0 ? 2 : 1;
+            else if (n.equals("Reflex")) st.drawValue += hand.get(j).upgrades > 0 ? 3 : 2;
+        }
+        if (e.drawPerDiscard && !discarded.isEmpty()) st.drawValue += discarded.size() * (st.energy > 0 ? 1.0 : 0.4);
+        for (int k = 0; k < shivs; k++) {   // Shivs: 0 cost, 4 (+Strength), counted now on the priority target
             M m = priorityTarget(st);
             if (m == null) break;
             double per = (4 + st.str) * (st.weak ? 0.75 : 1.0);
@@ -802,10 +813,11 @@ public final class Planner {
     private List<Integer> kept(int idx, List<Integer> remaining) {
         Effects e = hand.get(idx).fx;
         List<Integer> out = new ArrayList<>();
-        if ("all".equals(e.exhaustHand)) return out;
+        if ("all".equals(e.exhaustHand) || "all".equals(e.discardHand)) return out;
         for (int j : remaining) {
             if (j == idx) continue;
-            if ("nonattack".equals(e.exhaustHand) && !"ATTACK".equals(hand.get(j).type)) continue;
+            if (("nonattack".equals(e.exhaustHand) || "nonattack".equals(e.discardHand))
+                    && !"ATTACK".equals(hand.get(j).type)) continue;
             out.add(j);
         }
         return out;

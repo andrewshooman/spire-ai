@@ -447,9 +447,23 @@ def play(sim: Sim, ctx: Ctx, idx: int, target: int | None, remaining: list[int],
                 m.artifact -= 1
             else:
                 m.poison += e.poison
-    if getattr(e, "shivs", 0):
+    discarded = []
+    if e.discard_hand == "all":
+        discarded = others
+    elif e.discard_hand == "nonattack":
+        discarded = [j for j in others if ctx.hand[j].type.value != "ATTACK"]
+    shivs = getattr(e, "shivs", 0) + (len(discarded) if e.shiv_per_discard else 0)
+    for j in discarded:   # discard triggers: Tactician energy, Reflex draw
+        n = C.base_name(ctx.hand[j].name)
+        if n == "Tactician":
+            sim.energy += 2 if ctx.hand[j].upgrades else 1
+        elif n == "Reflex":
+            sim.draw_value += 3 if ctx.hand[j].upgrades else 2
+    if e.draw_per_discard and discarded:
+        sim.draw_value += len(discarded) * (1.0 if sim.energy > 0 else 0.4)
+    if shivs:
         # Shivs cost nothing and hit for 4 (+Strength): count them now, on the priority target
-        for _ in range(e.shivs):
+        for _ in range(shivs):
             live = [m for m in sim.mons if not m.dead]
             if not live:
                 break
@@ -904,8 +918,10 @@ def _kept(ctx: Ctx, idx: int, remaining: list[int]) -> list[int]:
     e = ctx.effects[idx]
     if e.exhaust_hand == "all":
         return []
-    if e.exhaust_hand == "nonattack":
+    if e.exhaust_hand == "nonattack" or e.discard_hand == "nonattack":
         return [j for j in remaining if j != idx and ctx.hand[j].type.value == "ATTACK"]
+    if e.discard_hand == "all":
+        return []
     return [j for j in remaining if j != idx]
 
 
